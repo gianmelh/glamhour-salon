@@ -178,25 +178,26 @@ function LoginField({
   value: string
 }) {
   return (
-    <label className="relative block text-[14px] font-medium text-[#242a39]">
+    <label className="block text-[14px] font-medium text-[#242a39]">
       {!hideLabel && label}
-      <input
-        aria-invalid={Boolean(error)}
-        autoComplete={autoComplete}
-        className={[
-          hideLabel ? 'mt-0' : 'mt-1',
-          'h-11 w-full rounded-lg border bg-white px-3 text-[13px] text-[#1b2133] outline-none transition placeholder:text-[#8f98aa]',
-          trailingIcon ? 'pr-11' : '',
-          error
-            ? 'border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10'
-            : 'border-[#d3d8e4] focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10',
-        ].join(' ')}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        type={type}
-        value={value}
-      />
-      {trailingIcon && <span className="absolute right-4 top-1/2 -translate-y-1/2">{trailingIcon}</span>}
+      <span className={['relative block', hideLabel ? 'mt-0' : 'mt-1'].join(' ')}>
+        <input
+          aria-invalid={Boolean(error)}
+          autoComplete={autoComplete}
+          className={[
+            'h-11 w-full rounded-lg border bg-white px-3 text-[13px] text-[#1b2133] outline-none transition placeholder:text-[#8f98aa]',
+            trailingIcon ? 'pr-11' : '',
+            error
+              ? 'border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10'
+              : 'border-[#d3d8e4] focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10',
+          ].join(' ')}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          type={type}
+          value={value}
+        />
+        {trailingIcon && <span className="absolute right-4 top-1/2 -translate-y-1/2">{trailingIcon}</span>}
+      </span>
       {error && <span className="mt-1 block text-[11px] font-normal text-[#ff3b4f]">{error}</span>}
     </label>
   )
