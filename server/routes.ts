@@ -10,15 +10,18 @@ import {
   createAppointmentSchema,
   createClientSchema,
   createServiceSchema,
+  confirmPasswordResetSchema,
   loginSchema,
   paginationSchema,
   registerGoogleSalonSchema,
   registerSalonSchema,
+  requestPasswordResetSchema,
   salonParamsSchema,
   salonResourceParamsSchema,
   updateAppointmentStatusSchema,
   updateSalonSettingsSchema,
   uuidSchema,
+  verifyPasswordResetCodeSchema,
 } from './validation.js'
 import { z } from 'zod'
 
@@ -39,6 +42,21 @@ const listQuerySchema = paginationSchema.extend({
 router.post('/auth/login', asyncHandler(async (request, response) => {
   const body = validate(loginSchema, request.body)
   response.json({ data: await dataService.login(body) })
+}))
+
+router.post('/auth/password-reset/request', asyncHandler(async (request, response) => {
+  const body = validate(requestPasswordResetSchema, request.body)
+  response.json({ data: await dataService.requestPasswordReset(body) })
+}))
+
+router.post('/auth/password-reset/verify', asyncHandler(async (request, response) => {
+  const body = validate(verifyPasswordResetCodeSchema, request.body)
+  response.json({ data: await dataService.verifyPasswordResetCode(body) })
+}))
+
+router.post('/auth/password-reset/confirm', asyncHandler(async (request, response) => {
+  const body = validate(confirmPasswordResetSchema, request.body)
+  response.json({ data: await dataService.confirmPasswordReset(body) })
 }))
 
 router.post('/auth/register', asyncHandler(async (request, response) => {

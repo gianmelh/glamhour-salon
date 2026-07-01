@@ -234,3 +234,30 @@ export interface LoginResult {
     role: string
   }>
 }
+
+export interface RequestPasswordResetInput {
+  email: string
+}
+
+export interface RequestPasswordResetResult {
+  email: string
+  expiresAt: string
+  devCode?: string
+}
+
+export interface VerifyPasswordResetCodeInput {
+  email: string
+  code: string
+}
+
+export interface VerifyPasswordResetCodeResult {
+  valid: true
+}
+
+export interface ConfirmPasswordResetInput extends VerifyPasswordResetCodeInput {
+  password: string
+}
+
+export interface ConfirmPasswordResetResult {
+  reset: true
+}

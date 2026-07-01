@@ -109,3 +109,16 @@ export const loginSchema = z.object({
   email: z.string().trim().email().max(320),
   password: z.string().min(1).max(200),
 })
+
+export const requestPasswordResetSchema = z.object({
+  email: z.string().trim().email().max(320),
+})
+
+export const verifyPasswordResetCodeSchema = z.object({
+  email: z.string().trim().email().max(320),
+  code: z.string().trim().regex(/^\d{6}$/, 'Code must be 6 digits'),
+})
+
+export const confirmPasswordResetSchema = verifyPasswordResetCodeSchema.extend({
+  password: z.string().min(6).max(200),
+})

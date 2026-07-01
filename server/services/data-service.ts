@@ -1,6 +1,9 @@
+import crypto from 'node:crypto'
 import type { PoolClient, QueryResultRow } from 'pg'
 import { ApiError } from '../errors.js'
 import { query, withTransaction } from '../db.js'
+import { config } from '../config.js'
+import { sendPasswordResetCode } from './email-service.js'
 import type {
   Appointment,
   Client,
@@ -137,6 +140,40 @@ interface LoginResult {
   salons: AuthSalon[]
 }
 
+interface RequestPasswordResetInput {
+  email: string
+}
+
+interface VerifyPasswordResetCodeInput {
+  email: string
+  code: string
+}
+
+interface ConfirmPasswordResetInput extends VerifyPasswordResetCodeInput {
+  password: string
+}
+
+interface PasswordResetCodeRow extends QueryResultRow {
+  id: string
+  user_id: string
+}
+
+interface PasswordResetUserRow extends QueryResultRow {
+  id: string
+  email: string
+  full_name: string
+}
+
+interface PasswordResetExpiryRow extends QueryResultRow {
+  expires_at: string
+}
+
+interface PasswordResetRequestResult {
+  email: string
+  expiresAt: string
+  devCode?: string
+}
+
 async function oneOrNotFound<T extends QueryResultRow>(
   sql: string,
   values: readonly unknown[],
@@ -194,7 +231,133 @@ async function uniqueSalonSlug(client: PoolClient, salonName: string) {
   return `${baseSlug}-${Date.now()}`
 }
 
+async function verifyActivePasswordResetCode(
+  client: PoolClient,
+  input: VerifyPasswordResetCodeInput,
+): Promise<PasswordResetCodeRow> {
+  const resetCodes = await clientRows<PasswordResetCodeRow>(
+    client,
+    `SELECT prc.id, prc.user_id
+     FROM password_reset_codes prc
+     JOIN users u ON u.id = prc.user_id
+     WHERE lower(u.email) = lower($1)
+       AND u.deleted_at IS NULL
+       AND u.password_hash IS NOT NULL
+       AND prc.consumed_at IS NULL
+       AND prc.expires_at > now()
+       AND prc.attempts < 5
+       AND prc.code_hash = crypt($2, prc.code_hash)
+     ORDER BY prc.created_at DESC
+     LIMIT 1
+     FOR UPDATE OF prc`,
+    [input.email, input.code],
+  )
+  const resetCode = resetCodes[0]
+
+  if (resetCode) {
+    return resetCode
+  }
+
+  await client.query(
+    `UPDATE password_reset_codes prc
+     SET attempts = attempts + 1
+     FROM users u
+     WHERE u.id = prc.user_id
+       AND lower(u.email) = lower($1)
+       AND prc.consumed_at IS NULL
+       AND prc.expires_at > now()
+       AND prc.attempts < 5`,
+    [input.email],
+  )
+
+  throw new ApiError(400, 'Invalid or expired verification code.')
+}
+
 export const dataService = {
+  async requestPasswordReset(input: RequestPasswordResetInput): Promise<PasswordResetRequestResult> {
+    const code = String(crypto.randomInt(100000, 1000000))
+
+    const result = await withTransaction(async (client) => {
+      const users = await clientRows<PasswordResetUserRow>(
+        client,
+        `SELECT id, email, full_name
+         FROM users
+         WHERE lower(email) = lower($1)
+           AND deleted_at IS NULL
+           AND password_hash IS NOT NULL
+         LIMIT 1`,
+        [input.email],
+      )
+      const user = users[0]
+
+      if (!user) {
+        throw new ApiError(404, 'No account was found for this email.')
+      }
+
+      await client.query(
+        `UPDATE password_reset_codes
+         SET consumed_at = now()
+         WHERE user_id = $1 AND consumed_at IS NULL`,
+        [user.id],
+      )
+
+      const resetCodes = await clientRows<PasswordResetExpiryRow>(
+        client,
+        `INSERT INTO password_reset_codes (user_id, code_hash, expires_at)
+         VALUES ($1, crypt($2, gen_salt('bf')), now() + interval '10 minutes')
+         RETURNING expires_at`,
+        [user.id, code],
+      )
+      const resetCode = resetCodes[0]
+      if (!resetCode) throw new ApiError(500, 'Password reset code could not be created.')
+
+      return {
+        email: user.email,
+        expiresAt: resetCode.expires_at,
+        name: user.full_name,
+      }
+    })
+
+    await sendPasswordResetCode({
+      code,
+      email: result.email,
+      name: result.name,
+    })
+
+    return {
+      email: result.email,
+      expiresAt: result.expiresAt,
+      devCode: config.NODE_ENV === 'production' ? undefined : code,
+    }
+  },
+
+  async verifyPasswordResetCode(input: VerifyPasswordResetCodeInput): Promise<{ valid: true }> {
+    await withTransaction(async (client) => {
+      await verifyActivePasswordResetCode(client, input)
+    })
+
+    return { valid: true }
+  },
+
+  async confirmPasswordReset(input: ConfirmPasswordResetInput): Promise<{ reset: true }> {
+    await withTransaction(async (client) => {
+      const resetCode = await verifyActivePasswordResetCode(client, input)
+
+      await client.query(
+        `UPDATE users
+         SET password_hash = crypt($2, gen_salt('bf'))
+         WHERE id = $1`,
+        [resetCode.user_id, input.password],
+      )
+      await client.query(
+        'UPDATE password_reset_codes SET consumed_at = now() WHERE id = $1',
+        [resetCode.id],
+      )
+    })
+
+    return { reset: true }
+  },
+
   login(input: LoginInput): Promise<LoginResult> {
     return withTransaction(async (client) => {
       const users = await clientRows<AuthUser>(

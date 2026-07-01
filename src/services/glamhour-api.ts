@@ -1,14 +1,19 @@
 import { apiRequest } from '../lib/api'
 import type {
   Appointment, Client, CreateAppointmentInput, CreateClientInput, CreateServiceInput, Notification, Professional,
-  LoginInput, LoginResult, RegisterGoogleSalonInput, RegisterSalonInput, RegisterSalonResult, Salon, SalonSettings,
-  SalesHistoryItem, Service, ServiceCategory, UpdateSettingsInput,
+  ConfirmPasswordResetInput, ConfirmPasswordResetResult, LoginInput, LoginResult, RegisterGoogleSalonInput,
+  RegisterSalonInput, RegisterSalonResult, RequestPasswordResetInput, RequestPasswordResetResult, Salon, SalonSettings,
+  SalesHistoryItem, Service, ServiceCategory, UpdateSettingsInput, VerifyPasswordResetCodeInput,
+  VerifyPasswordResetCodeResult,
 } from '../types/api'
 
 export const SALON_ID = import.meta.env.VITE_SALON_ID ?? '10000000-0000-0000-0000-000000000001'
 
 export const glamhourApi = {
   login: (input: LoginInput) => apiRequest<LoginResult>('/auth/login', { method: 'POST', body: JSON.stringify(input) }),
+  requestPasswordReset: (input: RequestPasswordResetInput) => apiRequest<RequestPasswordResetResult>('/auth/password-reset/request', { method: 'POST', body: JSON.stringify(input) }),
+  verifyPasswordResetCode: (input: VerifyPasswordResetCodeInput) => apiRequest<VerifyPasswordResetCodeResult>('/auth/password-reset/verify', { method: 'POST', body: JSON.stringify(input) }),
+  confirmPasswordReset: (input: ConfirmPasswordResetInput) => apiRequest<ConfirmPasswordResetResult>('/auth/password-reset/confirm', { method: 'POST', body: JSON.stringify(input) }),
   registerSalon: (input: RegisterSalonInput) => apiRequest<RegisterSalonResult>('/auth/register', { method: 'POST', body: JSON.stringify(input) }),
   registerGoogleSalon: (input: RegisterGoogleSalonInput) => apiRequest<RegisterSalonResult>('/auth/google/register', { method: 'POST', body: JSON.stringify(input) }),
   salon: (salonId = SALON_ID) => apiRequest<Salon>(`/salons/${salonId}`),
