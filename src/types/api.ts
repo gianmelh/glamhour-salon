@@ -214,3 +214,23 @@ export interface RegisterSalonResult {
   }
   salon: Salon
 }
+
+export interface LoginInput {
+  email: string
+  password: string
+}
+
+export interface LoginResult {
+  user: {
+    id: string
+    email: string
+    full_name: string
+    auth_provider: string
+  }
+  salons: Array<{
+    id: string
+    name: string
+    slug: string
+    role: string
+  }>
+}

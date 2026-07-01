@@ -104,3 +104,8 @@ const registerSalonVerificationSchema = registerSalonSchema.omit({
 export const registerGoogleSalonSchema = registerSalonVerificationSchema.extend({
   credential: z.string().trim().min(1),
 })
+
+export const loginSchema = z.object({
+  email: z.string().trim().email().max(320),
+  password: z.string().min(1).max(200),
+})

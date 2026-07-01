@@ -10,6 +10,7 @@ import {
   createAppointmentSchema,
   createClientSchema,
   createServiceSchema,
+  loginSchema,
   paginationSchema,
   registerGoogleSalonSchema,
   registerSalonSchema,
@@ -34,6 +35,11 @@ const listQuerySchema = paginationSchema.extend({
   status: z.string().trim().min(1).optional(),
   publicOnly: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
 })
+
+router.post('/auth/login', asyncHandler(async (request, response) => {
+  const body = validate(loginSchema, request.body)
+  response.json({ data: await dataService.login(body) })
+}))
 
 router.post('/auth/register', asyncHandler(async (request, response) => {
   const body = validate(registerSalonSchema, request.body)

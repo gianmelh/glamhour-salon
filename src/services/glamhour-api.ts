@@ -1,13 +1,14 @@
 import { apiRequest } from '../lib/api'
 import type {
   Appointment, Client, CreateAppointmentInput, CreateClientInput, CreateServiceInput, Notification, Professional,
-  RegisterGoogleSalonInput, RegisterSalonInput, RegisterSalonResult, Salon, SalonSettings, SalesHistoryItem,
-  Service, ServiceCategory, UpdateSettingsInput,
+  LoginInput, LoginResult, RegisterGoogleSalonInput, RegisterSalonInput, RegisterSalonResult, Salon, SalonSettings,
+  SalesHistoryItem, Service, ServiceCategory, UpdateSettingsInput,
 } from '../types/api'
 
 export const SALON_ID = import.meta.env.VITE_SALON_ID ?? '10000000-0000-0000-0000-000000000001'
 
 export const glamhourApi = {
+  login: (input: LoginInput) => apiRequest<LoginResult>('/auth/login', { method: 'POST', body: JSON.stringify(input) }),
   registerSalon: (input: RegisterSalonInput) => apiRequest<RegisterSalonResult>('/auth/register', { method: 'POST', body: JSON.stringify(input) }),
   registerGoogleSalon: (input: RegisterGoogleSalonInput) => apiRequest<RegisterSalonResult>('/auth/google/register', { method: 'POST', body: JSON.stringify(input) }),
   salon: (salonId = SALON_ID) => apiRequest<Salon>(`/salons/${salonId}`),

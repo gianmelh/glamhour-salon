@@ -113,6 +113,30 @@ interface RegisterGoogleSalonInput extends Omit<RegisterSalonInput, 'email' | 'p
   ownerFullName: string
 }
 
+interface LoginInput {
+  email: string
+  password: string
+}
+
+interface AuthUser extends QueryResultRow {
+  id: string
+  email: string
+  full_name: string
+  auth_provider: string
+}
+
+interface AuthSalon extends QueryResultRow {
+  id: string
+  name: string
+  slug: string
+  role: string
+}
+
+interface LoginResult {
+  user: AuthUser
+  salons: AuthSalon[]
+}
+
 async function oneOrNotFound<T extends QueryResultRow>(
   sql: string,
   values: readonly unknown[],
@@ -171,6 +195,47 @@ async function uniqueSalonSlug(client: PoolClient, salonName: string) {
 }
 
 export const dataService = {
+  login(input: LoginInput): Promise<LoginResult> {
+    return withTransaction(async (client) => {
+      const users = await clientRows<AuthUser>(
+        client,
+        `SELECT id, email, full_name, auth_provider
+         FROM users
+         WHERE lower(email) = lower($1)
+           AND deleted_at IS NULL
+           AND password_hash IS NOT NULL
+           AND password_hash = crypt($2, password_hash)
+         LIMIT 1`,
+        [input.email, input.password],
+      )
+      const user = users[0]
+
+      if (!user) {
+        throw new ApiError(401, 'Invalid email or password.')
+      }
+
+      await client.query(
+        'UPDATE users SET last_login_at = now() WHERE id = $1',
+        [user.id],
+      )
+
+      const salons = await clientRows<AuthSalon>(
+        client,
+        `SELECT s.id, s.name, s.slug, sm.role
+         FROM salon_memberships sm
+         JOIN salons s ON s.id = sm.salon_id
+         WHERE sm.user_id = $1
+           AND sm.status = 'active'
+           AND s.deleted_at IS NULL
+           AND s.is_active
+         ORDER BY sm.role = 'owner' DESC, s.name`,
+        [user.id],
+      )
+
+      return { user, salons }
+    })
+  },
+
   registerGoogleSalon(input: RegisterGoogleSalonInput): Promise<RegisterSalonResult> {
     return withTransaction(async (client) => {
       const existingIdentities = await clientRows<QueryResultRow>(
