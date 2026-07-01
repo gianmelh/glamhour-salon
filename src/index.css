@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #101827;
+  --color-muted: #748096;
+  --color-subtle: #a8afbd;
+  --color-canvas: #f4f3ff;
+  --color-surface: #ffffff;
+  --color-surface-soft: #faf9ff;
+  --color-lavender: #eee9ff;
+  --color-lavender-strong: #ded3ff;
+  --color-primary: #7c3aed;
+  --color-primary-dark: #4c1d95;
+  --color-primary-soft: #8b5cf6;
+  --color-border: #e1e4ec;
+  --color-border-strong: #b8bfcb;
+  --color-success: #21855b;
+  --color-success-soft: #e9f8f1;
+  --color-warning: #a96612;
+  --color-warning-soft: #fff5dd;
+  --color-danger: #e05252;
+  --color-danger-soft: #fff0f0;
+  --color-info: #3f66c8;
+  --color-info-soft: #eef3ff;
+
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+
+  --shadow-card: 0 1px 2px rgb(16 24 39 / 0.05), 0 8px 24px rgb(76 29 149 / 0.06);
+  --shadow-action: 0 8px 18px rgb(76 29 149 / 0.28);
+  --shadow-sheet: 0 -12px 36px rgb(16 24 39 / 0.16);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    background: #eceaf5;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button,
+  select {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  ::selection {
+    background: var(--color-lavender-strong);
+  }
+
+  .google-place-autocomplete-shell {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
+  .google-place-autocomplete {
+    width: 100%;
+    min-height: 2.75rem;
+    color: #1b2133;
+    font-size: 12px;
+  }
+}
+
+@layer utilities {
+  .bg-glam-gradient {
+    background: linear-gradient(180deg, var(--color-primary-soft) 0%, var(--color-primary-dark) 100%);
+  }
+
+  .bg-auth-gradient {
+    background:
+      radial-gradient(circle at 50% 15%, rgb(255 255 255 / 0.78), transparent 35%),
+      linear-gradient(180deg, #fbf9ff 0%, #d9c9ff 58%, #9674f5 100%);
+  }
+}
