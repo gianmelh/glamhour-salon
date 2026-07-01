@@ -103,11 +103,11 @@ export function LoginPage() {
                 trailingIcon={(
                   <button
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    className="grid size-7 place-items-center text-[#6f7788] transition hover:text-[#242a39]"
+                    className="grid size-8 place-items-center text-[#6f7788] transition hover:text-[#242a39]"
                     onClick={() => setShowPassword((value) => !value)}
                     type="button"
                   >
-                    {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
+                    {showPassword ? <EyeOff className="size-6 stroke-[2.4]" /> : <Eye className="size-6 stroke-[2.4]" />}
                   </button>
                 )}
                 type={showPassword ? 'text' : 'password'}
@@ -196,7 +196,7 @@ function LoginField({
         type={type}
         value={value}
       />
-      {trailingIcon && <span className="absolute right-2 top-1/2 -translate-y-1/2">{trailingIcon}</span>}
+      {trailingIcon && <span className="absolute right-4 top-1/2 -translate-y-1/2">{trailingIcon}</span>}
       {error && <span className="mt-1 block text-[11px] font-normal text-[#ff3b4f]">{error}</span>}
     </label>
   )
