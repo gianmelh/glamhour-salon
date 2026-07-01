@@ -158,8 +158,9 @@ export function ForgotPasswordPage() {
             {step === 'code' && (
               <>
                 <ResetHeader
-                  description={`We sent a 6-digit code to ${email}`}
-                  title="Verification code"
+                  description="We sent a code to the email"
+                  detail={email}
+                  title="Enter verification code"
                 />
                 <form className="mt-7 space-y-5" noValidate onSubmit={handleCodeSubmit}>
                   <ResetField
@@ -184,7 +185,7 @@ export function ForgotPasswordPage() {
                   )}
                   <SubmitButton disabled={code.trim().length !== 6} isSubmitting={isSubmitting} label="Verify code" loadingLabel="Verifying..." />
                   <button
-                    className="mx-auto block text-[12px] font-semibold text-[#7a3fe0]"
+                    className="mx-auto block text-center text-[12px] leading-5 text-[#7c8394]"
                     disabled={isSubmitting}
                     onClick={() => {
                       setStep('email')
@@ -194,7 +195,8 @@ export function ForgotPasswordPage() {
                     }}
                     type="button"
                   >
-                    Use another email
+                    <span>Wrong email?</span>
+                    <span className="block font-semibold text-[#7a3fe0]">Change it</span>
                   </button>
                   <FormError message={formError} />
                 </form>
@@ -263,13 +265,18 @@ export function ForgotPasswordPage() {
   )
 }
 
-function ResetHeader({ description, title }: { description: string; title: string }) {
+function ResetHeader({ description, detail, title }: { description: string; detail?: string; title: string }) {
   return (
     <header className="text-center">
       <h1 className="text-[26px] font-semibold leading-tight text-[#12192d]">{title}</h1>
       <p className="mx-auto mt-2 max-w-[280px] text-[14px] leading-5 text-[#7c8394]">
         {description}
       </p>
+      {detail && (
+        <p className="mx-auto mt-1 max-w-[280px] break-words text-[14px] font-medium leading-5 text-[#12192d]">
+          {detail}
+        </p>
+      )}
     </header>
   )
 }

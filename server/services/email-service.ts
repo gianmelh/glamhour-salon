@@ -45,7 +45,7 @@ export async function sendPasswordResetCode({
     },
   })
 
-  await transporter.sendMail({
+  const info = await transporter.sendMail({
     from: config.SMTP_FROM,
     to: email,
     subject: 'Your Glamhour password reset code',
@@ -59,5 +59,11 @@ export async function sendPasswordResetCode({
         <p>This code expires in 10 minutes. If you did not request this, you can ignore this email.</p>
       </div>
     `,
+  })
+
+  console.info('Password reset email accepted by SMTP.', {
+    accepted: info.accepted,
+    rejected: info.rejected,
+    messageId: info.messageId,
   })
 }
