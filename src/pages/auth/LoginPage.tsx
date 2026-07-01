@@ -1,3 +1,4 @@
+import { Eye, EyeOff } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ApiClientError } from '../../lib/api'
@@ -11,6 +12,7 @@ export function LoginPage() {
   const [passwordError, setPasswordError] = useState('')
   const [loginError, setLoginError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const hasCredentials = Boolean(email.trim() && password)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -98,7 +100,17 @@ export function LoginPage() {
                   setLoginError('')
                 }}
                 placeholder="Enter your password"
-                type="password"
+                trailingIcon={(
+                  <button
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="grid size-7 place-items-center text-[#6f7788] transition hover:text-[#242a39]"
+                    onClick={() => setShowPassword((value) => !value)}
+                    type="button"
+                  >
+                    {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
+                  </button>
+                )}
+                type={showPassword ? 'text' : 'password'}
                 value={password}
               />
             </div>
@@ -151,6 +163,7 @@ function LoginField({
   label,
   onChange,
   placeholder,
+  trailingIcon,
   type,
   value,
 }: {
@@ -160,11 +173,12 @@ function LoginField({
   label: string
   onChange: (value: string) => void
   placeholder: string
+  trailingIcon?: ReactNode
   type: string
   value: string
 }) {
   return (
-    <label className="block text-[14px] font-medium text-[#242a39]">
+    <label className="relative block text-[14px] font-medium text-[#242a39]">
       {!hideLabel && label}
       <input
         aria-invalid={Boolean(error)}
@@ -172,6 +186,7 @@ function LoginField({
         className={[
           hideLabel ? 'mt-0' : 'mt-1',
           'h-11 w-full rounded-lg border bg-white px-3 text-[13px] text-[#1b2133] outline-none transition placeholder:text-[#8f98aa]',
+          trailingIcon ? 'pr-11' : '',
           error
             ? 'border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10'
             : 'border-[#d3d8e4] focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10',
@@ -181,6 +196,7 @@ function LoginField({
         type={type}
         value={value}
       />
+      {trailingIcon && <span className="absolute right-2 top-1/2 -translate-y-1/2">{trailingIcon}</span>}
       {error && <span className="mt-1 block text-[11px] font-normal text-[#ff3b4f]">{error}</span>}
     </label>
   )
