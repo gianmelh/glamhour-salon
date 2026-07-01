@@ -136,8 +136,8 @@ export function RegistrationPage() {
       return
     }
 
-    if (nextDraft.authProvider === 'google' && !nextDraft.googleCredential) {
-      setRegistrationError('Please sign up with Google again before submitting verification.')
+    if (nextDraft.authProvider !== 'email' && !nextDraft.socialCredential) {
+      setRegistrationError(`Please sign up with ${providerLabel(nextDraft.authProvider)} again before submitting verification.`)
       return
     }
 
@@ -159,10 +159,21 @@ export function RegistrationPage() {
 
       const result = nextDraft.authProvider === 'google'
         ? await glamhourApi.registerGoogleSalon({
-          ...verificationInput,
-          credential: nextDraft.googleCredential,
-        })
-        : await glamhourApi.registerSalon({
+            ...verificationInput,
+            credential: nextDraft.socialCredential,
+          })
+        : nextDraft.authProvider === 'facebook'
+          ? await glamhourApi.registerFacebookSalon({
+              ...verificationInput,
+              accessToken: nextDraft.socialCredential,
+            })
+          : nextDraft.authProvider === 'apple'
+            ? await glamhourApi.registerAppleSalon({
+                ...verificationInput,
+                identityToken: nextDraft.socialCredential,
+                ownerFullName: nextDraft.ownerFullName || undefined,
+              })
+            : await glamhourApi.registerSalon({
           ...verificationInput,
           email: nextDraft.email.trim(),
           password: nextDraft.password,
@@ -375,4 +386,11 @@ export function RegistrationPage() {
       )}
     </main>
   )
+}
+
+function providerLabel(provider: 'email' | 'google' | 'facebook' | 'apple') {
+  if (provider === 'facebook') return 'Facebook'
+  if (provider === 'apple') return 'Apple'
+  if (provider === 'google') return 'Google'
+  return 'email'
 }

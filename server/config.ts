@@ -12,6 +12,11 @@ const envSchema = z.object({
   DATABASE_SSL: booleanString,
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   VITE_GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  FACEBOOK_APP_ID: z.string().min(1).optional(),
+  FACEBOOK_APP_SECRET: z.string().min(1).optional(),
+  VITE_FACEBOOK_APP_ID: z.string().min(1).optional(),
+  APPLE_CLIENT_ID: z.string().min(1).optional(),
+  VITE_APPLE_CLIENT_ID: z.string().min(1).optional(),
   APP_URL: z.string().url().optional(),
   SMTP_HOST: z.string().min(1).optional(),
   SMTP_PORT: z.coerce.number().int().positive().optional(),
@@ -34,4 +39,6 @@ if (!result.success) {
 export const config = {
   ...result.data,
   GOOGLE_CLIENT_ID: result.data.GOOGLE_CLIENT_ID ?? result.data.VITE_GOOGLE_CLIENT_ID,
+  FACEBOOK_APP_ID: result.data.FACEBOOK_APP_ID ?? result.data.VITE_FACEBOOK_APP_ID,
+  APPLE_CLIENT_ID: result.data.APPLE_CLIENT_ID ?? result.data.VITE_APPLE_CLIENT_ID,
 }

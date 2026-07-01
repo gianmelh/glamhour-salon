@@ -4,6 +4,7 @@ import { config } from './config.js'
 import { ApiError } from './errors.js'
 import { asyncHandler, validate } from './http.js'
 import { dataService } from './services/data-service.js'
+import { verifyAppleIdentityToken, verifyFacebookAccessToken } from './services/social-auth-service.js'
 import {
   appointmentQuerySchema,
   availabilityQuerySchema,
@@ -11,6 +12,8 @@ import {
   createClientSchema,
   createServiceSchema,
   confirmPasswordResetSchema,
+  registerAppleSalonSchema,
+  registerFacebookSalonSchema,
   loginSchema,
   paginationSchema,
   registerGoogleSalonSchema,
@@ -86,11 +89,46 @@ router.post('/auth/google/register', asyncHandler(async (request, response) => {
   void _credential
 
   response.status(201).json({
-    data: await dataService.registerGoogleSalon({
+    data: await dataService.registerSocialSalon({
       ...registration,
       email: payload.email,
       ownerFullName: payload.name ?? payload.email,
-      googleSubject: payload.sub,
+      authProvider: 'google',
+      authProviderSubject: payload.sub,
+    }),
+  })
+}))
+
+router.post('/auth/facebook/register', asyncHandler(async (request, response) => {
+  const body = validate(registerFacebookSalonSchema, request.body)
+  const profile = await verifyFacebookAccessToken(body.accessToken)
+  const { accessToken: _accessToken, ...registration } = body
+  void _accessToken
+
+  response.status(201).json({
+    data: await dataService.registerSocialSalon({
+      ...registration,
+      email: profile.email,
+      ownerFullName: profile.name,
+      authProvider: 'facebook',
+      authProviderSubject: profile.subject,
+    }),
+  })
+}))
+
+router.post('/auth/apple/register', asyncHandler(async (request, response) => {
+  const body = validate(registerAppleSalonSchema, request.body)
+  const profile = await verifyAppleIdentityToken(body.identityToken)
+  const { identityToken: _identityToken, ...registration } = body
+  void _identityToken
+
+  response.status(201).json({
+    data: await dataService.registerSocialSalon({
+      ...registration,
+      email: profile.email,
+      ownerFullName: registration.ownerFullName ?? profile.name,
+      authProvider: 'apple',
+      authProviderSubject: profile.subject,
     }),
   })
 }))

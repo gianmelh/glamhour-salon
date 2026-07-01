@@ -110,8 +110,9 @@ interface RegisterSalonResult {
   salon: Salon
 }
 
-interface RegisterGoogleSalonInput extends Omit<RegisterSalonInput, 'email' | 'password'> {
-  googleSubject: string
+interface RegisterSocialSalonInput extends Omit<RegisterSalonInput, 'email' | 'password'> {
+  authProvider: 'google' | 'facebook' | 'apple'
+  authProviderSubject: string
   email: string
   ownerFullName: string
 }
@@ -399,18 +400,18 @@ export const dataService = {
     })
   },
 
-  registerGoogleSalon(input: RegisterGoogleSalonInput): Promise<RegisterSalonResult> {
+  registerSocialSalon(input: RegisterSocialSalonInput): Promise<RegisterSalonResult> {
     return withTransaction(async (client) => {
       const existingIdentities = await clientRows<QueryResultRow>(
         client,
         `SELECT 1 FROM users
-         WHERE auth_provider = 'google' AND auth_provider_subject = $1 AND deleted_at IS NULL
+         WHERE auth_provider = $1 AND auth_provider_subject = $2 AND deleted_at IS NULL
          LIMIT 1`,
-        [input.googleSubject],
+        [input.authProvider, input.authProviderSubject],
       )
 
       if (existingIdentities[0]) {
-        throw new ApiError(409, 'This Google account is already registered.')
+        throw new ApiError(409, `This ${input.authProvider} account is already registered.`)
       }
 
       const existingUsers = await clientRows<QueryResultRow>(
@@ -428,9 +429,9 @@ export const dataService = {
         `INSERT INTO users (
            auth_provider, auth_provider_subject, email, password_hash,
            full_name, email_verified_at
-         ) VALUES ('google', $1, lower($2), null, $3, now())
+         ) VALUES ($1, $2, lower($3), null, $4, now())
          RETURNING id, email, full_name`,
-        [input.googleSubject, input.email, input.ownerFullName],
+        [input.authProvider, input.authProviderSubject, input.email, input.ownerFullName],
       )
       const user = users[0]
       if (!user) throw new ApiError(500, 'User could not be created.')
@@ -467,7 +468,7 @@ export const dataService = {
         [
           salon.id,
           JSON.stringify({
-            registrationSource: 'google',
+            registrationSource: input.authProvider,
             googlePlaceId: input.location.placeId ?? null,
           }),
         ],
@@ -494,7 +495,7 @@ export const dataService = {
             salonName: input.salonName,
             ownerEmail: input.email,
             location: input.location,
-            authProvider: 'google',
+            authProvider: input.authProvider,
             verificationDocument: {
               originalFilename: input.document.originalFilename,
               mimeType: input.document.mimeType,
@@ -505,11 +506,11 @@ export const dataService = {
       )
       await client.query(
         `INSERT INTO legal_acceptances (user_id, salon_id, legal_document_id, user_agent)
-         SELECT $1, $2, id, 'Glamhour Google signup'
+         SELECT $1, $2, id, $3
          FROM legal_documents
          WHERE is_active AND document_type IN ('terms', 'privacy')
          ON CONFLICT DO NOTHING`,
-        [user.id, salon.id],
+        [user.id, salon.id, `Glamhour ${input.authProvider} signup`],
       )
 
       return { user, salon }

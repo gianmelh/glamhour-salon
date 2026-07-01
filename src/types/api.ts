@@ -206,6 +206,15 @@ export interface RegisterGoogleSalonInput extends Omit<RegisterSalonInput, 'emai
   credential: string
 }
 
+export interface RegisterFacebookSalonInput extends Omit<RegisterSalonInput, 'email' | 'password'> {
+  accessToken: string
+}
+
+export interface RegisterAppleSalonInput extends Omit<RegisterSalonInput, 'email' | 'password'> {
+  identityToken: string
+  ownerFullName?: string
+}
+
 export interface RegisterSalonResult {
   user: {
     id: string

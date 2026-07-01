@@ -1,8 +1,9 @@
 import { apiRequest } from '../lib/api'
 import type {
   Appointment, Client, CreateAppointmentInput, CreateClientInput, CreateServiceInput, Notification, Professional,
-  ConfirmPasswordResetInput, ConfirmPasswordResetResult, LoginInput, LoginResult, RegisterGoogleSalonInput,
-  RegisterSalonInput, RegisterSalonResult, RequestPasswordResetInput, RequestPasswordResetResult, Salon, SalonSettings,
+  ConfirmPasswordResetInput, ConfirmPasswordResetResult, LoginInput, LoginResult, RegisterAppleSalonInput,
+  RegisterFacebookSalonInput, RegisterGoogleSalonInput, RegisterSalonInput, RegisterSalonResult,
+  RequestPasswordResetInput, RequestPasswordResetResult, Salon, SalonSettings,
   SalesHistoryItem, Service, ServiceCategory, UpdateSettingsInput, VerifyPasswordResetCodeInput,
   VerifyPasswordResetCodeResult,
 } from '../types/api'
@@ -16,6 +17,8 @@ export const glamhourApi = {
   confirmPasswordReset: (input: ConfirmPasswordResetInput) => apiRequest<ConfirmPasswordResetResult>('/auth/password-reset/confirm', { method: 'POST', body: JSON.stringify(input) }),
   registerSalon: (input: RegisterSalonInput) => apiRequest<RegisterSalonResult>('/auth/register', { method: 'POST', body: JSON.stringify(input) }),
   registerGoogleSalon: (input: RegisterGoogleSalonInput) => apiRequest<RegisterSalonResult>('/auth/google/register', { method: 'POST', body: JSON.stringify(input) }),
+  registerFacebookSalon: (input: RegisterFacebookSalonInput) => apiRequest<RegisterSalonResult>('/auth/facebook/register', { method: 'POST', body: JSON.stringify(input) }),
+  registerAppleSalon: (input: RegisterAppleSalonInput) => apiRequest<RegisterSalonResult>('/auth/apple/register', { method: 'POST', body: JSON.stringify(input) }),
   salon: (salonId = SALON_ID) => apiRequest<Salon>(`/salons/${salonId}`),
   appointments: (salonId = SALON_ID) => apiRequest<Appointment[]>(`/salons/${salonId}/appointments?limit=100`),
   appointment: (id: string, salonId = SALON_ID) => apiRequest<Appointment>(`/salons/${salonId}/appointments/${id}`),

@@ -105,6 +105,15 @@ export const registerGoogleSalonSchema = registerSalonVerificationSchema.extend(
   credential: z.string().trim().min(1),
 })
 
+export const registerFacebookSalonSchema = registerSalonVerificationSchema.extend({
+  accessToken: z.string().trim().min(1),
+})
+
+export const registerAppleSalonSchema = registerSalonVerificationSchema.extend({
+  identityToken: z.string().trim().min(1),
+  ownerFullName: z.string().trim().min(1).max(160).optional(),
+})
+
 export const loginSchema = z.object({
   email: z.string().trim().email().max(320),
   password: z.string().min(1).max(200),

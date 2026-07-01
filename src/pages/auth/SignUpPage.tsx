@@ -4,6 +4,23 @@ import { readSignUpDraft, saveSignUpDraft, type SignUpForm } from './signUpDraft
 
 type SignUpErrors = Partial<Record<keyof Omit<SignUpForm, 'acceptedTerms'> | 'acceptedTerms', string>>
 type GoogleCredentialResponse = { credential?: string }
+type FacebookLoginResponse = {
+  authResponse?: {
+    accessToken: string
+  }
+  status?: string
+}
+type AppleSignInResponse = {
+  authorization?: {
+    id_token?: string
+  }
+  user?: {
+    name?: {
+      firstName?: string
+      lastName?: string
+    }
+  }
+}
 
 type GoogleAccountsWindow = Window & {
   google?: {
@@ -20,8 +37,42 @@ type GoogleAccountsWindow = Window & {
   }
 }
 
+type FacebookWindow = Window & {
+  fbAsyncInit?: () => void
+  FB?: {
+    init: (options: {
+      appId: string
+      cookie?: boolean
+      version: string
+      xfbml?: boolean
+    }) => void
+    login: (
+      callback: (response: FacebookLoginResponse) => void,
+      options: { scope: string; return_scopes?: boolean },
+    ) => void
+  }
+}
+
+type AppleWindow = Window & {
+  AppleID?: {
+    auth: {
+      init: (options: {
+        clientId: string
+        redirectURI: string
+        scope: string
+        usePopup: boolean
+      }) => void
+      signIn: () => Promise<AppleSignInResponse>
+    }
+  }
+}
+
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim()
+const facebookAppId = import.meta.env.VITE_FACEBOOK_APP_ID?.trim()
+const appleClientId = import.meta.env.VITE_APPLE_CLIENT_ID?.trim()
 let googleIdentityScriptPromise: Promise<void> | undefined
+let facebookScriptPromise: Promise<void> | undefined
+let appleScriptPromise: Promise<void> | undefined
 
 function validateSignUp(form: SignUpForm) {
   const errors: SignUpErrors = {}
@@ -77,6 +128,60 @@ function loadGoogleIdentityScript() {
   return googleIdentityScriptPromise
 }
 
+function loadFacebookScript() {
+  const facebookWindow = window as FacebookWindow
+  if (facebookWindow.FB) {
+    return Promise.resolve()
+  }
+
+  facebookScriptPromise ??= new Promise<void>((resolve, reject) => {
+    const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://connect.facebook.net/en_US/sdk.js"]')
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(), { once: true })
+      existingScript.addEventListener('error', () => reject(new Error('Facebook SDK could not load.')), { once: true })
+      return
+    }
+
+    facebookWindow.fbAsyncInit = () => resolve()
+
+    const script = document.createElement('script')
+    script.src = 'https://connect.facebook.net/en_US/sdk.js'
+    script.async = true
+    script.defer = true
+    script.crossOrigin = 'anonymous'
+    script.addEventListener('error', () => reject(new Error('Facebook SDK could not load.')), { once: true })
+    document.head.appendChild(script)
+  })
+
+  return facebookScriptPromise
+}
+
+function loadAppleScript() {
+  const appleWindow = window as AppleWindow
+  if (appleWindow.AppleID?.auth) {
+    return Promise.resolve()
+  }
+
+  appleScriptPromise ??= new Promise<void>((resolve, reject) => {
+    const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js"]')
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(), { once: true })
+      existingScript.addEventListener('error', () => reject(new Error('Apple Sign In could not load.')), { once: true })
+      return
+    }
+
+    const script = document.createElement('script')
+    script.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js'
+    script.async = true
+    script.defer = true
+    script.addEventListener('load', () => resolve(), { once: true })
+    script.addEventListener('error', () => reject(new Error('Apple Sign In could not load.')), { once: true })
+    document.head.appendChild(script)
+  })
+
+  return appleScriptPromise
+}
+
 function parseGoogleCredential(credential: string) {
   try {
     const payload = credential.split('.')[1]
@@ -106,7 +211,7 @@ export function SignUpPage() {
 
   function updateField<Field extends keyof SignUpForm>(field: Field, value: SignUpForm[Field]) {
     setForm((current) => {
-      const nextForm = { ...current, authProvider: 'email' as const, googleCredential: '', ownerFullName: '', [field]: value }
+      const nextForm = { ...current, authProvider: 'email' as const, socialCredential: '', ownerFullName: '', [field]: value }
       saveSignUpDraft(nextForm)
       formRef.current = nextForm
       return nextForm
@@ -150,7 +255,7 @@ export function SignUpPage() {
             password: '',
             confirmPassword: '',
             authProvider: 'google',
-            googleCredential: response.credential,
+            socialCredential: response.credential,
             ownerFullName: googleProfile.name ?? '',
           }
 
@@ -168,8 +273,99 @@ export function SignUpPage() {
     }
   }
 
-  function handleUnsupportedSocialSignUp(provider: 'Facebook' | 'Apple') {
-    setSocialError(`${provider} sign up is not configured yet.`)
+  async function handleFacebookSignUp() {
+    setSocialError('')
+
+    if (!facebookAppId) {
+      setSocialError('Facebook sign up is not configured yet.')
+      return
+    }
+
+    try {
+      await loadFacebookScript()
+      const facebookWindow = window as FacebookWindow
+      facebookWindow.FB?.init({
+        appId: facebookAppId,
+        cookie: true,
+        version: 'v21.0',
+        xfbml: false,
+      })
+      facebookWindow.FB?.login((response) => {
+        const accessToken = response.authResponse?.accessToken
+        if (!accessToken) {
+          setSocialError('Facebook did not return a sign up credential.')
+          return
+        }
+
+        const nextForm: SignUpForm = {
+          ...formRef.current,
+          password: '',
+          confirmPassword: '',
+          authProvider: 'facebook',
+          socialCredential: accessToken,
+          ownerFullName: '',
+        }
+
+        saveSignUpDraft(nextForm)
+        formRef.current = nextForm
+        setForm(nextForm)
+        navigate('/register', {
+          state: { salonName: nextForm.salonName.trim(), email: nextForm.email.trim(), authProvider: 'facebook' },
+        })
+      }, { scope: 'public_profile,email', return_scopes: true })
+    } catch {
+      setSocialError('Facebook sign up could not be started. Please try again.')
+    }
+  }
+
+  async function handleAppleSignUp() {
+    setSocialError('')
+
+    if (!appleClientId) {
+      setSocialError('Apple sign up is not configured yet.')
+      return
+    }
+
+    try {
+      await loadAppleScript()
+      const appleWindow = window as AppleWindow
+      appleWindow.AppleID?.auth.init({
+        clientId: appleClientId,
+        redirectURI: window.location.origin,
+        scope: 'name email',
+        usePopup: true,
+      })
+      const response = await appleWindow.AppleID?.auth.signIn()
+      const identityToken = response?.authorization?.id_token
+      if (!identityToken) {
+        setSocialError('Apple did not return a sign up credential.')
+        return
+      }
+
+      const ownerFullName = [
+        response.user?.name?.firstName,
+        response.user?.name?.lastName,
+      ].filter(Boolean).join(' ')
+      const appleProfile = parseGoogleCredential(identityToken)
+      const nextForm: SignUpForm = {
+        ...formRef.current,
+        email: appleProfile.email ?? formRef.current.email,
+        password: '',
+        confirmPassword: '',
+        authProvider: 'apple',
+        socialCredential: identityToken,
+        ownerFullName,
+      }
+
+      saveSignUpDraft(nextForm)
+      formRef.current = nextForm
+      setForm(nextForm)
+      navigate('/register', {
+        state: { salonName: nextForm.salonName.trim(), email: nextForm.email.trim(), authProvider: 'apple' },
+      })
+    } catch {
+      setSocialError('Apple sign up could not be started. Please try again.')
+    }
   }
 
   return (
@@ -250,9 +446,9 @@ export function SignUpPage() {
               <span className="h-px flex-1 bg-[#e6e8f1]" />
             </div>
             <div className="mt-3 grid grid-cols-3 gap-3">
-              <SocialButton icon={<FacebookIcon />} label="Facebook" onClick={() => handleUnsupportedSocialSignUp('Facebook')} />
+              <SocialButton icon={<FacebookIcon />} label="Facebook" onClick={handleFacebookSignUp} />
               <SocialButton icon={<GoogleIcon />} label="Google" onClick={handleGoogleSignUp} />
-              <SocialButton icon={<AppleIcon />} label="Apple" onClick={() => handleUnsupportedSocialSignUp('Apple')} />
+              <SocialButton icon={<AppleIcon />} label="Apple" onClick={handleAppleSignUp} />
             </div>
             {socialError && <p className="mt-2 text-center text-[11px] text-[#ff3b4f]">{socialError}</p>}
           </div>
