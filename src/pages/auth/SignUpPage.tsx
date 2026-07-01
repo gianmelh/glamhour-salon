@@ -126,21 +126,6 @@ export function SignUpPage() {
   async function handleGoogleSignUp() {
     setSocialError('')
 
-    const currentForm = formRef.current
-    const nextErrors: SignUpErrors = {}
-    if (!currentForm.salonName.trim()) {
-      nextErrors.salonName = 'Salon name is required'
-    }
-    if (!currentForm.acceptedTerms) {
-      nextErrors.acceptedTerms = 'Please agree to the terms and conditions'
-    }
-
-    if (Object.keys(nextErrors).length > 0) {
-      setSubmitted(false)
-      setSocialError('Add the salon name and accept the terms before continuing with Google.')
-      return
-    }
-
     if (!googleClientId) {
       setSocialError('Google sign up is not configured yet.')
       return
@@ -181,6 +166,10 @@ export function SignUpPage() {
     } catch {
       setSocialError('Google sign up could not be started. Please try again.')
     }
+  }
+
+  function handleUnsupportedSocialSignUp(provider: 'Facebook' | 'Apple') {
+    setSocialError(`${provider} sign up is not configured yet.`)
   }
 
   return (
@@ -261,9 +250,9 @@ export function SignUpPage() {
               <span className="h-px flex-1 bg-[#e6e8f1]" />
             </div>
             <div className="mt-3 grid grid-cols-3 gap-3">
-              <SocialButton icon={<FacebookIcon />} label="Facebook" />
+              <SocialButton icon={<FacebookIcon />} label="Facebook" onClick={() => handleUnsupportedSocialSignUp('Facebook')} />
               <SocialButton icon={<GoogleIcon />} label="Google" onClick={handleGoogleSignUp} />
-              <SocialButton icon={<AppleIcon />} label="Apple" />
+              <SocialButton icon={<AppleIcon />} label="Apple" onClick={() => handleUnsupportedSocialSignUp('Apple')} />
             </div>
             {socialError && <p className="mt-2 text-center text-[11px] text-[#ff3b4f]">{socialError}</p>}
           </div>
