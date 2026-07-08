@@ -963,6 +963,7 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
   const providerServices = draft.services.filter((service) => service.section !== 'material')
   const providerServiceIds = new Set(provider.serviceIds)
   const usesSalonSchedule = provider.useSalonSchedule === true
+  const [photoError, setPhotoError] = useState('')
 
   function updateProvider(patch: Partial<DraftProvider>) {
     updateDraft((current) => ({
@@ -1033,6 +1034,12 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
       return
     }
 
+    if (file.size > 2 * 1024 * 1024) {
+      setPhotoError('Please upload an image smaller than 2MB.')
+      return
+    }
+
+    setPhotoError('')
     const reader = new FileReader()
     reader.addEventListener('load', () => {
       if (typeof reader.result === 'string') {
@@ -1073,6 +1080,7 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
           </span>
           <span className="mt-3 block text-[10px] leading-4 text-[#7b8498]">Min 400x400px</span>
           <span className="block text-[10px] leading-4 text-[#7b8498]">Max 2MB</span>
+          {photoError && <span className="mt-2 block max-w-[220px] text-[11px] font-medium leading-4 text-[#e05252]">{photoError}</span>}
         </label>
 
         <Input label="Full name" onChange={(event) => updateProvider({ name: event.target.value })} placeholder="Enter full name..." value={provider.name} />
