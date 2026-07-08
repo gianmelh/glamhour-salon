@@ -1,3 +1,4 @@
+import { Eye, EyeOff } from 'lucide-react'
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { readSignUpDraft, saveSignUpDraft, type SignUpForm } from './signUpDraft'
@@ -202,6 +203,8 @@ export function SignUpPage() {
   const [form, setForm] = useState<SignUpForm>(() => readSignUpDraft())
   const [submitted, setSubmitted] = useState(false)
   const [socialError, setSocialError] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const formRef = useRef(form)
 
   const errors = useMemo(() => (submitted ? validateSignUp(form) : {}), [form, submitted])
@@ -398,7 +401,17 @@ export function SignUpPage() {
               label="Password"
               onChange={(value) => updateField('password', value)}
               placeholder="Enter your password"
-              type="password"
+              trailingIcon={(
+                <button
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="grid size-8 place-items-center text-[#6f7788] transition hover:text-[#242a39]"
+                  onClick={() => setShowPassword((value) => !value)}
+                  type="button"
+                >
+                  {showPassword ? <EyeOff className="size-5 stroke-[2.4]" /> : <Eye className="size-5 stroke-[2.4]" />}
+                </button>
+              )}
+              type={showPassword ? 'text' : 'password'}
               value={form.password}
             />
             <SignUpField
@@ -406,7 +419,17 @@ export function SignUpPage() {
               label="Confirm password"
               onChange={(value) => updateField('confirmPassword', value)}
               placeholder="Enter your password"
-              type="password"
+              trailingIcon={(
+                <button
+                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  className="grid size-8 place-items-center text-[#6f7788] transition hover:text-[#242a39]"
+                  onClick={() => setShowConfirmPassword((value) => !value)}
+                  type="button"
+                >
+                  {showConfirmPassword ? <EyeOff className="size-5 stroke-[2.4]" /> : <Eye className="size-5 stroke-[2.4]" />}
+                </button>
+              )}
+              type={showConfirmPassword ? 'text' : 'password'}
               value={form.confirmPassword}
             />
 
@@ -454,7 +477,7 @@ export function SignUpPage() {
           </div>
 
           <p className="mt-5 text-center text-[11px] text-[#8b92a1]">
-            Already have an account?
+            Already have an account?{" "}
             <Link className="font-medium text-[#7a3fe0]" to="/login">
               Log in
             </Link>
@@ -470,6 +493,7 @@ function SignUpField({
   label,
   onChange,
   placeholder,
+  trailingIcon,
   type = 'text',
   value,
 }: {
@@ -477,25 +501,30 @@ function SignUpField({
   label: string
   onChange: (value: string) => void
   placeholder: string
+  trailingIcon?: ReactNode
   type?: string
   value: string
 }) {
   return (
     <label className="block text-[11px] font-medium text-[#242a39]">
       {label}
-      <input
-        aria-invalid={Boolean(error)}
-        className={[
-          'mt-1 h-11 w-full rounded-lg border bg-white px-3 text-[12px] text-[#1b2133] outline-none transition placeholder:text-[#a5acbb]',
-          error
-            ? 'border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10'
-            : 'border-[#c9ceda] focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10',
-        ].join(' ')}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        type={type}
-        value={value}
-      />
+      <span className="relative mt-1 block">
+        <input
+          aria-invalid={Boolean(error)}
+          className={[
+            'h-11 w-full rounded-lg border bg-white px-3 text-[12px] text-[#1b2133] outline-none transition placeholder:text-[#a5acbb]',
+            trailingIcon ? 'pr-11' : '',
+            error
+              ? 'border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10'
+              : 'border-[#c9ceda] focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10',
+          ].join(' ')}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          type={type}
+          value={value}
+        />
+        {trailingIcon && <span className="absolute right-2 top-1/2 -translate-y-1/2">{trailingIcon}</span>}
+      </span>
       {error && <span className="mt-1 block text-[11px] font-normal text-[#ff3b4f]">{error}</span>}
     </label>
   )

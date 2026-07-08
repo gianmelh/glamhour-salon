@@ -32,6 +32,24 @@ export const errorHandler: ErrorRequestHandler = (error, _request, response, _ne
     return
   }
 
+  if (typeof error === 'object' && error !== null && 'status' in error) {
+    const httpError = error as { status?: number; type?: string; message?: string }
+
+    if (httpError.status === 413 || httpError.type === 'entity.too.large') {
+      response.status(413).json({
+        error: { code: 'PAYLOAD_TOO_LARGE', message: 'The uploaded photo is too large. Please choose an image under 2MB.' },
+      })
+      return
+    }
+
+    if (httpError.status === 400 && httpError.type === 'entity.parse.failed') {
+      response.status(400).json({
+        error: { code: 'INVALID_JSON', message: 'The request body could not be parsed.' },
+      })
+      return
+    }
+  }
+
   if (typeof error === 'object' && error !== null && 'code' in error) {
     const databaseError = error as { code?: string; detail?: string }
 

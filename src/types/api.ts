@@ -185,6 +185,48 @@ export interface UpdateSettingsInput {
   settingsJson?: Record<string, unknown>
 }
 
+export interface OnboardingDayInput {
+  enabled: boolean
+  open: string
+  close: string
+}
+
+export interface OnboardingServiceInput {
+  id: string
+  categoryId: string
+  name: string
+  selected: boolean
+  price: string
+  duration: string
+  section?: 'service' | 'material'
+}
+
+export interface OnboardingProviderInput {
+  id: string
+  name: string
+  email: string
+  phone: string
+  photoPreview?: string
+  languages: string[]
+  salonPercent: string
+  professionalPercent: string
+  serviceIds: string[]
+  schedule: Record<string, OnboardingDayInput>
+  useSalonSchedule?: boolean
+}
+
+export interface SaveOnboardingInput {
+  step: 'categories' | 'services' | 'schedule' | 'team' | 'complete'
+  completed?: boolean
+  draft: {
+    selectedCategoryIds: string[]
+    services: OnboardingServiceInput[]
+    schedule: Record<string, OnboardingDayInput>
+    providers: OnboardingProviderInput[]
+    activeProviderId?: string
+  }
+}
+
 export interface RegisterSalonInput {
   salonName: string
   email: string

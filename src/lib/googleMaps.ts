@@ -7,8 +7,7 @@ type GoogleMapsWindow = Window &
         importLibrary?: (libraryName: 'places') => Promise<{
           PlaceAutocompleteElement: new (options?: Record<string, unknown>) => GooglePlaceAutocompleteElement
         }>
-        places?: {
-        }
+        places?: object
       }
     }
   }

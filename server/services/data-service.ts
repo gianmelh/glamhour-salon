@@ -88,6 +88,48 @@ interface UpdateSettingsInput {
   settingsJson?: Record<string, unknown>
 }
 
+interface OnboardingDayInput {
+  enabled: boolean
+  open: string
+  close: string
+}
+
+interface OnboardingServiceInput {
+  id: string
+  categoryId: string
+  name: string
+  selected: boolean
+  price: string
+  duration: string
+  section?: 'service' | 'material'
+}
+
+interface OnboardingProviderInput {
+  id: string
+  name: string
+  email: string
+  phone: string
+  photoPreview?: string
+  languages: string[]
+  salonPercent: string
+  professionalPercent: string
+  serviceIds: string[]
+  schedule: Record<string, OnboardingDayInput>
+  useSalonSchedule?: boolean
+}
+
+interface SaveOnboardingInput {
+  step: 'categories' | 'services' | 'schedule' | 'team' | 'complete'
+  completed: boolean
+  draft: {
+    selectedCategoryIds: string[]
+    services: OnboardingServiceInput[]
+    schedule: Record<string, OnboardingDayInput>
+    providers: OnboardingProviderInput[]
+    activeProviderId?: string
+  }
+}
+
 interface RegisterSalonInput {
   salonName: string
   email: string
@@ -213,6 +255,47 @@ function safeStorageFilename(filename: string) {
     || 'verification-document'
 }
 
+const onboardingDayToPostgres: Record<string, number> = {
+  Sunday: 0,
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+}
+
+function parseOnboardingMoney(value: string) {
+  const amount = Number(value)
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new ApiError(400, 'Service prices must be valid positive numbers.')
+  }
+
+  return Math.round(amount * 100)
+}
+
+function parseOnboardingInteger(value: string, message: string) {
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new ApiError(400, message)
+  }
+
+  return parsed
+}
+
+function parsePercent(value: string, message: string) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+    throw new ApiError(400, message)
+  }
+
+  return parsed
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
 async function uniqueSalonSlug(client: PoolClient, salonName: string) {
   const baseSlug = slugifySalonName(salonName)
 
@@ -272,6 +355,62 @@ async function verifyActivePasswordResetCode(
   )
 
   throw new ApiError(400, 'Invalid or expired verification code.')
+}
+
+function stepsCompletedThrough(step: SaveOnboardingInput['step']) {
+  const order: SaveOnboardingInput['step'][] = ['categories', 'services', 'schedule', 'team', 'complete']
+  const index = order.indexOf(step)
+  return order.slice(0, Math.max(0, index + 1))
+}
+
+async function upsertSalonWorkingHours(
+  client: PoolClient,
+  salonId: string,
+  schedule: Record<string, OnboardingDayInput>,
+) {
+  for (const [day, value] of Object.entries(schedule)) {
+    const dayOfWeek = onboardingDayToPostgres[day]
+    if (dayOfWeek === undefined) continue
+    await client.query(
+      `INSERT INTO salon_working_hours (
+         salon_id, day_of_week, is_open, opens_at, closes_at
+       ) VALUES ($1, $2, $3, $4::time, $5::time)
+       ON CONFLICT (salon_id, day_of_week) DO UPDATE SET
+         is_open = EXCLUDED.is_open,
+         opens_at = EXCLUDED.opens_at,
+         closes_at = EXCLUDED.closes_at`,
+      [salonId, dayOfWeek, value.enabled, value.enabled ? value.open : null, value.enabled ? value.close : null],
+    )
+  }
+}
+
+async function upsertProfessionalWorkingHours(
+  client: PoolClient,
+  salonId: string,
+  professionalId: string,
+  schedule: Record<string, OnboardingDayInput>,
+) {
+  for (const [day, value] of Object.entries(schedule)) {
+    const dayOfWeek = onboardingDayToPostgres[day]
+    if (dayOfWeek === undefined) continue
+    await client.query(
+      `INSERT INTO professional_working_hours (
+         salon_id, professional_id, day_of_week, is_working, starts_at, ends_at
+       ) VALUES ($1, $2, $3, $4, $5::time, $6::time)
+       ON CONFLICT (professional_id, day_of_week) DO UPDATE SET
+         is_working = EXCLUDED.is_working,
+         starts_at = EXCLUDED.starts_at,
+         ends_at = EXCLUDED.ends_at`,
+      [
+        salonId,
+        professionalId,
+        dayOfWeek,
+        value.enabled,
+        value.enabled ? value.open : null,
+        value.enabled ? value.close : null,
+      ],
+    )
+  }
 }
 
 export const dataService = {
@@ -644,6 +783,238 @@ export const dataService = {
       [slug],
       'Salon not found',
     )
+  },
+
+  saveOnboarding(salonId: string, input: SaveOnboardingInput): Promise<Salon> {
+    return withTransaction(async (client) => {
+      const salons = await clientRows<Salon>(
+        client,
+        'SELECT * FROM salons WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+        [salonId],
+      )
+      const salon = salons[0]
+      if (!salon) throw new ApiError(404, 'Salon not found')
+
+      const completedSteps = stepsCompletedThrough(input.step)
+      await client.query(
+        `INSERT INTO onboarding_sessions (
+           salon_id, current_step, completed_steps, draft_data, completed_at
+         ) VALUES ($1, $2, $3, $4::jsonb, $5)
+         ON CONFLICT (salon_id) DO UPDATE SET
+           current_step = EXCLUDED.current_step,
+           completed_steps = EXCLUDED.completed_steps,
+           draft_data = EXCLUDED.draft_data,
+           completed_at = EXCLUDED.completed_at`,
+        [
+          salonId,
+          input.step,
+          completedSteps,
+          JSON.stringify(input.draft),
+          input.completed ? new Date().toISOString() : null,
+        ],
+      )
+
+      await client.query(
+        `UPDATE salons
+         SET onboarding_status = $2::varchar,
+             onboarding_step = $3::varchar,
+             booking_enabled = CASE WHEN $2::varchar = 'completed' THEN true ELSE booking_enabled END
+         WHERE id = $1`,
+        [salonId, input.completed ? 'completed' : 'in_progress', input.completed ? null : input.step],
+      )
+
+      if (!input.completed) {
+        const rows = await clientRows<Salon>(
+          client,
+          'SELECT * FROM salons WHERE id = $1 AND deleted_at IS NULL',
+          [salonId],
+        )
+        if (!rows[0]) throw new ApiError(404, 'Salon not found')
+        return rows[0]
+      }
+
+      const selectedCategoryIds = [...new Set(input.draft.selectedCategoryIds)]
+      if (!selectedCategoryIds.length) {
+        throw new ApiError(400, 'Select at least one service category.')
+      }
+
+      const selectedServices = input.draft.services.filter((service) => (
+        service.selected && service.section !== 'material' && selectedCategoryIds.includes(service.categoryId)
+        && service.price.trim() !== ''
+        && Number.isFinite(Number(service.price))
+        && Number.isInteger(Number(service.duration))
+        && Number(service.duration) > 0
+      ))
+      if (!selectedServices.length) {
+        throw new ApiError(400, 'Select at least one service.')
+      }
+
+      const selectedServiceDraftIds = new Set(selectedServices.map((service) => service.id))
+      const activeProviders = input.draft.providers.filter((provider) => (
+        provider.name.trim() && provider.serviceIds.some((serviceId) => selectedServiceDraftIds.has(serviceId))
+      ))
+      if (!activeProviders.length) {
+        throw new ApiError(400, 'Add at least one provider and assign a service.')
+      }
+
+      await client.query(
+        'UPDATE salon_service_categories SET is_active = false WHERE salon_id = $1',
+        [salonId],
+      )
+      for (const categoryId of selectedCategoryIds) {
+        await client.query(
+          `INSERT INTO salon_service_categories (salon_id, category_id, is_active)
+           VALUES ($1, $2, true)
+           ON CONFLICT (salon_id, category_id) DO UPDATE SET is_active = true`,
+          [salonId, categoryId],
+        )
+      }
+
+      const serviceIdByDraftId = new Map<string, string>()
+      for (const [index, service] of selectedServices.entries()) {
+        const durationMinutes = parseOnboardingInteger(service.duration, 'Service durations must be positive whole minutes.')
+        const priceMinor = parseOnboardingMoney(service.price)
+        const existing = await clientRows<{ id: string }>(
+          client,
+          `SELECT id FROM services
+           WHERE salon_id = $1 AND category_id = $2 AND lower(name) = lower($3)
+           ORDER BY created_at
+           LIMIT 1`,
+          [salonId, service.categoryId, service.name.trim()],
+        )
+
+        const rows = existing[0]
+          ? await clientRows<{ id: string }>(
+              client,
+              `UPDATE services
+               SET name = $3,
+                   duration_minutes = $4,
+                   price_minor = $5,
+                   currency_code = 'USD',
+                   is_active = true,
+                   is_publicly_bookable = true,
+                   sort_order = $6
+               WHERE salon_id = $1 AND id = $2
+               RETURNING id`,
+              [salonId, existing[0].id, service.name.trim(), durationMinutes, priceMinor, index * 10],
+            )
+          : await clientRows<{ id: string }>(
+              client,
+              `INSERT INTO services (
+                 salon_id, category_id, name, duration_minutes, price_minor,
+                 currency_code, is_active, is_publicly_bookable, sort_order
+               ) VALUES ($1, $2, $3, $4, $5, 'USD', true, true, $6)
+               RETURNING id`,
+              [salonId, service.categoryId, service.name.trim(), durationMinutes, priceMinor, index * 10],
+            )
+        if (rows[0]) serviceIdByDraftId.set(service.id, rows[0].id)
+      }
+
+      await upsertSalonWorkingHours(client, salonId, input.draft.schedule)
+
+      await client.query(
+        'UPDATE professionals SET status = $2 WHERE salon_id = $1 AND deleted_at IS NULL',
+        [salonId, 'inactive'],
+      )
+      for (const provider of activeProviders) {
+        const salonPercent = parsePercent(provider.salonPercent, 'Salon earnings percent must be between 0 and 100.')
+        const professionalPercent = parsePercent(provider.professionalPercent, 'Provider earnings percent must be between 0 and 100.')
+        if (Math.round((salonPercent + professionalPercent) * 100) !== 10000) {
+          throw new ApiError(400, 'Salon and provider earnings must add up to 100%.')
+        }
+
+        const existingProvider = isUuid(provider.id)
+          ? await clientRows<{ id: string }>(
+              client,
+              'SELECT id FROM professionals WHERE salon_id = $1 AND id = $2 AND deleted_at IS NULL LIMIT 1',
+              [salonId, provider.id],
+            )
+          : []
+        const byIdentity = existingProvider[0]
+          ? existingProvider
+          : await clientRows<{ id: string }>(
+              client,
+              `SELECT id FROM professionals
+               WHERE salon_id = $1
+                 AND deleted_at IS NULL
+                 AND (
+                   ($2::text <> '' AND lower(email) = lower($2))
+                   OR ($2::text = '' AND lower(full_name) = lower($3))
+                 )
+               ORDER BY created_at
+               LIMIT 1`,
+              [salonId, provider.email.trim(), provider.name.trim()],
+            )
+        const providerRows = byIdentity[0]
+          ? await clientRows<{ id: string }>(
+              client,
+              `UPDATE professionals
+               SET full_name = $3,
+                   email = NULLIF($4, ''),
+                   phone = NULLIF($5, ''),
+                   languages = $6,
+                   status = 'active',
+                   salon_earnings_percent = $7,
+                   professional_earnings_percent = $8
+               WHERE salon_id = $1 AND id = $2
+               RETURNING id`,
+              [
+                salonId,
+                byIdentity[0].id,
+                provider.name.trim(),
+                provider.email.trim(),
+                provider.phone.trim(),
+                provider.languages,
+                salonPercent,
+                professionalPercent,
+              ],
+            )
+          : await clientRows<{ id: string }>(
+              client,
+              `INSERT INTO professionals (
+                 salon_id, full_name, email, phone, languages, status,
+                 salon_earnings_percent, professional_earnings_percent
+               ) VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), $5, 'active', $6, $7)
+               RETURNING id`,
+              [
+                salonId,
+                provider.name.trim(),
+                provider.email.trim(),
+                provider.phone.trim(),
+                provider.languages,
+                salonPercent,
+                professionalPercent,
+              ],
+            )
+        const professionalId = providerRows[0]?.id
+        if (!professionalId) throw new ApiError(500, 'Provider could not be saved.')
+
+        await client.query(
+          'UPDATE professional_services SET is_active = false WHERE salon_id = $1 AND professional_id = $2',
+          [salonId, professionalId],
+        )
+        for (const draftServiceId of provider.serviceIds) {
+          const serviceId = serviceIdByDraftId.get(draftServiceId)
+          if (!serviceId) continue
+          await client.query(
+            `INSERT INTO professional_services (salon_id, professional_id, service_id, is_active)
+             VALUES ($1, $2, $3, true)
+             ON CONFLICT (professional_id, service_id) DO UPDATE SET is_active = true`,
+            [salonId, professionalId, serviceId],
+          )
+        }
+
+        await upsertProfessionalWorkingHours(client, salonId, professionalId, provider.schedule)
+      }
+
+      const rows = await clientRows<Salon>(
+        client,
+        'SELECT * FROM salons WHERE id = $1 AND deleted_at IS NULL',
+        [salonId],
+      )
+      if (!rows[0]) throw new ApiError(404, 'Salon not found')
+      return rows[0]
+    })
   },
 
   listProfessionals(salonId: string, options: ListOptions): Promise<Professional[]> {

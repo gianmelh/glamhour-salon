@@ -21,6 +21,7 @@ import {
   requestPasswordResetSchema,
   salonParamsSchema,
   salonResourceParamsSchema,
+  saveOnboardingSchema,
   updateAppointmentStatusSchema,
   updateSalonSettingsSchema,
   uuidSchema,
@@ -146,6 +147,12 @@ router.get('/salons/by-slug/:slug', asyncHandler(async (request, response) => {
 router.get('/salons/:salonId', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
   response.json({ data: await dataService.getSalon(salonId) })
+}))
+
+router.put('/salons/:salonId/onboarding', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(saveOnboardingSchema, request.body)
+  response.json({ data: await dataService.saveOnboarding(salonId, body) })
 }))
 
 router.get('/salons/:salonId/professionals', asyncHandler(async (request, response) => {

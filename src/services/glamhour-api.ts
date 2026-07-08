@@ -4,7 +4,7 @@ import type {
   ConfirmPasswordResetInput, ConfirmPasswordResetResult, LoginInput, LoginResult, RegisterAppleSalonInput,
   RegisterFacebookSalonInput, RegisterGoogleSalonInput, RegisterSalonInput, RegisterSalonResult,
   RequestPasswordResetInput, RequestPasswordResetResult, Salon, SalonSettings,
-  SalesHistoryItem, Service, ServiceCategory, UpdateSettingsInput, VerifyPasswordResetCodeInput,
+  SalesHistoryItem, SaveOnboardingInput, Service, ServiceCategory, UpdateSettingsInput, VerifyPasswordResetCodeInput,
   VerifyPasswordResetCodeResult,
 } from '../types/api'
 
@@ -29,6 +29,7 @@ export const glamhourApi = {
   salesHistory: (salonId = SALON_ID) => apiRequest<SalesHistoryItem[]>(`/salons/${salonId}/sales-history?limit=100`),
   settings: (salonId = SALON_ID) => apiRequest<SalonSettings>(`/salons/${salonId}/settings`),
   notifications: (salonId = SALON_ID) => apiRequest<Notification[]>(`/salons/${salonId}/notifications?limit=100`),
+  saveOnboarding: (input: SaveOnboardingInput, salonId = SALON_ID) => apiRequest<Salon>(`/salons/${salonId}/onboarding`, { method: 'PUT', body: JSON.stringify(input) }),
   createAppointment: (input: CreateAppointmentInput, salonId = SALON_ID) => apiRequest<Appointment>(`/salons/${salonId}/appointments`, { method: 'POST', body: JSON.stringify({ source: 'internal', ...input }) }),
   updateAppointmentStatus: (id: string, status: string, salonId = SALON_ID) => apiRequest<Appointment>(`/salons/${salonId}/appointments/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, actorRole: status === 'completed' ? 'professional' : 'owner' }) }),
   createClient: (input: CreateClientInput, salonId = SALON_ID) => apiRequest<Client>(`/salons/${salonId}/clients`, { method: 'POST', body: JSON.stringify(input) }),

@@ -1,6 +1,9 @@
 import { z } from 'zod'
 
-export const uuidSchema = z.string().uuid()
+export const uuidSchema = z.string().regex(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  'Invalid UUID',
+)
 export const isoDateTimeSchema = z.string().datetime({ offset: true })
 
 export const paginationSchema = z.object({
@@ -77,6 +80,44 @@ export const updateSalonSettingsSchema = z.object({
   settingsJson: z.record(z.string(), z.unknown()).optional(),
 }).refine((value) => Object.keys(value).length > 0, {
   message: 'At least one setting must be provided',
+})
+
+const onboardingDaySchema = z.object({
+  enabled: z.boolean(),
+  open: z.string().regex(/^\d{2}:\d{2}$/),
+  close: z.string().regex(/^\d{2}:\d{2}$/),
+})
+
+export const saveOnboardingSchema = z.object({
+  step: z.enum(['categories', 'services', 'schedule', 'team', 'complete']),
+  completed: z.boolean().default(false),
+  draft: z.object({
+    selectedCategoryIds: z.array(uuidSchema),
+    services: z.array(z.object({
+      id: z.string().min(1),
+      categoryId: uuidSchema,
+      name: z.string().trim().min(1).max(160),
+      selected: z.boolean(),
+      price: z.string().trim(),
+      duration: z.string().trim(),
+      section: z.enum(['service', 'material']).optional(),
+    })),
+    schedule: z.record(z.string(), onboardingDaySchema),
+    providers: z.array(z.object({
+      id: z.string().min(1),
+      name: z.string().trim().min(1).max(160),
+      email: z.string().trim().email().max(320).or(z.literal('')),
+      phone: z.string().trim().max(40),
+      photoPreview: z.string().max(3_000_000).optional(),
+      languages: z.array(z.string().trim().min(1).max(10)).min(1),
+      salonPercent: z.string().trim().min(1),
+      professionalPercent: z.string().trim().min(1),
+      serviceIds: z.array(z.string().min(1)),
+      schedule: z.record(z.string(), onboardingDaySchema),
+      useSalonSchedule: z.boolean().optional(),
+    })),
+    activeProviderId: z.string().optional(),
+  }),
 })
 
 export const registerSalonSchema = z.object({
