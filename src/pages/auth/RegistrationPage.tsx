@@ -222,6 +222,8 @@ export function RegistrationPage() {
       setRegistrationError(
         error instanceof ApiClientError
           ? error.message
+          : error instanceof Error
+          ? error.message
           : "Registration could not be completed. Please try again."
       );
     } finally {

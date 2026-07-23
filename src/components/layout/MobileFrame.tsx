@@ -9,7 +9,11 @@ export interface MobileFrameProps {
 
 export function MobileFrame({ children, className, preview = false }: MobileFrameProps) {
   return (
-    <div className={cn('mx-auto min-h-dvh w-full max-w-[390px] overflow-hidden bg-canvas', preview && 'min-h-[780px] rounded-2xl border-4 border-ink/90 shadow-2xl', className)}>
+    <div className={cn(
+      'mx-auto w-[393px] max-w-full bg-[#f2f5ff]',
+      preview ? 'min-h-[780px] overflow-hidden rounded-2xl border-4 border-ink/90 shadow-2xl' : 'min-h-dvh',
+      className,
+    )}>
       {children}
     </div>
   )

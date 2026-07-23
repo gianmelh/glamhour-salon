@@ -23,7 +23,7 @@ export const fallbackServices: Service[] = [
 ].map(([id, category_id, name, duration_minutes, price_minor, category_name]) => ({
   id: String(id), salon_id: FALLBACK_SALON_ID, category_id: String(category_id), form_template_id: null, name: String(name), description: null,
   duration_minutes: Number(duration_minutes), price_minor: Number(price_minor), currency_code: 'USD', is_active: true, is_publicly_bookable: true,
-  category_name: String(category_name), created_at: created, updated_at: created,
+  sort_order: 0, category_name: String(category_name), created_at: created, updated_at: created,
 }))
 
 export const fallbackProfessionals: Professional[] = [
@@ -56,11 +56,24 @@ export const fallbackAppointments: Appointment[] = [
 }))
 
 export const fallbackSales: SalesHistoryItem[] = fallbackAppointments.map((appointment, index) => ({
-  appointment_id: appointment.id, salon_id: FALLBACK_SALON_ID, client_id: appointment.client_id, client_name: appointment.client_name ?? 'Client',
+  id: appointment.services?.[0]?.id ?? `fallback-sale-${index}`,
+  appointment_id: appointment.id,
+  appointment_service_id: appointment.services?.[0]?.id ?? `fallback-sale-${index}`,
+  salon_id: FALLBACK_SALON_ID, client_id: appointment.client_id, client_name: appointment.client_name ?? 'Client',
   professional_id: appointment.professional_id, professional_name: appointment.professional_name ?? 'Professional', starts_at: appointment.starts_at, ends_at: appointment.ends_at,
+  provider_avatar_url: null,
   status_code: 'completed', subtotal_minor: fallbackServices[index].price_minor, discount_minor: 0, tax_minor: 0, tip_minor: 1000,
   total_minor: fallbackServices[index].price_minor + 1000, salon_earnings_minor: Math.round(fallbackServices[index].price_minor * 0.6),
   professional_earnings_minor: Math.round(fallbackServices[index].price_minor * 0.4), currency_code: 'USD', recorded_at: created,
+  service_id: fallbackServices[index].id,
+  service_name: fallbackServices[index].name,
+  category_id: fallbackServices[index].category_id,
+  category_code: fallbackCategories[index].code,
+  category_name: fallbackCategories[index].name,
+  notes: null,
+  recommendations: null,
+  treatment_details: null,
+  completed_at: created,
 }))
 
 export const fallbackSettings: SalonSettings = {

@@ -7,11 +7,11 @@ const routeToNav: Record<string, string> = {
   appointments: 'calendar',
   calendar: 'calendar',
   sales: 'sales',
-  share: 'share',
+  share: 'home',
   settings: 'settings',
   clients: 'home',
   services: 'home',
-  staff: 'home',
+  staff: 'staff',
 }
 
 export function AppLayout() {
@@ -19,12 +19,14 @@ export function AppLayout() {
   const navigate = useNavigate()
   const salon = useSalon()
   const routeSegment = location.pathname.split('/')[2] ?? 'home'
+  const isAppointmentFlow = location.pathname.startsWith('/app/appointments/new')
 
   return (
     <div className="min-h-screen bg-[#eceaf5] sm:py-6">
       <AppShell
-        header={<Header action={<Avatar name={salon.data?.name ?? 'Glamhour'} size="sm" />} title={salon.data?.name ?? 'Glamhour'} />}
-        navigation={<BottomNavigation activeItem={routeToNav[routeSegment] ?? 'home'} onChange={(item) => navigate(`/app/${item}`)} />}
+        className={isAppointmentFlow ? 'px-0 pt-0' : undefined}
+        header={routeSegment === 'home' || isAppointmentFlow ? undefined : <Header action={<Avatar name={salon.data?.name ?? 'Glamhour'} size="sm" />} title={salon.data?.name ?? 'Glamhour'} />}
+        navigation={<BottomNavigation activeItem={isAppointmentFlow ? 'home' : (routeToNav[routeSegment] ?? 'home')} onChange={(item) => navigate(`/app/${item}`)} />}
       >
         <Outlet />
       </AppShell>

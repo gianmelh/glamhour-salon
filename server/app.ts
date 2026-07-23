@@ -14,6 +14,12 @@ app.disable('x-powered-by')
 app.use(cors({ origin: config.CORS_ORIGIN }))
 app.use(express.json({ limit: '4mb' }))
 
+app.use('/api/media', express.static(path.resolve(config.UPLOAD_DIR), {
+  setHeaders(response) {
+    response.setHeader('Cache-Control', 'private, max-age=3600')
+  },
+}))
+
 const clientDistPath = path.resolve(process.cwd(), 'dist')
 
 app.get('/health', asyncHandler(async (_request, response) => {

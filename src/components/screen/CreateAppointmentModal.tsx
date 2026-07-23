@@ -5,8 +5,13 @@ import { Modal } from '../feedback/Modal'
 import { Button, Input, Select, Textarea } from '../ui'
 import { MutationError } from './MutationError'
 
-export function CreateAppointmentModal({ clients, professionals, services, open, onClose, onCreated }: {
+export function CreateAppointmentModal({ clients, professionals, services, open, onClose, onCreated, initialValues }: {
   clients: Client[]; professionals: Professional[]; services: Service[]; open: boolean; onClose: () => void; onCreated: (appointment: Appointment) => void
+  initialValues?: {
+    clientId?: string
+    professionalId?: string
+    serviceId?: string
+  }
 }) {
   const mutation = useMutation(glamhourApi.createAppointment)
   return (
@@ -21,9 +26,9 @@ export function CreateAppointmentModal({ clients, professionals, services, open,
         onCreated(appointment)
         onClose()
       }}>
-        <Select label="Client" name="clientId" options={clients.map((item) => ({ label: item.full_name, value: item.id }))} />
-        <Select label="Professional" name="professionalId" options={professionals.map((item) => ({ label: item.full_name, value: item.id }))} />
-        <Select label="Service" name="serviceId" options={services.map((item) => ({ label: item.name, value: item.id }))} />
+        <Select defaultValue={initialValues?.clientId} label="Client" name="clientId" options={clients.map((item) => ({ label: item.full_name, value: item.id }))} />
+        <Select defaultValue={initialValues?.professionalId} label="Professional" name="professionalId" options={professionals.map((item) => ({ label: item.full_name, value: item.id }))} />
+        <Select defaultValue={initialValues?.serviceId} label="Service" name="serviceId" options={services.map((item) => ({ label: item.name, value: item.id }))} />
         <Input label="Start date and time" name="startsAt" required type="datetime-local" />
         <Textarea label="Client notes" name="notes" />
         <MutationError error={mutation.error} />

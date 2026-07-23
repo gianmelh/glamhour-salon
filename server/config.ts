@@ -26,7 +26,10 @@ const envSchema = z.object({
   SMTP_FROM: z.string().min(1).optional(),
   API_HOST: z.string().default('127.0.0.1'),
   API_PORT: z.coerce.number().int().positive().default(3001),
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  CORS_ORIGIN: z.string().default('http://localhost:5173,http://127.0.0.1:5173'),
+  UPLOAD_DIR: z.string().default('uploads'),
+  MEDIA_PUBLIC_BASE: z.string().default('http://127.0.0.1:3001/api'),
+  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(2 * 1024 * 1024),
 })
 
 const result = envSchema.safeParse(process.env)
@@ -38,6 +41,7 @@ if (!result.success) {
 
 export const config = {
   ...result.data,
+  CORS_ORIGIN: result.data.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean),
   GOOGLE_CLIENT_ID: result.data.GOOGLE_CLIENT_ID ?? result.data.VITE_GOOGLE_CLIENT_ID,
   FACEBOOK_APP_ID: result.data.FACEBOOK_APP_ID ?? result.data.VITE_FACEBOOK_APP_ID,
   APPLE_CLIENT_ID: result.data.APPLE_CLIENT_ID ?? result.data.VITE_APPLE_CLIENT_ID,

@@ -1,28 +1,22 @@
 import { useCallback } from 'react'
 import {
-  fallbackAppointments, fallbackCategories, fallbackClients, fallbackNotifications, fallbackProfessionals, fallbackSales,
+  fallbackAppointments, fallbackCategories, fallbackClients, fallbackNotifications, fallbackProfessionals,
   fallbackSalon, fallbackServices, fallbackSettings,
 } from '../data/fallback-data'
-import { glamhourApi } from '../services/glamhour-api'
+import { glamhourApi, resolveSalonId, type SalesHistoryFilters } from '../services/glamhour-api'
 import { useApiResource } from './useApiResource'
 
-const activeSalonSessionKey = 'glamhour:active-salon-id'
-
 function useResolvedSalonId(salonId?: string) {
-  if (salonId) {
-    return salonId
-  }
-
-  if (typeof window === 'undefined') {
-    return undefined
-  }
-
-  return window.sessionStorage.getItem(activeSalonSessionKey) ?? undefined
+  return resolveSalonId(salonId)
 }
 
 export const useSalon = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
   return useApiResource(useCallback(() => glamhourApi.salon(resolvedSalonId), [resolvedSalonId]), fallbackSalon)
+}
+export const useDashboard = (date?: string, salonId?: string) => {
+  const resolvedSalonId = useResolvedSalonId(salonId)
+  return useApiResource(useCallback(() => glamhourApi.dashboard(resolvedSalonId, date), [date, resolvedSalonId]))
 }
 export const useAppointments = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
@@ -48,9 +42,17 @@ export const useProfessionals = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
   return useApiResource(useCallback(() => glamhourApi.professionals(resolvedSalonId), [resolvedSalonId]), fallbackProfessionals)
 }
-export const useSalesHistory = (salonId?: string) => {
+export const useNailSettings = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.salesHistory(resolvedSalonId), [resolvedSalonId]), fallbackSales)
+  return useApiResource(useCallback(() => glamhourApi.nailSettings(resolvedSalonId), [resolvedSalonId]))
+}
+export const useSalesHistory = (filters: SalesHistoryFilters = {}, salonId?: string) => {
+  const resolvedSalonId = useResolvedSalonId(salonId)
+  return useApiResource(useCallback(() => glamhourApi.salesHistory(resolvedSalonId, filters), [filters, resolvedSalonId]))
+}
+export const useSalesHistoryDetail = (recordId: string, salonId?: string) => {
+  const resolvedSalonId = useResolvedSalonId(salonId)
+  return useApiResource(useCallback(() => glamhourApi.salesHistoryDetail(recordId, resolvedSalonId), [recordId, resolvedSalonId]))
 }
 export const useSettings = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)

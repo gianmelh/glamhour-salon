@@ -11,7 +11,10 @@ import { AppointmentsPage } from './pages/app/AppointmentsPage'
 import { CalendarPage } from './pages/app/CalendarPage'
 import { ClientsPage } from './pages/app/ClientsPage'
 import { HomePage } from './pages/app/HomePage'
+import { NailSettingsPage } from './pages/app/NailSettingsPage'
+import { NewAppointmentPage } from './pages/app/NewAppointmentPage'
 import { SalesPage } from './pages/app/SalesPage'
+import { SalesHistoryDetailsPage } from './pages/app/SalesHistoryDetailsPage'
 import { ServicesPage } from './pages/app/ServicesPage'
 import { SettingsPage } from './pages/app/SettingsPage'
 import { SharePage } from './pages/app/SharePage'
@@ -41,14 +44,17 @@ function App() {
         <Route index element={<Navigate replace to="home" />} />
         <Route path="home" element={<HomePage />} />
         <Route path="appointments" element={<AppointmentsPage />} />
+        <Route path="appointments/new" element={<NewAppointmentPage />} />
         <Route path="appointments/:appointmentId" element={<AppointmentDetailsPage />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="services" element={<ServicesPage />} />
         <Route path="staff" element={<StaffPage />} />
         <Route path="sales" element={<SalesPage />} />
+        <Route path="sales-history/:recordId" element={<SalesHistoryDetailsPage />} />
         <Route path="share" element={<SharePage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings/services/nails" element={<NailSettingsPage />} />
       </Route>
 
       <Route path="*" element={<Navigate replace to="/" />} />

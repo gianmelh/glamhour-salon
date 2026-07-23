@@ -6,24 +6,40 @@ import { asyncHandler, validate } from './http.js'
 import { dataService } from './services/data-service.js'
 import { verifyAppleIdentityToken, verifyFacebookAccessToken } from './services/social-auth-service.js'
 import {
+  annotationSchema,
+  appointmentAnnotationParamsSchema,
+  appointmentAnnotationResourceParamsSchema,
+  appointmentAvailabilityQuerySchema,
   appointmentQuerySchema,
-  availabilityQuerySchema,
+  categoryParamSchema,
+  clientParamsSchema,
+  consentRecordSchema,
   createAppointmentSchema,
   createClientSchema,
   createServiceSchema,
   confirmPasswordResetSchema,
+  dashboardQuerySchema,
+  eligibleProvidersQuerySchema,
+  healthQuestionnaireSchema,
+  nailSettingsSchema,
+  questionnaireParamsSchema,
   registerAppleSalonSchema,
   registerFacebookSalonSchema,
   loginSchema,
   paginationSchema,
   registerGoogleSalonSchema,
   registerSalonSchema,
+  reassignProfessionalSchema,
   requestPasswordResetSchema,
   salonParamsSchema,
   salonResourceParamsSchema,
   saveOnboardingSchema,
+  serviceMaterialsQuerySchema,
+  signatureRecordSchema,
   updateAppointmentStatusSchema,
   updateSalonSettingsSchema,
+  uploadTreatmentMediaSchema,
+  upsertProfessionalSchema,
   uuidSchema,
   verifyPasswordResetCodeSchema,
 } from './validation.js'
@@ -35,10 +51,13 @@ const googleOAuthClient = new OAuth2Client()
 const listQuerySchema = paginationSchema.extend({
   search: z.string().trim().min(1).optional(),
   category: z.string().trim().min(1).optional(),
+  categoryId: uuidSchema.optional(),
   appointmentId: uuidSchema.optional(),
   professionalId: uuidSchema.optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
+  startDate: z.string().date().optional(),
+  endDate: z.string().date().optional(),
   status: z.string().trim().min(1).optional(),
   publicOnly: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
 })
@@ -149,6 +168,12 @@ router.get('/salons/:salonId', asyncHandler(async (request, response) => {
   response.json({ data: await dataService.getSalon(salonId) })
 }))
 
+router.get('/salons/:salonId/dashboard', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const query = validate(dashboardQuerySchema, request.query)
+  response.json({ data: await dataService.getDashboard(salonId, query.date) })
+}))
+
 router.put('/salons/:salonId/onboarding', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
   const body = validate(saveOnboardingSchema, request.body)
@@ -161,9 +186,38 @@ router.get('/salons/:salonId/professionals', asyncHandler(async (request, respon
   response.json({ data: await dataService.listProfessionals(salonId, query) })
 }))
 
+router.get('/salons/:salonId/providers/eligible', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const query = validate(eligibleProvidersQuerySchema, request.query)
+  response.json({ data: await dataService.listEligibleProviders(salonId, query) })
+}))
+
+router.post('/salons/:salonId/professionals', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(upsertProfessionalSchema, request.body)
+  response.status(201).json({ data: await dataService.createProfessional(salonId, body) })
+}))
+
+router.post('/salons/:salonId/professionals/:id/reassign-and-deactivate', asyncHandler(async (request, response) => {
+  const { salonId, id } = validate(salonResourceParamsSchema, request.params)
+  const body = validate(reassignProfessionalSchema, request.body)
+  response.json({ data: await dataService.reassignAndDeactivateProfessional(salonId, id, body) })
+}))
+
 router.get('/salons/:salonId/professionals/:id', asyncHandler(async (request, response) => {
   const { salonId, id } = validate(salonResourceParamsSchema, request.params)
   response.json({ data: await dataService.getProfessional(salonId, id) })
+}))
+
+router.put('/salons/:salonId/professionals/:id', asyncHandler(async (request, response) => {
+  const { salonId, id } = validate(salonResourceParamsSchema, request.params)
+  const body = validate(upsertProfessionalSchema, request.body)
+  response.json({ data: await dataService.updateProfessional(salonId, id, body) })
+}))
+
+router.delete('/salons/:salonId/professionals/:id', asyncHandler(async (request, response) => {
+  const { salonId, id } = validate(salonResourceParamsSchema, request.params)
+  response.json({ data: await dataService.deleteProfessional(salonId, id) })
 }))
 
 router.get('/salons/:salonId/clients', asyncHandler(async (request, response) => {
@@ -183,9 +237,24 @@ router.post('/salons/:salonId/clients', asyncHandler(async (request, response) =
   response.status(201).json({ data: await dataService.createClient(salonId, body) })
 }))
 
+router.get('/salons/:salonId/clients/:clientId/health-profiles', asyncHandler(async (request, response) => {
+  const { salonId, clientId } = validate(clientParamsSchema, request.params)
+  response.json({ data: await dataService.listHealthProfiles(salonId, clientId) })
+}))
+
+router.get('/salons/:salonId/clients/:clientId/health-profiles/:category', asyncHandler(async (request, response) => {
+  const { salonId, clientId, category } = validate(categoryParamSchema, request.params)
+  response.json({ data: await dataService.getHealthProfile(salonId, clientId, category) })
+}))
+
 router.get('/service-categories', asyncHandler(async (request, response) => {
   const query = validate(z.object({ salonId: uuidSchema.optional() }), request.query)
   response.json({ data: await dataService.listServiceCategories(query.salonId) })
+}))
+
+router.get('/salons/:salonId/appointment-categories', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  response.json({ data: await dataService.listAppointmentCategories(salonId) })
 }))
 
 router.get('/salons/:salonId/services', asyncHandler(async (request, response) => {
@@ -211,10 +280,57 @@ router.get('/salons/:salonId/appointments', asyncHandler(async (request, respons
   response.json({ data: await dataService.listAppointments(salonId, query) })
 }))
 
+router.post('/salons/:salonId/treatment-media/upload', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(uploadTreatmentMediaSchema, request.body)
+  response.status(201).json({ data: await dataService.uploadTreatmentMedia(salonId, body) })
+}))
+
 router.post('/salons/:salonId/appointments', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
   const body = validate(createAppointmentSchema, request.body)
   response.status(201).json({ data: await dataService.createAppointment({ salonId, ...body }) })
+}))
+
+router.post('/salons/:salonId/health-questionnaires', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(healthQuestionnaireSchema, request.body)
+  response.status(201).json({ data: await dataService.createHealthQuestionnaire(salonId, body) })
+}))
+
+router.put('/salons/:salonId/health-questionnaires/:questionnaireId', asyncHandler(async (request, response) => {
+  const { salonId, questionnaireId } = validate(questionnaireParamsSchema, request.params)
+  const body = validate(healthQuestionnaireSchema, request.body)
+  response.json({ data: await dataService.updateHealthQuestionnaire(salonId, questionnaireId, body) })
+}))
+
+router.post('/salons/:salonId/consents', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(consentRecordSchema, request.body)
+  response.status(201).json({ data: await dataService.createConsentRecord(salonId, body) })
+}))
+
+router.post('/salons/:salonId/signatures', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(signatureRecordSchema, request.body)
+  response.status(201).json({ data: await dataService.createSignatureRecord(salonId, body) })
+}))
+
+router.post('/salons/:salonId/appointments/:appointmentId/annotations', asyncHandler(async (request, response) => {
+  const { salonId, appointmentId } = validate(appointmentAnnotationParamsSchema, request.params)
+  const body = validate(annotationSchema, request.body)
+  response.status(201).json({ data: await dataService.createAnnotation(salonId, appointmentId, body) })
+}))
+
+router.put('/salons/:salonId/appointments/:appointmentId/annotations/:annotationId', asyncHandler(async (request, response) => {
+  const { salonId, appointmentId, annotationId } = validate(appointmentAnnotationResourceParamsSchema, request.params)
+  const body = validate(annotationSchema, request.body)
+  response.json({ data: await dataService.updateAnnotation(salonId, appointmentId, annotationId, body) })
+}))
+
+router.delete('/salons/:salonId/appointments/:appointmentId/annotations/:annotationId', asyncHandler(async (request, response) => {
+  const { salonId, appointmentId, annotationId } = validate(appointmentAnnotationResourceParamsSchema, request.params)
+  response.json({ data: await dataService.deleteAnnotation(salonId, appointmentId, annotationId) })
 }))
 
 router.get('/salons/:salonId/appointments/:id', asyncHandler(async (request, response) => {
@@ -230,8 +346,8 @@ router.patch('/salons/:salonId/appointments/:id/status', asyncHandler(async (req
 
 router.get('/salons/:salonId/availability', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
-  const query = validate(availabilityQuerySchema, request.query)
-  response.json({ data: await dataService.getAvailability(salonId, query) })
+  const query = validate(appointmentAvailabilityQuerySchema, request.query)
+  response.json({ data: await dataService.getAppointmentAvailability(salonId, query) })
 }))
 
 router.get('/salons/:salonId/payments', asyncHandler(async (request, response) => {
@@ -256,8 +372,13 @@ router.get('/salons/:salonId/sales-history', asyncHandler(async (request, respon
   const { salonId } = validate(salonParamsSchema, request.params)
   const query = validate(listQuerySchema, request.query)
   response.json({
-    data: await dataService.listSalesHistory(salonId, query.professionalId, query.from, query.to, query),
+    data: await dataService.listSalesHistory(salonId, query),
   })
+}))
+
+router.get('/salons/:salonId/sales-history/:id', asyncHandler(async (request, response) => {
+  const { salonId, id } = validate(salonResourceParamsSchema, request.params)
+  response.json({ data: await dataService.getSalesHistoryDetail(salonId, id) })
 }))
 
 router.get('/salons/:salonId/notifications', asyncHandler(async (request, response) => {
@@ -269,6 +390,23 @@ router.get('/salons/:salonId/notifications', asyncHandler(async (request, respon
 router.get('/salons/:salonId/settings', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
   response.json({ data: await dataService.getSettings(salonId) })
+}))
+
+router.get('/salons/:salonId/service-materials', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const query = validate(serviceMaterialsQuerySchema, request.query)
+  response.json({ data: await dataService.getServiceMaterials(salonId, query) })
+}))
+
+router.get('/salons/:salonId/settings/nails', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  response.json({ data: await dataService.getNailSettings(salonId) })
+}))
+
+router.put('/salons/:salonId/settings/nails', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(nailSettingsSchema, request.body)
+  response.json({ data: await dataService.updateNailSettings(salonId, body) })
 }))
 
 router.patch('/salons/:salonId/settings', asyncHandler(async (request, response) => {

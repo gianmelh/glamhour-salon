@@ -376,7 +376,7 @@ export function SetupPage() {
     if (currentStep === 'complete') {
       await saveStep('complete', true)
       window.localStorage.removeItem(storageKey(salonId))
-      navigate('/app/calendar', { replace: true })
+      navigate('/app/home', { replace: true })
       return
     }
 
@@ -842,6 +842,10 @@ function TeamStep({ categories, draft, updateDraft }: { categories: ServiceCateg
   const activeProvider = draft.providers.find((provider) => provider.id === draft.activeProviderId)
 
   function addProvider() {
+    if (draft.providers.length >= 10) {
+      return
+    }
+
     const provider = createBlankProvider(draft.schedule)
     updateDraft((current) => ({
       ...current,
@@ -868,6 +872,8 @@ function TeamStep({ categories, draft, updateDraft }: { categories: ServiceCateg
 }
 
 function ProviderSummaryList({ categories, draft, onAddProvider, onEditProvider }: { categories: ServiceCategory[]; draft: OnboardingDraft; onAddProvider: () => void; onEditProvider: (providerId: string) => void }) {
+  const staffLimitReached = draft.providers.length >= 10
+
   return (
     <div className="space-y-5">
       {draft.providers.map((provider) => (
@@ -875,7 +881,8 @@ function ProviderSummaryList({ categories, draft, onAddProvider, onEditProvider 
       ))}
 
       <button
-        className="grid min-h-[180px] w-full place-items-center rounded-2xl border border-[#d7dce8] bg-white px-5 py-8 text-center transition hover:border-[#cbb9ff] hover:bg-[#fbf9ff]"
+        className={cn('grid min-h-[180px] w-full place-items-center rounded-2xl border border-[#d7dce8] bg-white px-5 py-8 text-center transition hover:border-[#cbb9ff] hover:bg-[#fbf9ff]', staffLimitReached && 'cursor-not-allowed opacity-70 hover:border-[#d7dce8] hover:bg-white')}
+        disabled={staffLimitReached}
         onClick={onAddProvider}
         type="button"
       >
@@ -883,7 +890,8 @@ function ProviderSummaryList({ categories, draft, onAddProvider, onEditProvider 
           <span className="mx-auto grid size-8 place-items-center rounded-full text-[#7a3fe0]">
             <Plus className="size-5" />
           </span>
-          <span className="mt-2 block text-[13px] font-medium text-[#747d96]">Add New Provider</span>
+          <span className="mt-2 block text-[13px] font-medium text-[#747d96]">{staffLimitReached ? 'Staff limit reached' : 'Add New Provider'}</span>
+          {staffLimitReached && <span className="mx-auto mt-2 block max-w-[240px] text-[11px] leading-4 text-[#8b92a1]">You’ve reached the limit of 10 active staff members. Upgrade your plan to add more providers.</span>}
         </span>
       </button>
     </div>

@@ -18,7 +18,12 @@ export function Modal({ open, title, description, children, footer, onClose, var
   return (
     <div aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4 backdrop-blur-[2px]" role="dialog">
       <button aria-label="Close modal" className="absolute inset-0" onClick={onClose} type="button" />
-      <section className={cn('relative z-10 w-full max-w-[360px] bg-surface p-5', variant === 'modal' ? 'rounded-xl shadow-2xl' : 'absolute inset-x-0 bottom-0 mx-auto max-w-[390px] rounded-t-2xl shadow-sheet')}>
+      <section className={cn(
+        'relative z-10 w-full max-w-[360px] bg-surface p-5',
+        variant === 'modal'
+          ? 'rounded-xl shadow-2xl'
+          : 'absolute inset-x-4 bottom-[max(16px,env(safe-area-inset-bottom))] mx-auto max-w-[390px] rounded-2xl shadow-sheet',
+      )}>
         <button aria-label="Close" className="absolute right-4 top-4 grid size-8 place-items-center rounded-full bg-surface-soft text-muted hover:text-ink" onClick={onClose} type="button"><X className="size-4" /></button>
         {variant === 'sheet' && <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border-strong" />}
         <h2 className="pr-8 text-lg font-semibold">{title}</h2>
