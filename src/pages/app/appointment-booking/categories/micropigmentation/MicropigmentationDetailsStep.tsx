@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react'
-import { cn } from '../../../../lib/cn'
-import { formatMoney } from '../../../../lib/format'
-import type { Service } from '../../../../types/api'
+import { cn } from '../../../../../lib/cn'
+import { formatMoney } from '../../../../../lib/format'
+import type { Service } from '../../../../../types/api'
 import { micropigmentationBookingAssets } from '../../assets'
 import {
   BookingSectionTitle,

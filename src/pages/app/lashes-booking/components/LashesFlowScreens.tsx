@@ -427,7 +427,7 @@ export function LashesPhotoConfirmScreen({
         />
         <span>I confirm the client consents to storing this reference photo for the treatment record.</span>
       </label>
-      {!details.photoStorageKey && details.photoPreviewUrl && (
+      {Boolean(!details.photoStorageKey && details.photoPreviewUrl) && (
         <p className="mt-2 text-[12px] text-[#b42318]">Upload the photo before continuing (camera capture must finish uploading).</p>
       )}
       <div className="flex flex-col gap-3 py-4">

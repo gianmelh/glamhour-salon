@@ -25,7 +25,6 @@ export function AppointmentDetailsPage() {
 
   const data = appointment.data
   const status = appointmentStatus(data.status_code)
-  const tone = status === 'Completed' ? 'success' : status === 'In progress' ? 'primary' : status === 'Canceled' ? 'danger' : 'warning'
   const service = data.services?.[0]
   const categoryCode = service?.category_code_snapshot ?? ''
   const treatmentDetails = data.treatment_details_by_category?.[categoryCode] ?? {}
@@ -42,7 +41,7 @@ export function AppointmentDetailsPage() {
     window.sessionStorage.setItem(APPOINTMENT_DRAFT_KEY, JSON.stringify({
       categoryId: '',
       categoryCode,
-      serviceId: service?.service_id ?? '',
+      serviceId: service?.id ?? '',
       clientId: data.client_id,
       providerId: data.professional_id,
       date: data.starts_at.slice(0, 10),
