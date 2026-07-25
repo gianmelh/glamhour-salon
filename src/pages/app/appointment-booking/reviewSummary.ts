@@ -84,6 +84,7 @@ function buildCosmetologyTreatmentReviewRows(details: Record<string, unknown>) {
 function buildMicropigmentationTreatmentReviewRows(details: Record<string, unknown>) {
   const rows: Array<{ label: string; value: string }> = []
   if (details.area) rows.push({ label: 'Area', value: String(details.area) })
+  if (details.procedure) rows.push({ label: 'Procedure', value: String(details.procedure) })
   if (details.pigment_brand) rows.push({ label: 'Pigment brand', value: String(details.pigment_brand) })
   if (details.color_mix) rows.push({ label: 'Color mix', value: String(details.color_mix) })
   if (details.needle) rows.push({ label: 'Needle', value: String(details.needle) })

@@ -73,9 +73,9 @@ export function canAdvanceLashesStep(step: LashesRegistrationStep, details: Reco
     case 'photo-capture':
       return true
     case 'photo-confirm':
-      return Boolean(data.photoPreviewUrl)
+      return Boolean(data.photoPreviewUrl && data.photoStorageKey && data.photoConsent)
     case 'photo-preview':
-      return Boolean(data.photoPreviewUrl)
+      return Boolean(data.photoPreviewUrl && data.photoStorageKey && data.photoConsent)
     case 'lash-map':
       return isLashMapComplete(data.lashMap)
     case 'thickness':

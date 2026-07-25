@@ -26,6 +26,8 @@ export type AppointmentDraft = {
   endsAt: string
   notes: string
   details: Record<string, unknown>
+  /** When set, confirm updates this appointment instead of creating a new one. */
+  appointmentId?: string
 }
 
 export type DraftPatch = Omit<Partial<AppointmentDraft>, 'details'> & {

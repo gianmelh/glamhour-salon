@@ -96,7 +96,34 @@ export const glamhourApi = {
     size: number
     mediaType: string
   }>(`/salons/${resolveSalonId(salonId)}/treatment-media/upload`, { method: 'POST', body: JSON.stringify(input) }),
-  updateAppointmentStatus: (id: string, status: string, salonId?: string) => apiRequest<Appointment>(`/salons/${resolveSalonId(salonId)}/appointments/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, actorRole: status === 'completed' ? 'professional' : 'owner' }) }),
+  updateAppointmentStatus: (
+    id: string,
+    status: string,
+    options?: { tipMinor?: number; discountMinor?: number; taxMinor?: number; note?: string; salonId?: string },
+  ) => apiRequest<Appointment>(`/salons/${resolveSalonId(options?.salonId)}/appointments/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      status,
+      actorRole: status === 'completed' || status === 'in_progress' ? 'professional' : 'owner',
+      tipMinor: options?.tipMinor,
+      discountMinor: options?.discountMinor,
+      taxMinor: options?.taxMinor,
+      note: options?.note,
+    }),
+  }),
+  updateAppointmentTreatmentDetails: (
+    id: string,
+    input: {
+      categoryCode: string
+      treatmentDetails: Record<string, unknown>
+      treatmentNotes?: string
+      treatmentRecommendations?: string
+    },
+    salonId?: string,
+  ) => apiRequest<Appointment>(`/salons/${resolveSalonId(salonId)}/appointments/${id}/treatment-details`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  }),
   createClient: (input: CreateClientInput, salonId?: string) => apiRequest<Client>(`/salons/${resolveSalonId(salonId)}/clients`, { method: 'POST', body: JSON.stringify(input) }),
   createService: (input: CreateServiceInput, salonId?: string) => apiRequest<Service>(`/salons/${resolveSalonId(salonId)}/services`, { method: 'POST', body: JSON.stringify({ currencyCode: 'USD', isPubliclyBookable: true, ...input }) }),
   updateSettings: (input: UpdateSettingsInput, salonId?: string) => apiRequest<SalonSettings>(`/salons/${resolveSalonId(salonId)}/settings`, { method: 'PATCH', body: JSON.stringify(input) }),

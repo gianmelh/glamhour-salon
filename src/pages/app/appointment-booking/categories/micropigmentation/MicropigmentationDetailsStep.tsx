@@ -1,59 +1,95 @@
 import { Check } from 'lucide-react'
-import { Button, Card, Input, Textarea } from '../../../../../components'
-import { cn } from '../../../../../lib/cn'
-import { formatMoney } from '../../../../../lib/format'
+import { cn } from '../../../../lib/cn'
+import { formatMoney } from '../../../../lib/format'
+import type { Service } from '../../../../types/api'
 import { micropigmentationBookingAssets } from '../../assets'
-import { CategoryStepHeader, ChipGroup, FieldCard } from '../../components/shared'
+import {
+  BookingSectionTitle,
+  RegistrationContinueSection,
+  RegistrationFlowShell,
+} from '../../components/RegistrationFlowShell'
+import { ChipGroup } from '../../components/shared'
 import { mergeSignature } from '../../components/signatureHelpers'
 import { SignatureBox } from '../../components/SignatureBox'
 import { TreatmentPhotoFlow } from '../../components/TreatmentPhotoFlow'
 import type { CategoryStepProps } from '../../types'
+import {
+  getMicropigmentationDetailsMissingItems,
+  micropigmentationProcedureGroups,
+  micropigmentationSessionTypes,
+  micropigmentationUndertones,
+} from './micropigmentationDetailsSpec'
 
-const procedureGroups = {
-  Eyebrows: ['Microblading', 'Microshading', 'Hybrid', 'Removal'],
-  Lips: ['Lip Liner', 'Micropigmentation', 'Hydragloss'],
-  Eyes: ['Eyeliner'],
+function RegistrationServiceCard({
+  active,
+  onClick,
+  service,
+}: {
+  active: boolean
+  onClick: () => void
+  service: Service
+}) {
+  return (
+    <button className="w-full text-left" onClick={onClick} type="button">
+      <div className={cn(
+        'flex items-center justify-between gap-3 rounded-[16px] border px-4 py-4',
+        active ? 'border-[#7344cd] bg-[#ebe7ff]' : 'border-[#d0d5dd] bg-[#fcfcfd]',
+      )}>
+        <div className="min-w-0">
+          <p className="truncate text-[16px] font-normal leading-[1.44] tracking-[-0.32px] text-black">{service.name}</p>
+          <p className="mt-1 text-[12px] leading-[1.44] text-[#475467]">
+            {service.duration_minutes} min · {formatMoney(service.price_minor, service.currency_code)}
+          </p>
+        </div>
+        {active && <Check className="size-5 shrink-0 text-[#7344cd]" />}
+      </div>
+    </button>
+  )
+}
+
+const areaImages = {
+  Eyebrows: micropigmentationBookingAssets.eyebrowDiagram,
+  Lips: micropigmentationBookingAssets.lipDiagram,
 } as const
 
 export function MicropigmentationDetailsStep({ services, selectedServiceId, details, onChange, onBack, onNext }: CategoryStepProps) {
   const set = (key: string, value: unknown) => onChange({ details: { ...details, [key]: value } })
+  const missingItems = getMicropigmentationDetailsMissingItems(details)
+  const canContinue = Boolean(selectedServiceId) && missingItems.length === 0
 
   return (
-    <div className="mx-auto w-full max-w-[393px] space-y-6 px-5 pb-8">
-      <CategoryStepHeader onBack={onBack} title="Details of service" />
-
+    <RegistrationFlowShell activeCategory="micropigmentation" onBack={onBack}>
       <img alt="" className="h-32 w-full rounded-[16px] object-cover" src={micropigmentationBookingAssets.hero} />
 
-      <section className="space-y-3">
-        <h2 className="text-[28px] font-extrabold leading-[1.44] tracking-[-0.56px] text-black">Service</h2>
-        {services.map((service) => (
-          <button className="w-full text-left" key={service.id} onClick={() => onChange({ serviceId: service.id, details })} type="button">
-            <Card className={cn('rounded-[18px] border-[#dde3f1] bg-white', selectedServiceId === service.id && 'border-[#7344cd] bg-[#ebe7ff]')}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-bold text-[#111827]">{service.name}</p>
-                  <p className="mt-1 text-xs text-[#68738b]">{service.duration_minutes} min · {formatMoney(service.price_minor, service.currency_code)}</p>
-                </div>
-                {selectedServiceId === service.id && <Check className="size-5 text-[#7344cd]" />}
-              </div>
-            </Card>
-          </button>
-        ))}
+      <section className="flex flex-col gap-4">
+        <BookingSectionTitle>Service</BookingSectionTitle>
+        <div className="flex flex-col gap-2">
+          {services.map((service) => (
+            <RegistrationServiceCard
+              active={selectedServiceId === service.id}
+              key={service.id}
+              onClick={() => onChange({ serviceId: service.id, details })}
+              service={service}
+            />
+          ))}
+        </div>
       </section>
 
-      {Object.entries(procedureGroups).map(([area, procedures]) => (
-        <div className="rounded-[18px] border border-[#d0d5dd] bg-[#fcfcfd] p-4" key={area}>
-          <p className="mb-2 text-[21px] font-bold text-[#0c111d]">{area}</p>
-          {area === 'Eyebrows' && (
-            <img alt="" className="mb-3 h-24 w-full rounded-[12px] object-cover" src={micropigmentationBookingAssets.eyebrowDiagram} />
-          )}
-          {area === 'Lips' && (
-            <img alt="" className="mb-3 h-24 w-full rounded-[12px] object-cover" src={micropigmentationBookingAssets.lipDiagram} />
+      {Object.entries(micropigmentationProcedureGroups).map(([area, procedures]) => (
+        <section className="rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4" key={area}>
+          <BookingSectionTitle>{area}</BookingSectionTitle>
+          {area in areaImages && (
+            <img alt="" className="mb-3 h-24 w-full rounded-[12px] object-cover" src={areaImages[area as keyof typeof areaImages]} />
           )}
           <div className="flex flex-wrap gap-2">
             {procedures.map((procedure) => (
               <button
-                className={cn('rounded-full border px-3 py-2 text-xs font-semibold', details.procedure === procedure ? 'border-[#7344cd] bg-[#ebe7ff] text-[#7344cd]' : 'border-[#dde3f1] bg-white text-[#68738b]')}
+                className={cn(
+                  'rounded-full border px-3 py-2 text-[12px] font-semibold leading-[1.44]',
+                  details.procedure === procedure && details.area === area
+                    ? 'border-[#7344cd] bg-[#ebe7ff] text-[#7344cd]'
+                    : 'border-[#d0d5dd] bg-white text-[#475467]',
+                )}
                 key={procedure}
                 onClick={() => onChange({ details: { ...details, area, procedure } })}
                 type="button"
@@ -62,25 +98,99 @@ export function MicropigmentationDetailsStep({ services, selectedServiceId, deta
               </button>
             ))}
           </div>
-        </div>
+        </section>
       ))}
 
-      <FieldCard title="Clinical measurements">
-        <Input label="Brow width (mm)" value={String(details.brow_width_mm ?? '')} onChange={(event) => set('brow_width_mm', event.target.value)} />
-        <Input label="Brow height (mm)" value={String(details.brow_height_mm ?? '')} onChange={(event) => set('brow_height_mm', event.target.value)} />
-        <Input label="Lip width (mm)" value={String(details.lip_width_mm ?? '')} onChange={(event) => set('lip_width_mm', event.target.value)} />
-        <ChipGroup label="Skin undertone" options={['Warm', 'Cool', 'Neutral']} value={String(details.undertone ?? '')} onChange={(value) => set('undertone', value)} />
-      </FieldCard>
+      <section className="flex flex-col gap-4 rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
+        <BookingSectionTitle>Clinical measurements</BookingSectionTitle>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Brow width (mm)</span>
+          <input
+            className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none"
+            onChange={(event) => set('brow_width_mm', event.target.value)}
+            value={String(details.brow_width_mm ?? '')}
+          />
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Brow height (mm)</span>
+          <input
+            className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none"
+            onChange={(event) => set('brow_height_mm', event.target.value)}
+            value={String(details.brow_height_mm ?? '')}
+          />
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Lip width (mm)</span>
+          <input
+            className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none"
+            onChange={(event) => set('lip_width_mm', event.target.value)}
+            value={String(details.lip_width_mm ?? '')}
+          />
+        </label>
+        <ChipGroup
+          label="Skin undertone"
+          onChange={(value) => set('undertone', value)}
+          options={[...micropigmentationUndertones]}
+          value={String(details.undertone ?? '')}
+        />
+        <ChipGroup
+          label="Session type"
+          onChange={(value) => set('session_type', value)}
+          options={[...micropigmentationSessionTypes]}
+          value={String(details.session_type ?? '')}
+        />
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Session number</span>
+          <input
+            className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none"
+            inputMode="numeric"
+            onChange={(event) => set('session_number', event.target.value)}
+            placeholder="1"
+            value={String(details.session_number ?? '')}
+          />
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Related treatment ID (optional)</span>
+          <input
+            className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none"
+            onChange={(event) => set('related_treatment_id', event.target.value)}
+            placeholder="Links touch-ups to the initial session"
+            value={String(details.related_treatment_id ?? '')}
+          />
+        </label>
+      </section>
 
-      <FieldCard title="Pigment & tools">
-        <Input label="Pigment brand" value={String(details.pigment_brand ?? '')} onChange={(event) => set('pigment_brand', event.target.value)} />
-        <Input label="Color mix" value={String(details.color_mix ?? '')} onChange={(event) => set('color_mix', event.target.value)} />
-        <Input label="Needle type / size" value={String(details.needle ?? '')} onChange={(event) => set('needle', event.target.value)} />
-        <Input label="Touch-up date" type="date" value={String(details.touch_up_date ?? '')} onChange={(event) => set('touch_up_date', event.target.value)} />
-        <Textarea label="Procedure notes" value={String(details.procedure_notes ?? '')} onChange={(event) => set('procedure_notes', event.target.value)} />
-      </FieldCard>
+      <section className="flex flex-col gap-4 rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
+        <BookingSectionTitle>Pigment & tools</BookingSectionTitle>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Pigment brand</span>
+          <input className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none" onChange={(event) => set('pigment_brand', event.target.value)} value={String(details.pigment_brand ?? '')} />
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Color mix</span>
+          <input className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none" onChange={(event) => set('color_mix', event.target.value)} value={String(details.color_mix ?? '')} />
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Needle type / size</span>
+          <input className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none" onChange={(event) => set('needle', event.target.value)} value={String(details.needle ?? '')} />
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Touch-up date</span>
+          <input className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none" onChange={(event) => set('touch_up_date', event.target.value)} type="date" value={String(details.touch_up_date ?? '')} />
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Procedure notes</span>
+          <textarea
+            className="min-h-[96px] rounded-[12px] border border-[#d0d5dd] bg-white p-[14px] text-[15px] leading-[22.5px] text-black outline-none placeholder:text-[#999]"
+            onChange={(event) => set('procedure_notes', event.target.value)}
+            placeholder="Add pigment, technique, or session notes"
+            value={String(details.procedure_notes ?? '')}
+          />
+        </label>
+      </section>
 
-      <FieldCard title="Design approval">
+      <section className="rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
+        <BookingSectionTitle>Design approval</BookingSectionTitle>
         <SignatureBox
           label="Client design approval"
           onChange={(value) => onChange({
@@ -95,7 +205,7 @@ export function MicropigmentationDetailsStep({ services, selectedServiceId, deta
           })}
           value={String(details.clientDesignSignature ?? '')}
         />
-      </FieldCard>
+      </section>
 
       <TreatmentPhotoFlow
         category="micropigmentation"
@@ -104,14 +214,11 @@ export function MicropigmentationDetailsStep({ services, selectedServiceId, deta
         title="Reference / before photo"
       />
 
-      <Button
-        className="rounded-[16px] shadow-[0_16px_8px_rgba(0,0,0,0.09)]"
-        disabled={!selectedServiceId}
-        fullWidth
-        onClick={onNext}
-      >
-        Continue
-      </Button>
-    </div>
+      <RegistrationContinueSection
+        canContinue={canContinue}
+        disabledMessage={missingItems.length ? `To continue, complete: ${missingItems.join(' · ')}` : undefined}
+        onContinue={onNext}
+      />
+    </RegistrationFlowShell>
   )
 }

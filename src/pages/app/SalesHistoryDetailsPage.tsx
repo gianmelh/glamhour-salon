@@ -5,32 +5,7 @@ import {
 } from '../../components'
 import { useSalesHistoryDetail } from '../../hooks/useGlamhourData'
 import { formatDate, formatMoney, formatTime } from '../../lib/format'
-
-function titleCase(value: string) {
-  return value
-    .replace(/[_-]/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase())
-}
-
-function detailEntries(details: Record<string, unknown> | null, categoryCode: string) {
-  if (!details) return []
-  const keysByCategory: Record<string, string[]> = {
-    nails: ['service_type', 'shape', 'system', 'product_type', 'hand', 'finger_details', 'capsule_numbers', 'lengths', 'materials'],
-    lashes: ['style', 'variant', 'volume', 'curl', 'thickness', 'length_mm', 'eye_shape', 'adhesive'],
-    cosmetology: ['treatment_name', 'equipment', 'products', 'duration', 'intensity', 'depth', 'skin_type', 'alterations', 'facial_annotations'],
-    micropigmentation: ['service_type', 'area', 'pigment', 'color_mix', 'needle', 'needle_size', 'first_session_date', 'control_date', 'observations'],
-  }
-  const keys = keysByCategory[categoryCode] ?? Object.keys(details)
-
-  return keys
-    .filter((key) => details[key] !== undefined && details[key] !== null && details[key] !== '')
-    .map((key) => ({
-      label: titleCase(key),
-      value: Array.isArray(details[key]) || typeof details[key] === 'object'
-        ? JSON.stringify(details[key])
-        : String(details[key]),
-    }))
-}
+import { detailEntries } from './sales/treatmentDetailEntries'
 
 export function SalesHistoryDetailsPage() {
   const { recordId = '' } = useParams()

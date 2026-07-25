@@ -11,6 +11,11 @@ import { ApiClientError } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { glamhourApi } from '../../services/glamhour-api'
 import type { Professional, Service, ServiceCategory } from '../../types/api'
+import {
+  nailMaterialSetupItems,
+  nailServiceSetupItems,
+  type OnboardingMaterialItem,
+} from './onboardingNailsSpec'
 
 const steps = ['categories', 'services', 'schedule', 'team', 'complete'] as const
 type Step = typeof steps[number]
@@ -71,8 +76,6 @@ const categoryDescriptions: Record<string, string> = {
   cosmetology: 'Facials, skincare treatments, and beauty enhancements.',
   micropigmentation: 'Microblading, lip liner, eyeliner, and more pigmentation services.',
 }
-
-const nailSetupItems = ['Full set', 'Fill in', 'Removal', 'Manicure', 'Gel Polish', 'Dual System', 'Press on', 'Pedicure', 'Other']
 
 const stepHeaderSubtitles: Partial<Record<Step, string>> = {
   schedule: 'Set your regular operating hours.',
@@ -147,7 +150,7 @@ function withRequiredDraftServices(draft: OnboardingDraft, categories: ServiceCa
       return
     }
 
-    nailSetupItems.forEach((name) => {
+    nailServiceSetupItems.forEach((name) => {
       const serviceKey = `${category.id}:${name.toLowerCase()}:service`
       if (!serviceDraftKeys.has(serviceKey)) {
         services.push({
@@ -161,13 +164,15 @@ function withRequiredDraftServices(draft: OnboardingDraft, categories: ServiceCa
         })
         serviceDraftKeys.add(serviceKey)
       }
+    })
 
-      const materialKey = `${category.id}:${name.toLowerCase()}:material`
+    nailMaterialSetupItems.forEach((material) => {
+      const materialKey = `${category.id}:${material.name.toLowerCase()}:material`
       if (!serviceDraftKeys.has(materialKey)) {
         services.push({
-          id: `${category.id}-material-${serviceIdSuffix(name)}`,
+          id: `${category.id}-material-${material.id}`,
           categoryId: category.id,
-          name,
+          name: material.name,
           selected: false,
           price: '',
           duration: '60',
@@ -187,10 +192,15 @@ function sanitizeStoredDraft(draft: OnboardingDraft | null, categories: ServiceC
   }
 
   const categoryIds = new Set(categories.map((category) => category.id))
+  const legacyMaterialNames = new Set(nailServiceSetupItems.map((name) => name.toLowerCase()))
   const sanitizedDraft = {
     ...draft,
     selectedCategoryIds: draft.selectedCategoryIds.filter((id) => categoryIds.has(id)),
-    services: draft.services.filter((service) => categoryIds.has(service.categoryId)),
+    services: draft.services.filter((service) => {
+      if (!categoryIds.has(service.categoryId)) return false
+      if (service.section !== 'material') return true
+      return !legacyMaterialNames.has(service.name.toLowerCase())
+    }),
   }
 
   return sanitizedDraft.services.length && sanitizedDraft.selectedCategoryIds.length ? withRequiredDraftServices(sanitizedDraft, categories) : null
@@ -224,7 +234,7 @@ function createDraft(categories: ServiceCategory[], services: Service[], profess
       return
     }
 
-    nailSetupItems.forEach((name) => {
+    nailServiceSetupItems.forEach((name) => {
       const serviceKey = `${category.id}:${name.toLowerCase()}:service`
       if (!serviceDraftKeys.has(serviceKey)) {
         serviceDrafts.push({
@@ -238,13 +248,15 @@ function createDraft(categories: ServiceCategory[], services: Service[], profess
         })
         serviceDraftKeys.add(serviceKey)
       }
+    })
 
-      const materialKey = `${category.id}:${name.toLowerCase()}:material`
+    nailMaterialSetupItems.forEach((material) => {
+      const materialKey = `${category.id}:${material.name.toLowerCase()}:material`
       if (!serviceDraftKeys.has(materialKey)) {
         serviceDrafts.push({
-          id: `${category.id}-material-${serviceIdSuffix(name)}`,
+          id: `${category.id}-material-${material.id}`,
           categoryId: category.id,
-          name,
+          name: material.name,
           selected: false,
           price: '',
           duration: '60',
@@ -550,12 +562,15 @@ function NailServicesSetup({ category, draft, updateDraft }: { category: Service
   const [servicesExpanded, setServicesExpanded] = useState(true)
   const [materialsExpanded, setMaterialsExpanded] = useState(true)
   const services = draft.services.filter((service) => service.categoryId === category.id)
-  const treatmentServices = nailSetupItems
+  const treatmentServices = nailServiceSetupItems
     .map((name) => services.find((service) => service.name.toLowerCase() === name.toLowerCase() && (service.section ?? 'service') === 'service'))
     .filter((service): service is DraftService => Boolean(service))
-  const materialServices = nailSetupItems
-    .map((name) => services.find((service) => service.name.toLowerCase() === name.toLowerCase() && service.section === 'material'))
+  const materialServices = nailMaterialSetupItems
+    .map((material) => services.find((service) => service.name.toLowerCase() === material.name.toLowerCase() && service.section === 'material'))
     .filter((service): service is DraftService => Boolean(service))
+  const materialVisuals = Object.fromEntries(
+    nailMaterialSetupItems.map((material) => [material.name.toLowerCase(), material]),
+  ) as Record<string, OnboardingMaterialItem>
 
   return (
     <div className="rounded-2xl border border-[#d6dce8] bg-white px-6 py-7 shadow-[0_3px_10px_rgb(34_42_66_/_0.03)]">
@@ -596,7 +611,12 @@ function NailServicesSetup({ category, draft, updateDraft }: { category: Service
         {materialsExpanded && (
           <div className="space-y-2">
             {materialServices.map((service) => (
-              <NailMaterialRow key={service.id} service={service} updateDraft={updateDraft} />
+              <NailMaterialRow
+                key={service.id}
+                material={materialVisuals[service.name.toLowerCase()]}
+                service={service}
+                updateDraft={updateDraft}
+              />
             ))}
           </div>
         )}
@@ -648,7 +668,15 @@ function NailServicePriceRow({ service, updateDraft }: { service: DraftService; 
   )
 }
 
-function NailMaterialRow({ service, updateDraft }: { service: DraftService; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
+function NailMaterialRow({
+  material,
+  service,
+  updateDraft,
+}: {
+  material?: OnboardingMaterialItem
+  service: DraftService
+  updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void
+}) {
   function toggleService() {
     updateDraft((current) => ({
       ...current,
@@ -659,15 +687,33 @@ function NailMaterialRow({ service, updateDraft }: { service: DraftService; upda
   return (
     <button
       aria-checked={service.selected}
-      className={cn('flex min-h-[53px] w-full cursor-pointer items-center gap-3 rounded-2xl border px-4 text-left transition', service.selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white')}
+      aria-label={service.name}
+      className={cn(
+        'flex min-h-[53px] w-full cursor-pointer items-center gap-3 rounded-2xl border px-4 text-left transition',
+        service.selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white',
+      )}
       onClick={toggleService}
       role="checkbox"
       type="button"
     >
-      <span className={cn('grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)] transition', service.selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent')}>
+      <span className={cn(
+        'grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)] transition',
+        service.selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent',
+      )}>
         <Check className="size-3" />
       </span>
-      <span className="truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
+      {material?.imageSrc && (
+        <span className={cn('relative shrink-0', material.imageFrame)}>
+          {material.imageCrop ? (
+            <span className="pointer-events-none absolute inset-0 overflow-hidden">
+              <img alt="" className={material.imageCrop} src={material.imageSrc} />
+            </span>
+          ) : (
+            <img alt="" className="absolute inset-0 size-full max-w-none object-cover" src={material.imageSrc} />
+          )}
+        </span>
+      )}
+      <span className="min-w-0 flex-1 truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
     </button>
   )
 }

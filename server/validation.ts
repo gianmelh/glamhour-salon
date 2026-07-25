@@ -172,6 +172,16 @@ export const updateAppointmentStatusSchema = z.object({
   actorRole: z.enum(['owner', 'admin', 'professional', 'receptionist', 'client', 'system']),
   actorUserId: uuidSchema.optional(),
   note: z.string().max(2000).optional(),
+  tipMinor: z.number().int().min(0).optional(),
+  discountMinor: z.number().int().min(0).optional(),
+  taxMinor: z.number().int().min(0).optional(),
+})
+
+export const updateAppointmentTreatmentDetailsSchema = z.object({
+  categoryCode: z.string().trim().min(1).max(80),
+  treatmentDetails: z.record(z.string(), z.unknown()),
+  treatmentNotes: z.string().max(5000).optional(),
+  treatmentRecommendations: z.string().max(5000).optional(),
 })
 
 export const createClientSchema = z.object({

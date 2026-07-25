@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { CategoryStepProps } from '../../appointment-booking/types'
 import { useTreatmentPhotoUpload } from '../../appointment-booking/hooks/useTreatmentPhotoUpload'
 import type { TreatmentMediaItem } from '../../appointment-booking/types'
-import { lashesBookingAssets } from '../assets'
 import { lashesDetailsLayout } from '../lashesDetailsSpec'
 import {
   canAdvanceLashesStep,
@@ -36,7 +35,7 @@ export function LashesRegistrationFlow({
   const step = readLashesRegistrationStep(details)
   const [showPermissionAlert, setShowPermissionAlert] = useState(false)
   const completingRef = useRef(false)
-  const { upload, uploading } = useTreatmentPhotoUpload('lashes')
+  const { upload, uploading, error: uploadError } = useTreatmentPhotoUpload('lashes')
 
   useEffect(() => {
     if (!selectedServiceId && services[0]) {
@@ -113,14 +112,6 @@ export function LashesRegistrationFlow({
     setStep('photo-capture')
   }
 
-  const handleSimulatedCapture = () => {
-    updateDetails({
-      photoPreviewUrl: lashesBookingAssets.photoPlaceholder,
-      photoCapturePending: true,
-    })
-    setStep('photo-confirm')
-  }
-
   const canContinue = canAdvanceLashesStep(step, details)
 
   return (
@@ -179,13 +170,19 @@ export function LashesRegistrationFlow({
         )}
 
         {step === 'photo-capture' && (
-          <LashesPhotoCaptureScreen onBack={goBack} onCapture={() => void handleSimulatedCapture()} />
+          <LashesPhotoCaptureScreen
+            capturing={uploading}
+            error={uploadError}
+            onBack={goBack}
+            onCapture={(file) => void handleUploadPhoto(file)}
+          />
         )}
 
         {step === 'photo-confirm' && (
           <LashesPhotoConfirmScreen
             details={details}
             onBack={goBack}
+            onChange={updateDetails}
             onConfirm={() => setStep('photo-preview')}
             onReplace={() => setStep('photo-method')}
           />

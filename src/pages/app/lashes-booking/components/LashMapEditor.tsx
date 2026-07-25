@@ -68,7 +68,7 @@ export function LashMapEditor({ details, onChange }: {
         <LashesSectionTitle>Lash map</LashesSectionTitle>
         <div className="flex w-full min-w-0 items-center justify-between gap-3">
           <p className="min-w-0 text-[12px] font-normal leading-[1.4] tracking-[0.24px] text-black">
-            {eyeLabel} · {current.length}/{lashMapPositions} zones
+            {eyeLabel} · {progress.find((item) => item.eye === eye)?.completed ?? 0}/{lashMapPositions} zones
           </p>
           <button
             className="inline-flex shrink-0 items-center gap-2.5 rounded-full bg-[#ebe7ff] px-3 py-1.5"

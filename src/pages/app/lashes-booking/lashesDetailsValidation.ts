@@ -1,6 +1,6 @@
 import type { LashEyeName, LashesDetails } from './types'
 import { LASHES_DETAIL_KEYS } from './types'
-import { lashMapPositions } from './lashesDetailsSpec'
+import { lashMapZoneNumbers } from './lashesDetailsSpec'
 
 const eyeOrder: LashEyeName[] = ['rightEye', 'leftEye']
 
@@ -16,19 +16,25 @@ export function sanitizeLashesDetails(details: Record<string, unknown>): Record<
 export function getLashEyeProgress(lashMap: LashesDetails['lashMap']) {
   return eyeOrder.map((eye) => {
     const entries = lashMap?.[eye] ?? []
-    return { eye, completed: entries.length }
+    const positions = new Set(entries.map((entry) => entry.position))
+    const completed = lashMapZoneNumbers.filter((zone) => positions.has(zone)).length
+    return { eye, completed, total: lashMapZoneNumbers.length }
   })
 }
 
-export function isLashMapComplete(lashMap: LashesDetails['lashMap'], requiredPositions = lashMapPositions) {
-  return eyeOrder.every((eye) => (lashMap?.[eye]?.length ?? 0) >= requiredPositions)
+export function isLashMapComplete(lashMap: LashesDetails['lashMap']) {
+  return eyeOrder.every((eye) => {
+    const entries = lashMap?.[eye] ?? []
+    const positions = new Set(entries.map((entry) => entry.position))
+    return lashMapZoneNumbers.every((zone) => positions.has(zone))
+  })
 }
 
 export function getLashesCompletionSummary(details: Record<string, unknown>) {
   const data = details as LashesDetails
-  const lashMap = data.lashMap
-  const right = lashMap?.rightEye?.length ?? 0
-  const left = lashMap?.leftEye?.length ?? 0
+  const progress = getLashEyeProgress(data.lashMap)
+  const right = progress.find((item) => item.eye === 'rightEye')
+  const left = progress.find((item) => item.eye === 'leftEye')
 
   return [
     { key: 'style', label: 'Lash style', done: Boolean(data.style) },
@@ -38,8 +44,16 @@ export function getLashesCompletionSummary(details: Record<string, unknown>) {
     { key: 'curl', label: 'Curl', done: Boolean(data.curl) },
     { key: 'thickness', label: 'Thickness', done: Boolean(data.thickness) },
     { key: 'length', label: 'Length', done: Boolean(data.defaultLength || data.lashMapLength) },
-    { key: 'rightEye', label: `Lash map · right eye (${right}/${lashMapPositions})`, done: right >= lashMapPositions },
-    { key: 'leftEye', label: `Lash map · left eye (${left}/${lashMapPositions})`, done: left >= lashMapPositions },
+    {
+      key: 'rightEye',
+      label: `Lash map · right eye (${right?.completed ?? 0}/${right?.total ?? lashMapZoneNumbers.length})`,
+      done: (right?.completed ?? 0) >= lashMapZoneNumbers.length,
+    },
+    {
+      key: 'leftEye',
+      label: `Lash map · left eye (${left?.completed ?? 0}/${left?.total ?? lashMapZoneNumbers.length})`,
+      done: (left?.completed ?? 0) >= lashMapZoneNumbers.length,
+    },
   ]
 }
 

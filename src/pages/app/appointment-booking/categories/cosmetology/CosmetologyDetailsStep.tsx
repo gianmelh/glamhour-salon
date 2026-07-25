@@ -1,92 +1,113 @@
-import { useState, type PointerEvent } from 'react'
-import { Check, Eraser, RotateCcw } from 'lucide-react'
-import { Button, Card, Textarea } from '../../../../../components'
-import { cn } from '../../../../../lib/cn'
-import { formatMoney } from '../../../../../lib/format'
-import { cosmetologyBookingAssets } from '../../assets'
-import { HelpModal } from '../../components/HelpModal'
-import { CategoryStepHeader, ChipGroup, FieldCard } from '../../components/shared'
-import { PhototypePicker } from '../../components/SignatureBox'
+import { Check } from 'lucide-react'
+import { cn } from '../../../../lib/cn'
+import { formatMoney } from '../../../../lib/format'
+import type { Service } from '../../../../types/api'
+import {
+  BookingSectionTitle,
+  RegistrationContinueSection,
+  RegistrationFlowShell,
+} from '../../components/RegistrationFlowShell'
+import { ChipGroup } from '../../components/shared'
 import { TreatmentPhotoFlow } from '../../components/TreatmentPhotoFlow'
 import type { CategoryStepProps } from '../../types'
+import {
+  cosmetologyEquipmentOptions,
+  cosmetologySkinTypes,
+  getCosmetologyDetailsMissingItems,
+} from './cosmetologyDetailsSpec'
+import { FaceMapEditor } from './FaceMapEditor'
 
-export function FaceMapEditor({ details, onChange }: { details: Record<string, unknown>; onChange: (details: Record<string, unknown>) => void }) {
-  const [type, setType] = useState('Active acne')
-  const annotations = (details.faceAnnotations as Array<{ x: number; y: number; type: string }> | undefined) ?? []
-
-  const add = (event: PointerEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    const x = ((event.clientX - rect.left) / rect.width) * 100
-    const y = ((event.clientY - rect.top) / rect.height) * 100
-    onChange({ ...details, faceAnnotations: [...annotations, { x, y, type }] })
-  }
-
+function RegistrationServiceCard({
+  active,
+  onClick,
+  service,
+}: {
+  active: boolean
+  onClick: () => void
+  service: Service
+}) {
   return (
-    <div className="rounded-[20px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
-      <ChipGroup label="Annotation type" options={['Active acne', 'Pigmentation', 'Sensitivity/redness', 'Dullness', 'Fine lines', 'Contraindicated area']} value={type} onChange={(value) => setType(String(value))} />
-      <div className="mt-2 flex justify-end">
-        <HelpModal title="Facial mapping" triggerLabel="Help">
-          Tap the face diagram to mark skin concerns. Choose the annotation type first, then tap the area on the face.
-        </HelpModal>
+    <button className="w-full text-left" onClick={onClick} type="button">
+      <div className={cn(
+        'flex items-center justify-between gap-3 rounded-[16px] border px-4 py-4',
+        active ? 'border-[#7344cd] bg-[#ebe7ff]' : 'border-[#d0d5dd] bg-[#fcfcfd]',
+      )}>
+        <div className="min-w-0">
+          <p className="truncate text-[16px] font-normal leading-[1.44] tracking-[-0.32px] text-black">{service.name}</p>
+          <p className="mt-1 text-[12px] leading-[1.44] text-[#475467]">
+            {service.duration_minutes} min · {formatMoney(service.price_minor, service.currency_code)}
+          </p>
+        </div>
+        {active && <Check className="size-5 shrink-0 text-[#7344cd]" />}
       </div>
-      <div className="relative mx-auto mt-4 h-72 max-w-[240px] cursor-crosshair overflow-hidden rounded-[48%] border-2 border-[#d8deec] bg-white" onPointerDown={add}>
-        <img alt="" className="absolute inset-0 size-full object-cover opacity-90" src={cosmetologyBookingAssets.faceDiagram} />
-        {annotations.map((annotation, index) => (
-          <span
-            className="absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#7a3fe0] shadow"
-            key={`${annotation.x}-${annotation.y}-${index}`}
-            style={{ left: `${annotation.x}%`, top: `${annotation.y}%` }}
-            title={annotation.type}
-          />
-        ))}
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <Button onClick={() => onChange({ ...details, faceAnnotations: annotations.slice(0, -1) })} type="button" variant="outline"><Eraser className="size-4" /> Undo</Button>
-        <Button onClick={() => onChange({ ...details, faceAnnotations: [] })} type="button" variant="outline"><RotateCcw className="size-4" /> Clear</Button>
-      </div>
-    </div>
+    </button>
   )
 }
 
 export function CosmetologyDetailsStep({ services, selectedServiceId, details, onChange, onBack, onNext }: CategoryStepProps) {
   const set = (key: string, value: unknown) => onChange({ details: { ...details, [key]: value } })
+  const missingItems = getCosmetologyDetailsMissingItems(details)
+  const canContinue = Boolean(selectedServiceId) && missingItems.length === 0
 
   return (
-    <div className="mx-auto w-full max-w-[393px] space-y-6 px-5 pb-8">
-      <CategoryStepHeader onBack={onBack} title="Details of service" />
-
-      <section className="space-y-3">
-        <h2 className="text-[28px] font-extrabold leading-[1.44] tracking-[-0.56px] text-black">Service</h2>
-        {services.map((service) => (
-          <button className="w-full text-left" key={service.id} onClick={() => onChange({ serviceId: service.id, details })} type="button">
-            <Card className={cn('rounded-[18px] border-[#dde3f1] bg-white', selectedServiceId === service.id && 'border-[#7a3fe0] bg-[#eee9ff]')}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-bold text-[#111827]">{service.name}</p>
-                  <p className="mt-1 text-xs text-[#68738b]">{service.duration_minutes} min · {formatMoney(service.price_minor, service.currency_code)}</p>
-                </div>
-                {selectedServiceId === service.id && <Check className="size-5 text-[#7a3fe0]" />}
-              </div>
-            </Card>
-          </button>
-        ))}
+    <RegistrationFlowShell activeCategory="cosmetology" onBack={onBack}>
+      <section className="flex flex-col gap-4">
+        <BookingSectionTitle>Service</BookingSectionTitle>
+        <div className="flex flex-col gap-2">
+          {services.map((service) => (
+            <RegistrationServiceCard
+              active={selectedServiceId === service.id}
+              key={service.id}
+              onClick={() => onChange({ serviceId: service.id, details })}
+              service={service}
+            />
+          ))}
+        </div>
       </section>
 
-      <FieldCard title="Fitzpatrick phototype & skin">
-        <PhototypePicker onChange={(value) => set('phototype', value)} value={String(details.phototype ?? '')} />
-        <ChipGroup label="Skin type" options={['Normal', 'Dry', 'Oily', 'Combination', 'Sensitive']} value={String(details.skin_type ?? '')} onChange={(value) => set('skin_type', value)} />
-        <ChipGroup label="Equipment" multiple options={['Ozone steam', 'Ultrasonic peeling', 'Microdermabrasion', 'High frequency', 'Radiofrequency', 'Ultrasound', 'Dermapen', 'LED phototherapy', 'Chemical peel']} value={details.equipment as string[] | undefined} onChange={(value) => set('equipment', value)} />
-      </FieldCard>
+      <section className="flex flex-col gap-4 rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
+        <BookingSectionTitle>Skin profile</BookingSectionTitle>
+        <ChipGroup
+          label="Skin type"
+          onChange={(value) => set('skin_type', value)}
+          options={[...cosmetologySkinTypes]}
+          value={String(details.skin_type ?? '')}
+        />
+        <ChipGroup
+          label="Equipment"
+          multiple
+          onChange={(value) => set('equipment', value)}
+          options={[...cosmetologyEquipmentOptions]}
+          value={details.equipment as string[] | undefined}
+        />
+      </section>
 
       <section>
-        <h2 className="mb-3 text-[28px] font-extrabold leading-[1.44] tracking-[-0.56px] text-black">Facial map</h2>
+        <BookingSectionTitle>Facial map</BookingSectionTitle>
         <FaceMapEditor details={details} onChange={(next) => onChange({ details: next })} />
       </section>
 
-      <FieldCard title="Products & notes">
-        <Textarea label="Products / chemicals used" value={String(details.products ?? '')} onChange={(event) => set('products', event.target.value)} />
-        <Textarea label="Aftercare recommendations" value={String(details.aftercare ?? '')} onChange={(event) => set('aftercare', event.target.value)} />
-      </FieldCard>
+      <section className="flex flex-col gap-4 rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
+        <BookingSectionTitle>Products & notes</BookingSectionTitle>
+        <label className="flex flex-col gap-2">
+          <span className="text-[16px] leading-[1.4] text-black">Products / chemicals used</span>
+          <textarea
+            className="min-h-[96px] rounded-[12px] border border-[#d0d5dd] bg-white p-[14px] text-[15px] leading-[22.5px] text-black outline-none placeholder:text-[#999]"
+            onChange={(event) => set('products', event.target.value)}
+            placeholder="List products or chemicals used during treatment"
+            value={String(details.products ?? '')}
+          />
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[16px] leading-[1.4] text-black">Aftercare recommendations</span>
+          <textarea
+            className="min-h-[96px] rounded-[12px] border border-[#d0d5dd] bg-white p-[14px] text-[15px] leading-[22.5px] text-black outline-none placeholder:text-[#999]"
+            onChange={(event) => set('aftercare', event.target.value)}
+            placeholder="Share aftercare guidance for the client"
+            value={String(details.aftercare ?? '')}
+          />
+        </label>
+      </section>
 
       <TreatmentPhotoFlow
         category="cosmetology"
@@ -95,7 +116,11 @@ export function CosmetologyDetailsStep({ services, selectedServiceId, details, o
         title="Before treatment photo"
       />
 
-      <Button className="rounded-[16px] shadow-[0_16px_8px_rgba(0,0,0,0.09)]" disabled={!selectedServiceId} fullWidth onClick={onNext}>Continue</Button>
-    </div>
+      <RegistrationContinueSection
+        canContinue={canContinue}
+        disabledMessage={missingItems.length ? `To continue, complete: ${missingItems.join(' · ')}` : undefined}
+        onContinue={onNext}
+      />
+    </RegistrationFlowShell>
   )
 }

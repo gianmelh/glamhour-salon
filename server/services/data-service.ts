@@ -85,6 +85,9 @@ interface UpdateAppointmentStatusInput {
   actorRole: 'owner' | 'admin' | 'professional' | 'receptionist' | 'client' | 'system'
   actorUserId?: string
   note?: string
+  tipMinor?: number
+  discountMinor?: number
+  taxMinor?: number
 }
 
 interface CreateClientInput {
@@ -911,6 +914,29 @@ async function persistTreatmentVisualAnnotations(
       [salonId, clientId, appointmentId, categoryCode, handKey, JSON.stringify(hand)],
     )
   }
+}
+
+async function replaceTreatmentVisualAnnotations(
+  client: PoolClient,
+  salonId: string,
+  clientId: string,
+  appointmentId: string,
+  categoryCode: string,
+  treatmentDetails: Record<string, unknown>,
+) {
+  await client.query(
+    `DELETE FROM treatment_visual_annotations
+     WHERE salon_id = $1 AND appointment_id = $2 AND category = $3`,
+    [salonId, appointmentId, categoryCode],
+  )
+  await persistTreatmentVisualAnnotations(
+    client,
+    salonId,
+    clientId,
+    appointmentId,
+    categoryCode,
+    treatmentDetails,
+  )
 }
 
 function normalizeHealthAnswerValue(answerValue: unknown) {
@@ -1745,6 +1771,43 @@ export const dataService = {
               [salonId, service.categoryId, service.name.trim(), durationMinutes, priceMinor, index * 10],
             )
         if (rows[0]) serviceIdByDraftId.set(service.id, rows[0].id)
+      }
+
+      await ensureServiceMaterialsTable()
+      const selectedMaterials = input.draft.services.filter((service) => (
+        service.selected
+        && service.section === 'material'
+        && selectedCategoryIds.includes(service.categoryId)
+      ))
+      for (const [index, material] of selectedMaterials.entries()) {
+        const existingMaterial = await clientRows<{ id: string }>(
+          client,
+          `SELECT id FROM service_materials
+           WHERE salon_id = $1 AND category_id = $2 AND lower(name) = lower($3)
+           ORDER BY created_at
+           LIMIT 1`,
+          [salonId, material.categoryId, material.name.trim()],
+        )
+        if (existingMaterial[0]) {
+          await client.query(
+            `UPDATE service_materials
+             SET is_active = true, sort_order = $4
+             WHERE salon_id = $1 AND id = $2 AND category_id = $3`,
+            [salonId, existingMaterial[0].id, material.categoryId, index * 10],
+          )
+          continue
+        }
+
+        await client.query(
+          `INSERT INTO service_materials (
+             salon_id, category_id, service_id, name, brand, material_type, unit,
+             cost_minor, currency_code, is_active, sort_order
+           )
+           SELECT $1, $2, NULL, $3, NULL, NULL, NULL, NULL, s.currency_code, true, $4
+           FROM salons s
+           WHERE s.id = $1`,
+          [salonId, material.categoryId, material.name.trim(), index * 10],
+        )
       }
 
       await upsertSalonWorkingHours(client, salonId, input.draft.schedule)
@@ -3208,15 +3271,83 @@ export const dataService = {
       const rows = await clientRows<Appointment>(
         client,
         `UPDATE appointments SET
-           status_code = $3,
-           canceled_at = CASE WHEN $3 = 'canceled' THEN now() ELSE canceled_at END,
-           canceled_by_user_id = CASE WHEN $3 = 'canceled' THEN $4::uuid ELSE canceled_by_user_id END
+           status_code = $3::varchar,
+           canceled_at = CASE WHEN $3::text = 'canceled' THEN now() ELSE canceled_at END,
+           canceled_by_user_id = CASE WHEN $3::text = 'canceled' THEN $4::uuid ELSE canceled_by_user_id END
          WHERE salon_id = $1 AND id = $2
          RETURNING *`,
         [salonId, appointmentId, input.status, input.actorUserId ?? null],
       )
       const updated = rows[0]
       if (!updated) throw new ApiError(500, 'Appointment status could not be updated.')
+
+      await client.query(
+        `UPDATE appointment_services
+         SET status_code = $3::varchar
+         WHERE salon_id = $1 AND appointment_id = $2`,
+        [salonId, appointmentId, input.status],
+      )
+
+      if (input.status === 'completed') {
+        const serviceRows = await clientRows<QueryResultRow & {
+          unit_price_minor: number
+          currency_code: string | null
+        }>(
+          client,
+          `SELECT aps.unit_price_minor, s.currency_code
+           FROM appointment_services aps
+           LEFT JOIN services s ON s.salon_id = aps.salon_id AND s.id = aps.service_id
+           WHERE aps.salon_id = $1 AND aps.appointment_id = $2`,
+          [salonId, appointmentId],
+        )
+        const subtotalMinor = serviceRows.reduce((sum, row) => sum + Number(row.unit_price_minor ?? 0), 0)
+        const discountMinor = input.discountMinor ?? 0
+        const taxMinor = input.taxMinor ?? 0
+        const tipMinor = input.tipMinor ?? 0
+        const totalMinor = subtotalMinor - discountMinor + taxMinor + tipMinor
+        const salonEarningsMinor = Math.round(subtotalMinor * 0.4)
+        const professionalEarningsMinor = totalMinor - salonEarningsMinor
+        const currencyCode = serviceRows.find((row) => row.currency_code)?.currency_code ?? 'USD'
+
+        await client.query(
+          `INSERT INTO appointment_financials (
+             salon_id, appointment_id, subtotal_minor, discount_minor, tax_minor, tip_minor,
+             total_minor, salon_earnings_minor, professional_earnings_minor, currency_code, recorded_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+           ON CONFLICT (appointment_id) DO UPDATE SET
+             subtotal_minor = EXCLUDED.subtotal_minor,
+             discount_minor = EXCLUDED.discount_minor,
+             tax_minor = EXCLUDED.tax_minor,
+             tip_minor = EXCLUDED.tip_minor,
+             total_minor = EXCLUDED.total_minor,
+             salon_earnings_minor = EXCLUDED.salon_earnings_minor,
+             professional_earnings_minor = EXCLUDED.professional_earnings_minor,
+             currency_code = EXCLUDED.currency_code,
+             recorded_at = EXCLUDED.recorded_at`,
+          [
+            salonId,
+            appointmentId,
+            subtotalMinor,
+            discountMinor,
+            taxMinor,
+            tipMinor,
+            totalMinor,
+            salonEarningsMinor,
+            professionalEarningsMinor,
+            currencyCode,
+          ],
+        )
+
+        await client.query(
+          `UPDATE treatment_records
+           SET completed_at = COALESCE(completed_at, now())
+           WHERE salon_id = $1
+             AND appointment_service_id IN (
+               SELECT id FROM appointment_services WHERE salon_id = $1 AND appointment_id = $2
+             )`,
+          [salonId, appointmentId],
+        )
+      }
 
       await client.query(
         `INSERT INTO appointment_status_history
@@ -3228,11 +3359,184 @@ export const dataService = {
         `INSERT INTO appointment_events
           (salon_id, appointment_id, event_type, actor_user_id, from_status_code, to_status_code, metadata_json)
          VALUES ($1, $2, 'status_changed', $3, $4, $5, $6)`,
-        [salonId, appointmentId, input.actorUserId ?? null, current.status_code, input.status, JSON.stringify({ note: input.note })],
+        [
+          salonId,
+          appointmentId,
+          input.actorUserId ?? null,
+          current.status_code,
+          input.status,
+          JSON.stringify({
+            note: input.note,
+            tipMinor: input.tipMinor ?? null,
+          }),
+        ],
       )
 
       return updated
     })
+  },
+
+  updateAppointmentTreatmentDetails(
+    salonId: string,
+    appointmentId: string,
+    input: {
+      categoryCode: string
+      treatmentDetails: Record<string, unknown>
+      treatmentNotes?: string
+      treatmentRecommendations?: string
+    },
+  ): Promise<Appointment> {
+    return withTransaction(async (client) => {
+      await ensureClinicalTables(client)
+      const currentRows = await clientRows<Appointment>(
+        client,
+        'SELECT * FROM appointments WHERE salon_id = $1 AND id = $2 FOR UPDATE',
+        [salonId, appointmentId],
+      )
+      const current = currentRows[0]
+      if (!current) throw new ApiError(404, 'Appointment not found')
+      if (['canceled', 'no_show'].includes(current.status_code)) {
+        throw new ApiError(409, 'Canceled appointments cannot be updated.')
+      }
+
+      const categoryCode = input.categoryCode
+      await client.query(
+        `INSERT INTO appointment_category_details (salon_id, appointment_id, category, details_json)
+         VALUES ($1, $2, $3, $4::jsonb)
+         ON CONFLICT (salon_id, appointment_id, category) DO UPDATE SET
+           details_json = EXCLUDED.details_json`,
+        [salonId, appointmentId, categoryCode, JSON.stringify(input.treatmentDetails)],
+      )
+
+      const serviceRows = await clientRows<QueryResultRow & { id: string }>(
+        client,
+        `SELECT id FROM appointment_services
+         WHERE salon_id = $1 AND appointment_id = $2 AND category_code_snapshot = $3
+         ORDER BY created_at`,
+        [salonId, appointmentId, categoryCode],
+      )
+
+      for (const service of serviceRows) {
+        const existing = await clientRows<QueryResultRow & { id: string }>(
+          client,
+          `SELECT id FROM treatment_records
+           WHERE salon_id = $1 AND appointment_service_id = $2
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [salonId, service.id],
+        )
+        if (existing[0]) {
+          await client.query(
+            `UPDATE treatment_records
+             SET details_json = $3::jsonb,
+                 notes = COALESCE($4, notes),
+                 recommendations = COALESCE($5, recommendations)
+             WHERE salon_id = $1 AND id = $2`,
+            [
+              salonId,
+              existing[0].id,
+              JSON.stringify(input.treatmentDetails),
+              input.treatmentNotes ?? null,
+              input.treatmentRecommendations ?? null,
+            ],
+          )
+          await client.query(
+            `DELETE FROM treatment_media
+             WHERE treatment_record_id = $1`,
+            [existing[0].id],
+          )
+          const mediaItems = Array.isArray(input.treatmentDetails.mediaItems)
+            ? input.treatmentDetails.mediaItems
+            : []
+          for (const item of mediaItems) {
+            if (!item || typeof item !== 'object') continue
+            const media = item as Record<string, unknown>
+            if (typeof media.storageKey !== 'string') continue
+            await client.query(
+              `INSERT INTO treatment_media (
+                 treatment_record_id, media_type, storage_key, mime_type, metadata_json
+               ) VALUES ($1, $2, $3, $4, $5::jsonb)`,
+              [
+                existing[0].id,
+                typeof media.mediaType === 'string' ? media.mediaType : 'reference',
+                media.storageKey,
+                typeof media.mimeType === 'string' ? media.mimeType : null,
+                JSON.stringify({
+                  url: typeof media.url === 'string' ? media.url : null,
+                  originalFilename: typeof media.originalFilename === 'string' ? media.originalFilename : null,
+                }),
+              ],
+            )
+          }
+        } else {
+          const treatmentRows = await clientRows<QueryResultRow & { id: string }>(
+            client,
+            `INSERT INTO treatment_records (
+               salon_id, appointment_service_id, client_id, professional_id, category_code,
+               details_json, notes, recommendations
+             ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+             RETURNING id`,
+            [
+              salonId,
+              service.id,
+              current.client_id,
+              current.professional_id,
+              categoryCode,
+              JSON.stringify(input.treatmentDetails),
+              input.treatmentNotes ?? null,
+              input.treatmentRecommendations ?? null,
+            ],
+          )
+          const treatmentRecordId = treatmentRows[0]?.id
+          const mediaItems = Array.isArray(input.treatmentDetails.mediaItems)
+            ? input.treatmentDetails.mediaItems
+            : []
+          for (const item of mediaItems) {
+            if (!item || typeof item !== 'object' || !treatmentRecordId) continue
+            const media = item as Record<string, unknown>
+            if (typeof media.storageKey !== 'string') continue
+            await client.query(
+              `INSERT INTO treatment_media (
+                 treatment_record_id, media_type, storage_key, mime_type, metadata_json
+               ) VALUES ($1, $2, $3, $4, $5::jsonb)`,
+              [
+                treatmentRecordId,
+                typeof media.mediaType === 'string' ? media.mediaType : 'reference',
+                media.storageKey,
+                typeof media.mimeType === 'string' ? media.mimeType : null,
+                JSON.stringify({
+                  url: typeof media.url === 'string' ? media.url : null,
+                  originalFilename: typeof media.originalFilename === 'string' ? media.originalFilename : null,
+                }),
+              ],
+            )
+          }
+        }
+      }
+
+      await replaceTreatmentVisualAnnotations(
+        client,
+        salonId,
+        current.client_id,
+        appointmentId,
+        categoryCode,
+        input.treatmentDetails,
+      )
+
+      await client.query(
+        `INSERT INTO appointment_events
+          (salon_id, appointment_id, event_type, actor_user_id, from_status_code, to_status_code, metadata_json)
+         VALUES ($1, $2, 'treatment_details_updated', NULL, $3, $3, $4)`,
+        [
+          salonId,
+          appointmentId,
+          current.status_code,
+          JSON.stringify({ categoryCode }),
+        ],
+      )
+
+      return current
+    }).then(() => this.getAppointment(salonId, appointmentId))
   },
 
   async listEligibleProviders(salonId: string, filters: EligibleProviderFilters) {

@@ -37,6 +37,7 @@ import {
   serviceMaterialsQuerySchema,
   signatureRecordSchema,
   updateAppointmentStatusSchema,
+  updateAppointmentTreatmentDetailsSchema,
   updateSalonSettingsSchema,
   uploadTreatmentMediaSchema,
   upsertProfessionalSchema,
@@ -342,6 +343,12 @@ router.patch('/salons/:salonId/appointments/:id/status', asyncHandler(async (req
   const { salonId, id } = validate(salonResourceParamsSchema, request.params)
   const body = validate(updateAppointmentStatusSchema, request.body)
   response.json({ data: await dataService.updateAppointmentStatus(salonId, id, body) })
+}))
+
+router.patch('/salons/:salonId/appointments/:id/treatment-details', asyncHandler(async (request, response) => {
+  const { salonId, id } = validate(salonResourceParamsSchema, request.params)
+  const body = validate(updateAppointmentTreatmentDetailsSchema, request.body)
+  response.json({ data: await dataService.updateAppointmentTreatmentDetails(salonId, id, body) })
 }))
 
 router.get('/salons/:salonId/availability', asyncHandler(async (request, response) => {

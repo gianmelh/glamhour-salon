@@ -1,5 +1,5 @@
 import { Camera, ChevronRight, Upload } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '../../../../lib/cn'
 import { lashesBookingAssets } from '../assets'
 import { lashVariantOptions, lashesDetailsLayout } from '../lashesDetailsSpec'
@@ -297,13 +297,64 @@ export function LashesPhotoMethodScreen({
 export function LashesPhotoCaptureScreen({
   onBack,
   onCapture,
+  capturing,
+  error,
 }: {
   onBack: () => void
-  onCapture: () => void
+  onCapture: (file: File) => void
+  capturing?: boolean
+  error?: string | null
 }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const [cameraError, setCameraError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: 'user' },
+        })
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+        streamRef.current = stream
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          await videoRef.current.play()
+        }
+      } catch {
+        setCameraError('Camera access was denied or is unavailable. Upload a photo instead.')
+      }
+    }
+    void startCamera()
+    return () => {
+      active = false
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    }
+  }, [])
+
+  const captureFrame = async () => {
+    const video = videoRef.current
+    if (!video) return
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth || 720
+    canvas.height = video.videoHeight || 960
+    const context = canvas.getContext('2d')
+    if (!context) return
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+    if (!blob) return
+    onCapture(new File([blob], `lashes-capture-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+  }
+
   return (
     <div className="relative min-h-[640px] overflow-hidden rounded-[20px] bg-black text-white">
-      <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 py-4">
+      <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-4 py-4">
         <button aria-label="Back" className="rounded-full bg-black/40 p-2" onClick={onBack} type="button">
           <svg aria-hidden className="size-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
             <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
@@ -312,17 +363,30 @@ export function LashesPhotoCaptureScreen({
         <span className="text-sm font-semibold">Front camera</span>
         <span className="w-9" />
       </div>
-      <div className="flex min-h-[640px] flex-col items-center justify-center px-6">
+      <video
+        autoPlay
+        className="absolute inset-0 size-full object-cover"
+        muted
+        playsInline
+        ref={videoRef}
+      />
+      <div className="absolute inset-0 flex flex-col items-center justify-center px-6">
         <div className="rounded-[24px] border-2 border-dashed border-white/70 px-8 py-16 text-center">
           <p className="text-sm font-semibold">Center your face here</p>
         </div>
         <p className="mt-6 rounded-full bg-black/50 px-4 py-2 text-xs">Keep both eyes visible</p>
+        {(cameraError || error) && (
+          <p className="mt-4 max-w-xs rounded-xl bg-[#fef3f2] px-3 py-2 text-center text-[12px] text-[#b42318]">
+            {cameraError || error}
+          </p>
+        )}
       </div>
       <div className="absolute inset-x-0 bottom-8 flex justify-center">
         <button
           aria-label="Capture photo"
-          className="size-[72px] rounded-full border-4 border-white bg-white/20"
-          onClick={onCapture}
+          className="size-[72px] rounded-full border-4 border-white bg-white/20 disabled:opacity-50"
+          disabled={Boolean(cameraError) || capturing}
+          onClick={() => void captureFrame()}
           type="button"
         />
       </div>
@@ -333,15 +397,18 @@ export function LashesPhotoCaptureScreen({
 export function LashesPhotoConfirmScreen({
   details,
   onBack,
+  onChange,
   onConfirm,
   onReplace,
 }: {
   details: Record<string, unknown>
   onBack: () => void
+  onChange: (patch: Record<string, unknown>) => void
   onConfirm: () => void
   onReplace: () => void
 }) {
   const previewUrl = String(details.photoPreviewUrl ?? lashesBookingAssets.photoPlaceholder)
+  const canUse = Boolean(details.photoPreviewUrl && details.photoStorageKey && details.photoConsent)
 
   return (
     <LashesWizardShell>
@@ -351,8 +418,20 @@ export function LashesPhotoConfirmScreen({
         title="Confirm photo"
       />
       <img alt="Client reference" className="h-[431px] w-full rounded-[16px] object-cover" src={previewUrl} />
+      <label className="mt-4 flex items-start gap-3 text-[14px] leading-5 text-[#475467]">
+        <input
+          checked={Boolean(details.photoConsent)}
+          className="mt-1 size-4 accent-[#7344cd]"
+          onChange={(event) => onChange({ photoConsent: event.target.checked })}
+          type="checkbox"
+        />
+        <span>I confirm the client consents to storing this reference photo for the treatment record.</span>
+      </label>
+      {!details.photoStorageKey && details.photoPreviewUrl && (
+        <p className="mt-2 text-[12px] text-[#b42318]">Upload the photo before continuing (camera capture must finish uploading).</p>
+      )}
       <div className="flex flex-col gap-3 py-4">
-        <LashesPrimaryButton disabled={!details.photoPreviewUrl} onClick={onConfirm}>Use photo</LashesPrimaryButton>
+        <LashesPrimaryButton disabled={!canUse} onClick={onConfirm}>Use photo</LashesPrimaryButton>
         <LashesSecondaryButton onClick={onReplace}>Replace photo</LashesSecondaryButton>
       </div>
     </LashesWizardShell>

@@ -1,20 +1,9 @@
 import { LASHES_DETAIL_KEYS } from '../lashes-booking/types'
 import { mergeLashesDetailsPatch } from '../lashes-booking/mergeLashesDetailsPatch'
+import { NAILS_DETAIL_KEYS } from '../nails-booking/nailsDetailsTypes'
 import { mergeDetailsPatch as mergeNailsDetailsPatch } from './categories/nails/nailsFingerOptions'
 
-const NAILS_ONLY_KEYS = new Set([
-  'nailServiceType',
-  'nailType',
-  'materialIds',
-  'materialLabels',
-  'materials',
-  'handMode',
-  'activeHand',
-  'activeFinger',
-  'rightHand',
-  'leftHand',
-  'lengthPreference',
-])
+const NAILS_ONLY_KEYS = new Set<string>(NAILS_DETAIL_KEYS)
 
 const LASHES_ONLY_KEYS = new Set([
   'style',
@@ -31,13 +20,80 @@ const LASHES_ONLY_KEYS = new Set([
   'photoCapturePending',
 ])
 
+const COSMETOLOGY_DETAIL_KEYS = [
+  'skin_type',
+  'equipment',
+  'faceAnnotations',
+  'skinAlterationNotes',
+  'products',
+  'aftercare',
+  'photoPreviewUrl',
+  'photoStorageKey',
+  'photoConsent',
+  'mediaItems',
+  'healthAnswers',
+  'consentItems',
+  'consentAccepted',
+  'consents',
+  'professionalSignature',
+  'clientSignature',
+  'healthFullName',
+  'healthPhone',
+  'healthEmail',
+  'usedExistingHealthProfile',
+  'phototype',
+] as const
+
+const MICROPIGMENTATION_DETAIL_KEYS = [
+  'area',
+  'procedure',
+  'brow_width_mm',
+  'brow_height_mm',
+  'lip_width_mm',
+  'undertone',
+  'session_type',
+  'session_number',
+  'related_treatment_id',
+  'pigment_brand',
+  'color_mix',
+  'needle',
+  'touch_up_date',
+  'procedure_notes',
+  'clientDesignSignature',
+  'photoPreviewUrl',
+  'photoStorageKey',
+  'photoConsent',
+  'mediaItems',
+  'healthAnswers',
+  'consentItems',
+  'consentAccepted',
+  'consents',
+  'signatures',
+  'professionalSignature',
+  'clientSignature',
+  'healthFullName',
+  'healthPhone',
+  'healthEmail',
+  'usedExistingHealthProfile',
+  'phototype',
+] as const
+
 export function sanitizeDetailsForCategory(categoryCode: string, details: Record<string, unknown>) {
   if (categoryCode === 'lashes') {
     const allowed = new Set<string>(LASHES_DETAIL_KEYS)
     return Object.fromEntries(Object.entries(details).filter(([key]) => allowed.has(key)))
   }
   if (categoryCode === 'nails') {
-    return Object.fromEntries(Object.entries(details).filter(([key]) => !LASHES_ONLY_KEYS.has(key)))
+    const allowed = new Set<string>(NAILS_DETAIL_KEYS)
+    return Object.fromEntries(Object.entries(details).filter(([key]) => allowed.has(key)))
+  }
+  if (categoryCode === 'cosmetology') {
+    const allowed = new Set<string>(COSMETOLOGY_DETAIL_KEYS)
+    return Object.fromEntries(Object.entries(details).filter(([key]) => allowed.has(key)))
+  }
+  if (categoryCode === 'micropigmentation') {
+    const allowed = new Set<string>(MICROPIGMENTATION_DETAIL_KEYS)
+    return Object.fromEntries(Object.entries(details).filter(([key]) => allowed.has(key)))
   }
   return Object.fromEntries(Object.entries(details).filter(([key]) => !NAILS_ONLY_KEYS.has(key) && !LASHES_ONLY_KEYS.has(key)))
 }
