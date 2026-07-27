@@ -206,6 +206,23 @@ function sanitizeStoredDraft(draft: OnboardingDraft | null, categories: ServiceC
   return sanitizedDraft.services.length && sanitizedDraft.selectedCategoryIds.length ? withRequiredDraftServices(sanitizedDraft, categories) : null
 }
 
+function isNailTreatmentService(service: DraftService, categories: ServiceCategory[]) {
+  const category = categories.find((item) => item.id === service.categoryId)
+  return category?.code === 'nails'
+    && service.section !== 'material'
+    && nailServiceSetupItems.some((name) => name.toLowerCase() === service.name.toLowerCase())
+}
+
+function getNailTreatmentServices(draft: OnboardingDraft, categories: ServiceCategory[]) {
+  return nailServiceSetupItems
+    .map((name) => draft.services.find((service) => isNailTreatmentService(service, categories) && service.name.toLowerCase() === name.toLowerCase()))
+    .filter((service): service is DraftService => Boolean(service))
+}
+
+function getProviderCategoryServices(draft: OnboardingDraft) {
+  return draft.services.filter((service) => service.section !== 'material')
+}
+
 function createDraft(categories: ServiceCategory[], services: Service[], professionals: Professional[]): OnboardingDraft {
   const selectedCategoryIds: string[] = []
   const serviceDrafts: DraftService[] = services.length
@@ -945,12 +962,15 @@ function ProviderSummaryList({ categories, draft, onAddProvider, onEditProvider 
 }
 
 function ProviderSummaryCard({ categories, draft, provider, onEdit }: { categories: ServiceCategory[]; draft: OnboardingDraft; provider: DraftProvider; onEdit: () => void }) {
-  const serviceMap = new Map(draft.services.map((service) => [service.id, service]))
-  const providerServices = provider.serviceIds
-    .map((serviceId) => serviceMap.get(serviceId))
+  const categoryServiceMap = new Map(getProviderCategoryServices(draft).map((service) => [service.id, service]))
+  const nailServiceMap = new Map(getNailTreatmentServices(draft, categories).map((service) => [service.id, service]))
+  const providerCategoryServices = provider.serviceIds
+    .map((serviceId) => categoryServiceMap.get(serviceId))
     .filter((service): service is DraftService => Boolean(service))
-    .filter((service) => service.section !== 'material')
-  const categoryIds = new Set(providerServices.map((service) => service.categoryId))
+  const providerNailServices = provider.serviceIds
+    .map((serviceId) => nailServiceMap.get(serviceId))
+    .filter((service): service is DraftService => Boolean(service))
+  const categoryIds = new Set(providerCategoryServices.map((service) => service.categoryId))
   const providerCategories = categories.filter((category) => categoryIds.has(category.id))
   const languageChips = provider.languages.length ? provider.languages.map(formatLanguageLabel) : ['English']
   const scheduleLabel = provider.useSalonSchedule === false ? 'Custom Working Hours' : 'Standard Salon Hours'
@@ -983,7 +1003,7 @@ function ProviderSummaryCard({ categories, draft, provider, onEdit }: { categori
         </div>
 
         <ProviderSummarySection icon={<Sparkles className="size-4" />} label="SERVICES" values={providerCategories.map((category) => category.name)} />
-        <ProviderSummarySection icon={<Sparkles className="size-4" />} label="SPECIALTIES" values={providerServices.map((service) => service.name)} />
+        <ProviderSummarySection icon={<Sparkles className="size-4" />} label="SPECIALTIES" values={providerNailServices.map((service) => service.name)} />
       </div>
 
       <Button className="mt-7 min-h-14 rounded-xl border-0 bg-[#f4f5ff] text-[16px] font-medium text-[#7a3fe0] shadow-[0_12px_22px_rgb(59_45_115_/_0.16)] hover:bg-[#eef0ff]" fullWidth onClick={onEdit} type="button" variant="outline">
@@ -1014,7 +1034,8 @@ function ProviderSummarySection({ icon, label, values }: { icon: ReactNode; labe
 }
 
 function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraft }: { categories: ServiceCategory[]; draft: OnboardingDraft; provider: DraftProvider; salonSchedule: Record<string, DraftDay>; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
-  const providerServices = draft.services.filter((service) => service.section !== 'material')
+  const providerServices = getNailTreatmentServices(draft, categories)
+  const providerCategoryServices = getProviderCategoryServices(draft)
   const providerServiceIds = new Set(provider.serviceIds)
   const usesSalonSchedule = provider.useSalonSchedule === true
   const [photoError, setPhotoError] = useState('')
@@ -1027,7 +1048,7 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
   }
 
   function categoryServices(categoryId: string) {
-    return providerServices.filter((service) => service.categoryId === categoryId)
+    return providerCategoryServices.filter((service) => service.categoryId === categoryId)
   }
 
   function categoryAssigned(categoryId: string) {
@@ -1222,36 +1243,36 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
             })}
           </div>
 
-          <p className="mb-2 mt-4 text-xs font-semibold text-[#242a39]">Services</p>
+          <p className="mb-3 mt-4 text-[16px] leading-5 text-[#68738b]">Services</p>
           <div className="space-y-2">
             {providerServices.map((service) => {
               const selected = provider.serviceIds.includes(service.id)
               return (
                 <div
-                  className={cn('grid grid-cols-[minmax(0,1fr)_86px] items-center gap-2 rounded-md border px-3 py-2 text-xs', selected ? 'border-[#7a3fe0] bg-[#f4efff]' : 'border-[#dde1ec] bg-white')}
+                  className="grid grid-cols-[minmax(0,1fr)_74px_auto] items-center gap-2"
                   key={service.id}
                 >
                   <button
-                    className="flex min-w-0 items-center gap-2 text-left"
+                    className={cn('flex min-h-[48px] min-w-0 items-center gap-3 rounded-2xl border px-4 text-left transition', selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white')}
                     onClick={() => toggleProviderService(service.id, !selected)}
                     type="button"
                   >
-                    <span className={cn('grid size-4 shrink-0 place-items-center rounded-[4px] border', selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent')}>
+                    <span className={cn('grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)]', selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent')}>
                       <Check className="size-3" />
                     </span>
-                    <span className="truncate font-medium text-[#1b2133]">{service.name}</span>
+                    <span className="truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
                   </button>
-                  <label className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md border border-[#dde1ec] bg-white px-2 py-1">
+                  <label className="grid min-h-[48px] items-center overflow-hidden rounded-2xl border border-[#d7dce8] bg-white px-2">
                     <input
                       aria-label={`${service.name} duration`}
-                      className="min-w-0 bg-transparent text-right text-[11px] text-[#1b2133] outline-none placeholder:text-[#8b92a1]"
+                      className="[appearance:textfield] min-w-0 bg-transparent text-center text-[12px] text-[#1b2133] outline-none placeholder:text-[12px] placeholder:text-[#7b8498] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       onChange={(event) => updateProviderServiceDuration(service.id, event.target.value)}
                       placeholder="e.g. 40"
                       type="number"
-                      value={service.duration}
+                      value={service.duration === '60' ? '' : service.duration}
                     />
-                    <span className="text-[10px] font-medium text-[#8b92a1]">min</span>
                   </label>
+                  <span className="text-[15px] leading-none text-[#10172a]">min</span>
                 </div>
               )
             })}
