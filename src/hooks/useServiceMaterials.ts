@@ -9,8 +9,9 @@ export function useServiceMaterials(params: {
   categoryId?: string
   categoryCode?: string
   serviceId?: string
+  enabled?: boolean
 }) {
-  const enabled = Boolean(params.categoryId || params.categoryCode)
+  const enabled = params.enabled ?? Boolean(params.categoryId || params.categoryCode)
   return useApiResource(
     useCallback(async () => {
       if (!enabled) return []
@@ -28,6 +29,7 @@ export function useNailsServiceMaterials(serviceId?: string, categoryId?: string
   return useServiceMaterials({
     categoryCode: 'nails',
     categoryId,
+    enabled: Boolean(categoryId || serviceId),
     serviceId,
   })
 }
