@@ -16,7 +16,7 @@ import {
 import { UpdateServiceSelectionModal } from '../../components/UpdateServiceSelectionModal'
 import type { CategoryStepProps } from '../../types'
 import { HandEditor } from './HandEditor'
-import { getNailsDetailsMissingItems } from './nailsFingerOptions'
+import { getNailsDetailsMissingItems, isHandComplete } from './nailsFingerOptions'
 import {
   buildMaterialSpecs,
   materialGridLayout,
@@ -76,6 +76,23 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
   const missingItems = getNailsDetailsMissingItems(details)
   const materialsLoading = materialsQuery.loading
   const materialsError = materialsQuery.error
+  const activeHand = String(details.activeHand ?? 'rightHand')
+  const usesFingerMode = details.handMode === 'finger'
+  const rightHandComplete = isHandComplete(details.rightHand as Record<string, Record<string, string>> | undefined)
+  const leftHandComplete = isHandComplete(details.leftHand as Record<string, Record<string, string>> | undefined)
+
+  const continueNailsFlow = () => {
+    if (usesFingerMode && activeHand === 'rightHand' && rightHandComplete && !leftHandComplete) {
+      setDetails({ ...details, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' })
+      return
+    }
+    if (usesFingerMode && activeHand === 'leftHand' && leftHandComplete && !rightHandComplete) {
+      setDetails({ ...details, activeHand: 'rightHand', activeFinger: 'thumb', handMode: 'finger' })
+      return
+    }
+    if (!selectedServiceId && services[0]) onChange({ serviceId: services[0].id, details })
+    onNext()
+  }
 
   return (
     <RegistrationFlowShell activeCategory="nails" onBack={onBack}>
@@ -178,10 +195,7 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
         <RegistrationContinueSection
           canContinue
           disabledMessage={missingItems.length ? `To continue, complete: ${missingItems.join(' · ')}` : undefined}
-          onContinue={() => {
-            if (!selectedServiceId && services[0]) onChange({ serviceId: services[0].id, details })
-            onNext()
-          }}
+          onContinue={continueNailsFlow}
         />
 
         <UpdateServiceSelectionModal
