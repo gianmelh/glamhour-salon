@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '../../../../../lib/cn'
 import { useNailsServiceMaterials } from '../../../../../hooks/useServiceMaterials'
 import { hasNailsDownstreamSelections } from '../../../nails-booking/nailsDetailsTypes'
@@ -37,6 +37,7 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
     [materialsQuery.data],
   )
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null)
+  const autoAdvanceKey = useRef('')
 
   const setDetails = (next: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>)) => {
     onChange({ details: next })
@@ -93,6 +94,39 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
     if (!selectedServiceId && services[0]) onChange({ serviceId: services[0].id, details })
     onNext()
   }
+
+  useEffect(() => {
+    if (!usesFingerMode) return
+    const key = `${activeHand}:${rightHandComplete}:${leftHandComplete}:${leftHandStarted}`
+    if (autoAdvanceKey.current === key) return
+
+    if (activeHand === 'rightHand' && rightHandComplete && !leftHandStarted) {
+      autoAdvanceKey.current = key
+      setDetails((current) => ({ ...current, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' }))
+      queueMicrotask(() => document.querySelector('main')?.scrollTo({ top: 0 }))
+      return
+    }
+
+    if ((activeHand === 'leftHand' && leftHandComplete) || (rightHandComplete && leftHandComplete)) {
+      autoAdvanceKey.current = key
+      queueMicrotask(() => {
+        if (!selectedServiceId && services[0]) onChange({ serviceId: services[0].id, details })
+        onNext()
+      })
+    }
+  }, [
+    activeHand,
+    details,
+    leftHandComplete,
+    leftHandStarted,
+    onChange,
+    onNext,
+    rightHandComplete,
+    selectedServiceId,
+    services,
+    setDetails,
+    usesFingerMode,
+  ])
 
   return (
     <RegistrationFlowShell activeCategory="nails" onBack={onBack}>
