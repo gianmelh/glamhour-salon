@@ -14,9 +14,9 @@ import {
   RegistrationFlowShell,
 } from '../../components/RegistrationFlowShell'
 import { UpdateServiceSelectionModal } from '../../components/UpdateServiceSelectionModal'
-import type { CategoryStepProps } from '../../types'
+import type { CategoryStepProps, HandName } from '../../types'
 import { HandEditor } from './HandEditor'
-import { getNailsDetailsMissingItems, isHandComplete } from './nailsFingerOptions'
+import { getNailsDetailsMissingItems, hasHandMeasurement, isHandComplete } from './nailsFingerOptions'
 import {
   buildMaterialSpecs,
   materialGridLayout,
@@ -76,18 +76,17 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
   const missingItems = getNailsDetailsMissingItems(details)
   const materialsLoading = materialsQuery.loading
   const materialsError = materialsQuery.error
+  const activeHand = (details.activeHand as HandName | undefined) ?? 'rightHand'
   const usesFingerMode = details.handMode === 'finger'
   const rightHandComplete = isHandComplete(details.rightHand as Record<string, Record<string, string>> | undefined)
   const leftHandComplete = isHandComplete(details.leftHand as Record<string, Record<string, string>> | undefined)
+  const leftHandStarted = hasHandMeasurement(details.leftHand as Record<string, Record<string, string>> | undefined)
+  const activeHandComplete = activeHand === 'rightHand' ? rightHandComplete : leftHandComplete
+  const canContinue = !usesFingerMode || activeHandComplete
 
   const continueNailsFlow = () => {
-    if (usesFingerMode && rightHandComplete && !leftHandComplete) {
+    if (usesFingerMode && activeHand === 'rightHand' && rightHandComplete && !leftHandStarted) {
       setDetails((current) => ({ ...current, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' }))
-      queueMicrotask(() => document.querySelector('main')?.scrollTo({ top: 0 }))
-      return
-    }
-    if (usesFingerMode && leftHandComplete && !rightHandComplete) {
-      setDetails((current) => ({ ...current, activeHand: 'rightHand', activeFinger: 'thumb', handMode: 'finger' }))
       queueMicrotask(() => document.querySelector('main')?.scrollTo({ top: 0 }))
       return
     }
@@ -194,7 +193,7 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
         <HandEditor details={details} onChange={setDetails} />
 
         <RegistrationContinueSection
-          canContinue
+          canContinue={canContinue}
           disabledMessage={missingItems.length ? `To continue, complete: ${missingItems.join(' · ')}` : undefined}
           onContinue={continueNailsFlow}
         />
