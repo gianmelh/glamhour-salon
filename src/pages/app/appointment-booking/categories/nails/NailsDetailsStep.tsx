@@ -76,18 +76,19 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
   const missingItems = getNailsDetailsMissingItems(details)
   const materialsLoading = materialsQuery.loading
   const materialsError = materialsQuery.error
-  const activeHand = String(details.activeHand ?? 'rightHand')
   const usesFingerMode = details.handMode === 'finger'
   const rightHandComplete = isHandComplete(details.rightHand as Record<string, Record<string, string>> | undefined)
   const leftHandComplete = isHandComplete(details.leftHand as Record<string, Record<string, string>> | undefined)
 
   const continueNailsFlow = () => {
-    if (usesFingerMode && activeHand === 'rightHand' && rightHandComplete && !leftHandComplete) {
-      setDetails({ ...details, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' })
+    if (usesFingerMode && rightHandComplete && !leftHandComplete) {
+      setDetails((current) => ({ ...current, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' }))
+      queueMicrotask(() => document.querySelector('main')?.scrollTo({ top: 0 }))
       return
     }
-    if (usesFingerMode && activeHand === 'leftHand' && leftHandComplete && !rightHandComplete) {
-      setDetails({ ...details, activeHand: 'rightHand', activeFinger: 'thumb', handMode: 'finger' })
+    if (usesFingerMode && leftHandComplete && !rightHandComplete) {
+      setDetails((current) => ({ ...current, activeHand: 'rightHand', activeFinger: 'thumb', handMode: 'finger' }))
+      queueMicrotask(() => document.querySelector('main')?.scrollTo({ top: 0 }))
       return
     }
     if (!selectedServiceId && services[0]) onChange({ serviceId: services[0].id, details })
