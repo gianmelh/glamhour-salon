@@ -74,7 +74,6 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
   const selectedMaterialIds = new Set((details.materialIds as string[] | undefined) ?? [])
   const selectedMaterialLabels = new Set((details.materialLabels as string[] | undefined) ?? (details.materials as string[] | undefined) ?? [])
   const missingItems = getNailsDetailsMissingItems(details)
-  const canContinue = Boolean(selectedServiceId || services[0])
   const materialsLoading = materialsQuery.loading
   const materialsError = materialsQuery.error
 
@@ -177,7 +176,7 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
         <HandEditor details={details} onChange={setDetails} />
 
         <RegistrationContinueSection
-          canContinue={canContinue}
+          canContinue
           disabledMessage={missingItems.length ? `To continue, complete: ${missingItems.join(' · ')}` : undefined}
           onContinue={() => {
             if (!selectedServiceId && services[0]) onChange({ serviceId: services[0].id, details })
