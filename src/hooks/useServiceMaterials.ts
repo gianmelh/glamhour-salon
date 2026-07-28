@@ -1,6 +1,9 @@
 import { useCallback } from 'react'
 import { glamhourApi } from '../services/glamhour-api'
 import { useApiResource } from './useApiResource'
+import type { ServiceMaterial } from '../types/api'
+
+const emptyServiceMaterials: ServiceMaterial[] = []
 
 export function useServiceMaterials(params: {
   categoryId?: string
@@ -17,7 +20,7 @@ export function useServiceMaterials(params: {
         serviceId: params.serviceId,
       })
     }, [enabled, params.categoryCode, params.categoryId, params.serviceId]),
-    [],
+    emptyServiceMaterials,
   )
 }
 
