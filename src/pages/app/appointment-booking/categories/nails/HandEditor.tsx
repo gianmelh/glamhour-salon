@@ -65,6 +65,17 @@ export function HandEditor({ details, onChange }: {
     if (details.handMode && details.handMode !== mode) setMode(details.handMode as 'finger' | 'hand')
   }, [details.activeFinger, details.activeHand, details.handMode, finger, hand, mode])
 
+  useEffect(() => {
+    if (!details.handMode) {
+      onChange({
+        ...details,
+        activeHand: hand,
+        activeFinger: finger,
+        handMode: mode,
+      })
+    }
+  }, [details, finger, hand, mode, onChange])
+
   const patch = (next: Record<string, unknown>) => onChange({
     ...details,
     ...next,

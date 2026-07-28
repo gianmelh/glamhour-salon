@@ -85,6 +85,11 @@ export function getNailsDetailsMissingItems(details: Record<string, unknown>) {
   const materials = (details.materialLabels as string[] | undefined) ?? (details.materials as string[] | undefined) ?? []
   if (!materials.length) missing.push('At least one material')
 
+  if (details.handMode !== 'finger') {
+    if (!details.handMode) missing.push('Select finger mode')
+    return missing
+  }
+
   const rightProgress = getHandProgress(details.rightHand as Record<string, Record<string, string>> | undefined)
   if (rightProgress.completed < rightProgress.total) {
     missing.push(`Right hand finger measurements (${rightProgress.completed}/${rightProgress.total})`)

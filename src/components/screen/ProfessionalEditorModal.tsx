@@ -1,4 +1,5 @@
-import { type ChangeEvent } from 'react'
+import { type ChangeEvent, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { UserRound } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
@@ -42,6 +43,14 @@ export function ProfessionalEditorModal({ draft, services, salonSchedule, loadin
   onSubmit: () => void
   onCancel: () => void
 }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [])
+
   const selectedIds = new Set(draft.serviceAssignments.filter((assignment) => assignment.isActive).map((assignment) => assignment.serviceId))
   const update = (patch: Partial<ProfessionalDraft>) => onChange({ ...draft, ...patch })
   const canSave = draft.fullName.trim().length > 0
@@ -67,8 +76,8 @@ export function ProfessionalEditorModal({ draft, services, salonSchedule, loadin
     return acc
   }, {})
 
-  return (
-    <div className="fixed inset-0 z-[80] grid place-items-end bg-black/40 p-0 sm:place-items-center sm:p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] grid place-items-end bg-black/40 p-0 sm:place-items-center sm:p-4">
       <Card className="max-h-[calc(100dvh-16px)] w-full max-w-[393px] overflow-y-auto rounded-b-none bg-[#f2f5ff] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl sm:max-h-[88dvh] sm:rounded-2xl sm:p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
@@ -169,7 +178,8 @@ export function ProfessionalEditorModal({ draft, services, salonSchedule, loadin
           </div>
         </div>
       </Card>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
