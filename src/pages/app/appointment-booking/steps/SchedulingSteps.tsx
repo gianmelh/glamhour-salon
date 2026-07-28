@@ -122,7 +122,7 @@ export function SuccessStep({ onDone }: { onDone: () => void }) {
         <span className="mx-auto grid size-20 place-items-center rounded-full bg-[#7a3fe0] text-white shadow-lg"><Check className="size-10" /></span>
         <h1 className="mt-6 text-[28px] font-extrabold text-[#111827]">Successfully scheduled</h1>
         <p className="mx-auto mt-3 max-w-[250px] text-sm leading-6 text-[#68738b]">The appointment was added to your salon schedule.</p>
-        <Button className="mt-8" fullWidth onClick={onDone}>Go to calendar</Button>
+        <Button className="mt-8" fullWidth onClick={onDone}>View appointment details</Button>
       </Card>
     </div>
   )

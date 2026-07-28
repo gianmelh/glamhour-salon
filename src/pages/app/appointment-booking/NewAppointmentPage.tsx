@@ -54,6 +54,7 @@ export function NewAppointmentPage() {
   const [providerLoading, setProviderLoading] = useState(false)
   const [availability, setAvailability] = useState<AvailabilitySlot[]>([])
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
+  const [createdAppointmentId, setCreatedAppointmentId] = useState('')
   const devLashesBootstrapped = useRef(false)
 
   useEffect(() => {
@@ -230,6 +231,7 @@ export function NewAppointmentPage() {
     setDraft(emptyDraft())
     window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
     appointments.setData((current) => [appointment, ...(current ?? [])])
+    setCreatedAppointmentId(appointment.id)
     setStep('success')
   }
 
@@ -261,6 +263,7 @@ export function NewAppointmentPage() {
           services={services.data}
           onSelect={(category) => {
             setDraft({ ...emptyDraft(), categoryId: category.id, categoryCode: category.code, date: draft.date })
+            setCreatedAppointmentId('')
             setStep('client')
           }}
         />
@@ -393,7 +396,11 @@ export function NewAppointmentPage() {
         />
       )}
 
-      {step === 'success' && <SuccessStep onDone={() => navigate('/app/calendar')} />}
+      {step === 'success' && (
+        <SuccessStep
+          onDone={() => navigate(createdAppointmentId ? `/app/appointments/${createdAppointmentId}` : '/app/calendar')}
+        />
+      )}
     </div>
   )
 }
