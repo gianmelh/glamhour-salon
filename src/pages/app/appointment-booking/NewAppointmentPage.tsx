@@ -310,6 +310,7 @@ export function NewAppointmentPage() {
               details: sanitizeDetailsForCategory(current.categoryCode, nextDetails),
             }
           })}
+          categorySource={categories.data}
           onServiceCreated={(service) => services.setData((current) => [service, ...(current ?? [])])}
           onNext={() => {
             const nextServiceId = resolveCategoryServiceId(draft, categoryServices, services.data ?? [])

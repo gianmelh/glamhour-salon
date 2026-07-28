@@ -41,6 +41,7 @@ export type CategoryStepProps = {
   onChange: (patch: DraftPatch) => void
   onBack: () => void
   onNext: () => void
+  categorySource?: ServiceCategory[]
   onServiceCreated?: (service: Service) => void
 }
 

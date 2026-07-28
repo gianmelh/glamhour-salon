@@ -31,7 +31,9 @@ type PendingSelection =
   | { kind: 'service'; label: string }
   | { kind: 'nailType'; label: string }
 
-export function NailsDetailsStep({ category, services, selectedServiceId, details, onChange, onBack, onNext, onServiceCreated }: CategoryStepProps & { category: ServiceCategory }) {
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+export function NailsDetailsStep({ category, categorySource, services, selectedServiceId, details, onChange, onBack, onNext, onServiceCreated }: CategoryStepProps & { category: ServiceCategory }) {
   const selectedService = services.find((service) => service.id === selectedServiceId) ?? services[0]
   const materialsQuery = useNailsServiceMaterials(selectedService?.id, selectedService?.category_id)
   const materialSpecs = useMemo(
@@ -40,6 +42,7 @@ export function NailsDetailsStep({ category, services, selectedServiceId, detail
   )
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null)
   const [continuing, setContinuing] = useState(false)
+  const [continueError, setContinueError] = useState('')
 
   const setDetails = (next: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>)) => {
     onChange({ details: next })
@@ -90,9 +93,15 @@ export function NailsDetailsStep({ category, services, selectedServiceId, detail
   const ensureSelectedService = async () => {
     if (selectedServiceId) return selectedServiceId
     if (services[0]) return services[0].id
+    const categoryId = uuidPattern.test(category.id)
+      ? category.id
+      : categorySource?.find((item) => item.code === category.code)?.id
+    if (!categoryId) {
+      throw new Error('Nails category is not available for this salon.')
+    }
 
     const service = await glamhourApi.createService({
-      categoryId: category.id,
+      categoryId,
       name: selectedType || 'Nails service',
       description: 'Created from nails booking flow.',
       durationMinutes: 60,
@@ -112,10 +121,13 @@ export function NailsDetailsStep({ category, services, selectedServiceId, detail
     }
 
     setContinuing(true)
+    setContinueError('')
     try {
       const serviceId = await ensureSelectedService()
       onChange({ serviceId, details })
       queueMicrotask(onNext)
+    } catch (error) {
+      setContinueError(error instanceof Error ? error.message : 'Could not continue.')
     } finally {
       setContinuing(false)
     }
@@ -221,7 +233,7 @@ export function NailsDetailsStep({ category, services, selectedServiceId, detail
 
         <RegistrationContinueSection
           canContinue={canContinue}
-          disabledMessage={missingItems.length ? `To continue, complete: ${missingItems.join(' · ')}` : undefined}
+          disabledMessage={continueError || (missingItems.length ? `To continue, complete: ${missingItems.join(' · ')}` : undefined)}
           label={continuing ? 'Continuing...' : 'Continue'}
           onContinue={continueNailsFlow}
         />
