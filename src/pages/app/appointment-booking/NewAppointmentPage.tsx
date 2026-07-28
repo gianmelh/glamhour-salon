@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../../components'
@@ -158,6 +158,22 @@ export function NewAppointmentPage() {
     }
   }, [categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, services.data, step])
 
+  const lastVisitByClientId = useMemo(() => {
+    const inactiveStatuses = new Set(['canceled', 'cancelled', 'no_show'])
+    const now = Date.now()
+    return (appointments.data ?? []).reduce<Record<string, string>>((result, appointment) => {
+      const appointmentTime = new Date(appointment.starts_at).getTime()
+      if (!Number.isFinite(appointmentTime) || appointmentTime >= now) return result
+      if (inactiveStatuses.has(appointment.status_code.toLowerCase())) return result
+
+      const previousTime = result[appointment.client_id]
+        ? new Date(result[appointment.client_id]).getTime()
+        : 0
+      if (appointmentTime > previousTime) result[appointment.client_id] = appointment.starts_at
+      return result
+    }, {})
+  }, [appointments.data])
+
   const loading = categories.loading || services.loading || clients.loading || appointments.loading
   if (loading) return <LoadingState label="Loading appointment flow..." />
   if (!categories.data || !services.data || !clients.data || !appointments.data) {
@@ -253,6 +269,7 @@ export function NewAppointmentPage() {
       {step === 'client' && (
         <ClientStep
           clients={clients.data}
+          lastVisitByClientId={lastVisitByClientId}
           selectedClientId={draft.clientId}
           onCreate={(client) => clients.setData((current) => [client, ...(current ?? [])])}
           onSelect={(clientId) => setDraft({ ...draft, clientId })}

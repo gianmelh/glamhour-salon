@@ -175,10 +175,10 @@ export function ServiceTypeCard({ active, label, onClick, imageSrc, variant = 'd
         'relative flex shrink-0 items-center justify-center',
         isPressOn ? 'size-[49px]' : 'h-[27px] w-[36px]',
       )}>
-        <span className="flex-none rotate-90">
+        <span className="flex-none">
           <img
             alt=""
-            className={cn('object-cover', isPressOn ? 'size-[49px]' : 'h-[36px] w-[27px]')}
+            className={cn('object-contain', isPressOn ? 'size-[49px]' : 'h-[27px] w-[36px]')}
             src={imageSrc}
           />
         </span>

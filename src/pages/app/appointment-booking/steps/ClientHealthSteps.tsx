@@ -24,8 +24,9 @@ function normalizeProfileAnswers(answers: Record<string, unknown> | undefined) {
   )
 }
 
-export function ClientStep({ clients, selectedClientId, onSelect, onNext, onCreate }: {
+export function ClientStep({ clients, lastVisitByClientId, selectedClientId, onSelect, onNext, onCreate }: {
   clients: Client[]
+  lastVisitByClientId: Record<string, string>
   selectedClientId: string
   onSelect: (id: string) => void
   onNext: () => void
@@ -46,6 +47,10 @@ export function ClientStep({ clients, selectedClientId, onSelect, onNext, onCrea
   }, [clients, search])
 
   const selectedClient = clients.find((client) => client.id === selectedClientId)
+  const lastVisitLabel = (clientId: string) => {
+    const lastVisit = lastVisitByClientId[clientId]
+    return lastVisit ? `Last visit ${formatShortDate(lastVisit)}` : undefined
+  }
 
   if (creating) {
     return (
@@ -97,7 +102,7 @@ export function ClientStep({ clients, selectedClientId, onSelect, onNext, onCrea
         <section className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Selected client</p>
           <button className="w-full text-left" onClick={() => onSelect(selectedClient.id)} type="button">
-            <ClientSearchCard client={selectedClient} selected subtitle="Tap to confirm selection" />
+            <ClientSearchCard client={selectedClient} selected subtitle={lastVisitLabel(selectedClient.id) ?? 'Tap to confirm selection'} />
           </button>
         </section>
       )}
@@ -109,7 +114,7 @@ export function ClientStep({ clients, selectedClientId, onSelect, onNext, onCrea
             <ClientSearchCard
               client={client}
               selected={selectedClientId === client.id}
-              subtitle={client.email ?? undefined}
+              subtitle={lastVisitLabel(client.id) ?? client.email ?? undefined}
             />
           </button>
         ))}
