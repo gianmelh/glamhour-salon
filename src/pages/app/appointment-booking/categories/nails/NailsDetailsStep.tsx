@@ -190,7 +190,7 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
           })}
         </div>
 
-        <HandEditor details={details} onChange={setDetails} />
+        <HandEditor details={details} onChange={setDetails} onComplete={continueNailsFlow} />
 
         <RegistrationContinueSection
           canContinue={canContinue}

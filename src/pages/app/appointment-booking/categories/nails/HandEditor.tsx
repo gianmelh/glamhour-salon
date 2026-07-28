@@ -51,9 +51,10 @@ function MeasurementDropdown({ label, value, options, placeholder, onChange }: {
   )
 }
 
-export function HandEditor({ details, onChange }: {
+export function HandEditor({ details, onChange, onComplete }: {
   details: Record<string, unknown>
   onChange: (next: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>)) => void
+  onComplete?: () => void
 }) {
   const [hand, setHand] = useState<HandName>((details.activeHand as HandName | undefined) ?? 'rightHand')
   const [finger, setFinger] = useState<FingerName>((details.activeFinger as FingerName | undefined) ?? 'index')
@@ -88,17 +89,47 @@ export function HandEditor({ details, onChange }: {
   const fingerData = { ...(handData[finger] ?? {}) }
 
   const updateFingerField = (key: 'widthMm' | 'capsuleNumber', value: string) => {
+    let shouldComplete = false
     onChange((current) => {
       const currentHand = { ...((current[hand] as Record<string, Record<string, string>> | undefined) ?? {}) }
       const currentFinger = { ...(currentHand[finger] ?? {}) }
-      return {
+      const nextHandData = { ...currentHand, [finger]: { ...currentFinger, [key]: value } }
+      const nextDetails = {
         ...current,
-        [hand]: { ...currentHand, [finger]: { ...currentFinger, [key]: value } },
+        [hand]: nextHandData,
         activeHand: hand,
         activeFinger: finger,
         handMode: mode,
       }
+      const currentHandComplete = isHandComplete(nextHandData)
+      const leftHandData = hand === 'leftHand'
+        ? nextHandData
+        : current.leftHand as Record<string, Record<string, string>> | undefined
+      const leftHandHasAnyMeasurement = getHandProgress(leftHandData).completed > 0
+
+      if (hand === 'rightHand' && currentHandComplete && !leftHandHasAnyMeasurement) {
+        queueMicrotask(() => {
+          setHand('leftHand')
+          setFinger('thumb')
+          setMode('finger')
+          document.querySelector('main')?.scrollTo({ top: 0 })
+        })
+        return { ...nextDetails, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' }
+      }
+
+      if (hand === 'leftHand' && currentHandComplete) {
+        shouldComplete = true
+      }
+
+      if (hand === 'rightHand' && currentHandComplete && isHandComplete(leftHandData)) {
+        shouldComplete = true
+      }
+
+      return nextDetails
     })
+    if (shouldComplete) {
+      queueMicrotask(() => onComplete?.())
+    }
   }
 
   const swapSides = () => {
