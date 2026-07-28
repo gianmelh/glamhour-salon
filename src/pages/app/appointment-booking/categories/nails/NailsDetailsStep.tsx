@@ -74,7 +74,7 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
   const selectedMaterialIds = new Set((details.materialIds as string[] | undefined) ?? [])
   const selectedMaterialLabels = new Set((details.materialLabels as string[] | undefined) ?? (details.materials as string[] | undefined) ?? [])
   const missingItems = getNailsDetailsMissingItems(details)
-  const canContinue = missingItems.length === 0 && Boolean(selectedServiceId || services[0])
+  const canContinue = Boolean(selectedServiceId || services[0])
   const materialsLoading = materialsQuery.loading
   const materialsError = materialsQuery.error
 
