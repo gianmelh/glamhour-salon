@@ -46,6 +46,10 @@ export function isHandComplete(handData: Record<string, Record<string, string>> 
   return getHandProgress(handData).completed === fingerOrder.length
 }
 
+export function hasHandMeasurement(handData: Record<string, Record<string, string>> | undefined) {
+  return getHandProgress(handData).completed > 0
+}
+
 export function mergeHandData(
   current: Record<string, Record<string, string>> | undefined,
   patch: Record<string, Record<string, string>> | undefined,
@@ -90,14 +94,14 @@ export function getNailsDetailsMissingItems(details: Record<string, unknown>) {
     return missing
   }
 
-  const rightProgress = getHandProgress(details.rightHand as Record<string, Record<string, string>> | undefined)
-  if (rightProgress.completed < rightProgress.total) {
-    missing.push(`Right hand finger measurements (${rightProgress.completed}/${rightProgress.total})`)
+  const rightHand = details.rightHand as Record<string, Record<string, string>> | undefined
+  if (!hasHandMeasurement(rightHand)) {
+    missing.push('Right hand finger measurement')
   }
 
-  const leftProgress = getHandProgress(details.leftHand as Record<string, Record<string, string>> | undefined)
-  if (leftProgress.completed < leftProgress.total) {
-    missing.push(`Left hand finger measurements (${leftProgress.completed}/${leftProgress.total})`)
+  const leftHand = details.leftHand as Record<string, Record<string, string>> | undefined
+  if (!hasHandMeasurement(leftHand)) {
+    missing.push('Left hand finger measurement')
   }
 
   return missing
