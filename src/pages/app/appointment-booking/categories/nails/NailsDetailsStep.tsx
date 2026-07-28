@@ -82,13 +82,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
   const missingItems = getNailsDetailsMissingItems(details)
   const materialsLoading = materialsQuery.loading
   const materialsError = materialsQuery.error
-  const activeHand = (details.activeHand as HandName | undefined) ?? 'rightHand'
-  const usesFingerMode = details.handMode === 'finger'
-  const rightHandComplete = isHandComplete(details.rightHand as Record<string, Record<string, string>> | undefined)
-  const leftHandComplete = isHandComplete(details.leftHand as Record<string, Record<string, string>> | undefined)
-  const leftHandStarted = hasHandMeasurement(details.leftHand as Record<string, Record<string, string>> | undefined)
-  const activeHandComplete = activeHand === 'rightHand' ? rightHandComplete : leftHandComplete
-  const canContinue = !usesFingerMode || activeHandComplete
+  const canContinue = missingItems.length === 0
 
   const ensureSelectedService = async () => {
     if (selectedServiceId) return selectedServiceId
@@ -112,11 +106,23 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
     return service.id
   }
 
-  const continueNailsFlow = async () => {
+  const continueNailsFlow = async (nextDetails = details) => {
     if (continuing) return
-    if (usesFingerMode && activeHand === 'rightHand' && rightHandComplete && !leftHandStarted) {
+    const nextMissingItems = getNailsDetailsMissingItems(nextDetails)
+    const nextActiveHand = (nextDetails.activeHand as HandName | undefined) ?? 'rightHand'
+    const nextRightHand = nextDetails.rightHand as Record<string, Record<string, string>> | undefined
+    const nextLeftHand = nextDetails.leftHand as Record<string, Record<string, string>> | undefined
+    const nextUsesFingerMode = nextDetails.handMode === 'finger'
+    const nextRightHandComplete = isHandComplete(nextRightHand)
+    const nextLeftHandStarted = hasHandMeasurement(nextLeftHand)
+
+    if (nextUsesFingerMode && nextActiveHand === 'rightHand' && nextRightHandComplete && !nextLeftHandStarted) {
       setDetails((current) => ({ ...current, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' }))
       queueMicrotask(() => document.querySelector('main')?.scrollTo({ top: 0 }))
+      return
+    }
+    if (nextMissingItems.length > 0) {
+      setContinueError(`To continue, complete: ${nextMissingItems.join(' · ')}`)
       return
     }
 
@@ -124,8 +130,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
     setContinueError('')
     try {
       const serviceId = await ensureSelectedService()
-      onChange({ serviceId, details })
-      queueMicrotask(onNext)
+      onNext({ serviceId, details: nextDetails })
     } catch (error) {
       setContinueError(error instanceof Error ? error.message : 'Could not continue.')
     } finally {

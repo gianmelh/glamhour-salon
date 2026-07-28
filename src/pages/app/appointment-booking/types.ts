@@ -40,7 +40,7 @@ export type CategoryStepProps = {
   details: Record<string, unknown>
   onChange: (patch: DraftPatch) => void
   onBack: () => void
-  onNext: () => void
+  onNext: (patch?: DraftPatch) => void
   categorySource?: ServiceCategory[]
   onServiceCreated?: (service: Service) => void
 }

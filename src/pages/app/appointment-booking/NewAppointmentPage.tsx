@@ -190,6 +190,46 @@ export function NewAppointmentPage() {
   const selectedClient = clients.data.find((client) => client.id === draft.clientId)
   const selectedProvider = eligibleProviders.find((provider) => provider.id === draft.providerId)
 
+  const continueFromServiceDetails = (patch: DraftPatch = {}) => {
+    const patchedDetails = typeof patch.details === 'function'
+      ? patch.details(draft.details)
+      : mergeDetailsPatchForCategory(draft.categoryCode, draft.details, patch.details ?? {})
+    const restDetails = { ...patchedDetails }
+    delete restDetails.registrationStep
+    const nextDetails = sanitizeDetailsForCategory(draft.categoryCode, restDetails)
+    const patchedDraft = { ...draft, ...patch, details: nextDetails }
+    const nextServiceId = patch.serviceId
+      ?? resolveCategoryServiceId(patchedDraft, categoryServices, services.data ?? [])
+
+    setDraft((current) => ({
+      ...current,
+      ...patch,
+      serviceId: nextServiceId,
+      details: nextDetails,
+    }))
+
+    if (draft.appointmentId && selectedClient) {
+      void (async () => {
+        const appointment = await updateMutation.mutate({
+          appointmentId: draft.appointmentId!,
+          categoryCode: draft.categoryCode,
+          treatmentDetails: buildTreatmentPayload(draft.categoryCode, nextDetails, selectedClient),
+          treatmentNotes: draft.notes,
+        })
+        const appointmentId = draft.appointmentId!
+        setDraft(emptyDraft())
+        window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
+        appointments.setData((current) => (current ?? []).map((item) => (
+          item.id === appointment.id ? { ...item, ...appointment } : item
+        )))
+        navigate(`/app/appointments/${appointmentId}`)
+      })()
+      return
+    }
+
+    setStep('appointment-details')
+  }
+
   const goBack = () => {
     const order: BookingStep[] = ['categories', 'client', 'health', 'service', 'appointment-details', 'provider', 'review', 'success']
     const index = order.indexOf(step)
@@ -312,35 +352,7 @@ export function NewAppointmentPage() {
           })}
           categorySource={categories.data}
           onServiceCreated={(service) => services.setData((current) => [service, ...(current ?? [])])}
-          onNext={() => {
-            const nextServiceId = resolveCategoryServiceId(draft, categoryServices, services.data ?? [])
-            const { registrationStep: _ignored, ...restDetails } = draft.details
-            const nextDetails = sanitizeDetailsForCategory(draft.categoryCode, restDetails)
-            setDraft((current) => ({
-              ...current,
-              serviceId: nextServiceId,
-              details: nextDetails,
-            }))
-            if (draft.appointmentId && selectedClient) {
-              void (async () => {
-                const appointment = await updateMutation.mutate({
-                  appointmentId: draft.appointmentId!,
-                  categoryCode: draft.categoryCode,
-                  treatmentDetails: buildTreatmentPayload(draft.categoryCode, nextDetails, selectedClient),
-                  treatmentNotes: draft.notes,
-                })
-                const appointmentId = draft.appointmentId!
-                setDraft(emptyDraft())
-                window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
-                appointments.setData((current) => (current ?? []).map((item) => (
-                  item.id === appointment.id ? { ...item, ...appointment } : item
-                )))
-                navigate(`/app/appointments/${appointmentId}`)
-              })()
-              return
-            }
-            setStep('appointment-details')
-          }}
+          onNext={continueFromServiceDetails}
           selectedServiceId={draft.serviceId}
           services={categoryServices}
         />

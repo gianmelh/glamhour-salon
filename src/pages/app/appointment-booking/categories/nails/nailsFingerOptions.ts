@@ -95,13 +95,13 @@ export function getNailsDetailsMissingItems(details: Record<string, unknown>) {
   }
 
   const rightHand = details.rightHand as Record<string, Record<string, string>> | undefined
-  if (!hasHandMeasurement(rightHand)) {
-    missing.push('Right hand finger measurement')
+  if (!isHandComplete(rightHand)) {
+    missing.push('Right hand finger measurements')
   }
 
   const leftHand = details.leftHand as Record<string, Record<string, string>> | undefined
-  if (!hasHandMeasurement(leftHand)) {
-    missing.push('Left hand finger measurement')
+  if (!isHandComplete(leftHand)) {
+    missing.push('Left hand finger measurements')
   }
 
   return missing

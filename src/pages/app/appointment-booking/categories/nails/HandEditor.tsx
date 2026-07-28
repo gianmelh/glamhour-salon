@@ -54,16 +54,21 @@ function MeasurementDropdown({ label, value, options, placeholder, onChange }: {
 export function HandEditor({ details, onChange, onComplete }: {
   details: Record<string, unknown>
   onChange: (next: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>)) => void
-  onComplete?: () => void
+  onComplete?: (details: Record<string, unknown>) => void
 }) {
   const [hand, setHand] = useState<HandName>((details.activeHand as HandName | undefined) ?? 'rightHand')
   const [finger, setFinger] = useState<FingerName>((details.activeFinger as FingerName | undefined) ?? 'index')
   const [mode, setMode] = useState<'finger' | 'hand'>((details.handMode as 'finger' | 'hand' | undefined) ?? 'hand')
 
   useEffect(() => {
-    if (details.activeHand && details.activeHand !== hand) setHand(details.activeHand as HandName)
-    if (details.activeFinger && details.activeFinger !== finger) setFinger(details.activeFinger as FingerName)
-    if (details.handMode && details.handMode !== mode) setMode(details.handMode as 'finger' | 'hand')
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      if (details.activeHand && details.activeHand !== hand) setHand(details.activeHand as HandName)
+      if (details.activeFinger && details.activeFinger !== finger) setFinger(details.activeFinger as FingerName)
+      if (details.handMode && details.handMode !== mode) setMode(details.handMode as 'finger' | 'hand')
+    })
+    return () => { active = false }
   }, [details.activeFinger, details.activeHand, details.handMode, finger, hand, mode])
 
   useEffect(() => {
@@ -90,6 +95,7 @@ export function HandEditor({ details, onChange, onComplete }: {
 
   const updateFingerField = (key: 'widthMm' | 'capsuleNumber', value: string) => {
     let shouldComplete = false
+    let completedDetails: Record<string, unknown> | null = null
     onChange((current) => {
       const currentHand = { ...((current[hand] as Record<string, Record<string, string>> | undefined) ?? {}) }
       const currentFinger = { ...(currentHand[finger] ?? {}) }
@@ -119,16 +125,20 @@ export function HandEditor({ details, onChange, onComplete }: {
 
       if (hand === 'leftHand' && currentHandComplete) {
         shouldComplete = true
+        completedDetails = nextDetails
       }
 
       if (hand === 'rightHand' && currentHandComplete && isHandComplete(leftHandData)) {
         shouldComplete = true
+        completedDetails = nextDetails
       }
 
       return nextDetails
     })
     if (shouldComplete) {
-      queueMicrotask(() => onComplete?.())
+      queueMicrotask(() => {
+        if (completedDetails) onComplete?.(completedDetails)
+      })
     }
   }
 
