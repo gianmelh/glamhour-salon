@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { cn } from '../../../../../lib/cn'
 import { useNailsServiceMaterials } from '../../../../../hooks/useServiceMaterials'
 import { hasNailsDownstreamSelections } from '../../../nails-booking/nailsDetailsTypes'
 import { normalizeServiceName } from '../../constants'
+import { glamhourApi } from '../../../../../services/glamhour-api'
 import {
   BookingSectionTitle,
   MaterialCard,
@@ -15,6 +16,7 @@ import {
 } from '../../components/RegistrationFlowShell'
 import { UpdateServiceSelectionModal } from '../../components/UpdateServiceSelectionModal'
 import type { CategoryStepProps, HandName } from '../../types'
+import type { ServiceCategory } from '../../../../../types/api'
 import { HandEditor } from './HandEditor'
 import { getNailsDetailsMissingItems, hasHandMeasurement, isHandComplete } from './nailsFingerOptions'
 import {
@@ -29,7 +31,7 @@ type PendingSelection =
   | { kind: 'service'; label: string }
   | { kind: 'nailType'; label: string }
 
-export function NailsDetailsStep({ services, selectedServiceId, details, onChange, onBack, onNext }: CategoryStepProps) {
+export function NailsDetailsStep({ category, services, selectedServiceId, details, onChange, onBack, onNext, onServiceCreated }: CategoryStepProps & { category: ServiceCategory }) {
   const selectedService = services.find((service) => service.id === selectedServiceId) ?? services[0]
   const materialsQuery = useNailsServiceMaterials(selectedService?.id, selectedService?.category_id)
   const materialSpecs = useMemo(
@@ -37,7 +39,7 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
     [materialsQuery.data],
   )
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null)
-  const autoAdvanceKey = useRef('')
+  const [continuing, setContinuing] = useState(false)
 
   const setDetails = (next: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>)) => {
     onChange({ details: next })
@@ -85,48 +87,39 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
   const activeHandComplete = activeHand === 'rightHand' ? rightHandComplete : leftHandComplete
   const canContinue = !usesFingerMode || activeHandComplete
 
-  const continueNailsFlow = () => {
+  const ensureSelectedService = async () => {
+    if (selectedServiceId) return selectedServiceId
+    if (services[0]) return services[0].id
+
+    const service = await glamhourApi.createService({
+      categoryId: category.id,
+      name: selectedType || 'Nails service',
+      description: 'Created from nails booking flow.',
+      durationMinutes: 60,
+      priceMinor: 0,
+      isPubliclyBookable: true,
+    })
+    onServiceCreated?.(service)
+    return service.id
+  }
+
+  const continueNailsFlow = async () => {
+    if (continuing) return
     if (usesFingerMode && activeHand === 'rightHand' && rightHandComplete && !leftHandStarted) {
       setDetails((current) => ({ ...current, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' }))
       queueMicrotask(() => document.querySelector('main')?.scrollTo({ top: 0 }))
       return
     }
-    if (!selectedServiceId && services[0]) onChange({ serviceId: services[0].id, details })
-    onNext()
+
+    setContinuing(true)
+    try {
+      const serviceId = await ensureSelectedService()
+      onChange({ serviceId, details })
+      queueMicrotask(onNext)
+    } finally {
+      setContinuing(false)
+    }
   }
-
-  useEffect(() => {
-    if (!usesFingerMode) return
-    const key = `${activeHand}:${rightHandComplete}:${leftHandComplete}:${leftHandStarted}`
-    if (autoAdvanceKey.current === key) return
-
-    if (activeHand === 'rightHand' && rightHandComplete && !leftHandStarted) {
-      autoAdvanceKey.current = key
-      setDetails((current) => ({ ...current, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' }))
-      queueMicrotask(() => document.querySelector('main')?.scrollTo({ top: 0 }))
-      return
-    }
-
-    if ((activeHand === 'leftHand' && leftHandComplete) || (rightHandComplete && leftHandComplete)) {
-      autoAdvanceKey.current = key
-      queueMicrotask(() => {
-        if (!selectedServiceId && services[0]) onChange({ serviceId: services[0].id, details })
-        onNext()
-      })
-    }
-  }, [
-    activeHand,
-    details,
-    leftHandComplete,
-    leftHandStarted,
-    onChange,
-    onNext,
-    rightHandComplete,
-    selectedServiceId,
-    services,
-    setDetails,
-    usesFingerMode,
-  ])
 
   return (
     <RegistrationFlowShell activeCategory="nails" onBack={onBack}>
@@ -229,6 +222,7 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
         <RegistrationContinueSection
           canContinue={canContinue}
           disabledMessage={missingItems.length ? `To continue, complete: ${missingItems.join(' · ')}` : undefined}
+          label={continuing ? 'Continuing...' : 'Continue'}
           onContinue={continueNailsFlow}
         />
 

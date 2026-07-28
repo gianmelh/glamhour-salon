@@ -310,6 +310,7 @@ export function NewAppointmentPage() {
               details: sanitizeDetailsForCategory(current.categoryCode, nextDetails),
             }
           })}
+          onServiceCreated={(service) => services.setData((current) => [service, ...(current ?? [])])}
           onNext={() => {
             const nextServiceId = resolveCategoryServiceId(draft, categoryServices, services.data ?? [])
             const { registrationStep: _ignored, ...restDetails } = draft.details
