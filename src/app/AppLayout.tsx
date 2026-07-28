@@ -26,7 +26,7 @@ export function AppLayout() {
       <AppShell
         className={isAppointmentFlow ? 'px-0 pt-0' : undefined}
         header={routeSegment === 'home' || isAppointmentFlow ? undefined : <Header action={<Avatar name={salon.data?.name ?? 'Glamhour'} size="sm" />} title={salon.data?.name ?? 'Glamhour'} />}
-        navigation={<BottomNavigation activeItem={isAppointmentFlow ? 'home' : (routeToNav[routeSegment] ?? 'home')} onChange={(item) => navigate(`/app/${item}`)} />}
+        navigation={isAppointmentFlow ? undefined : <BottomNavigation activeItem={routeToNav[routeSegment] ?? 'home'} onChange={(item) => navigate(`/app/${item}`)} />}
       >
         <Outlet />
       </AppShell>

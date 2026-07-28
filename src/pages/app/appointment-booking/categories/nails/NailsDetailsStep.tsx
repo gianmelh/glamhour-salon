@@ -13,6 +13,7 @@ import {
   RegistrationContinueSection,
   RegistrationFlowShell,
 } from '../../components/RegistrationFlowShell'
+import { TreatmentPhotoFlow } from '../../components/TreatmentPhotoFlow'
 import { UpdateServiceSelectionModal } from '../../components/UpdateServiceSelectionModal'
 import type { CategoryStepProps } from '../../types'
 import { HandEditor } from './HandEditor'
@@ -174,6 +175,13 @@ export function NailsDetailsStep({ services, selectedServiceId, details, onChang
         </div>
 
         <HandEditor details={details} onChange={setDetails} />
+
+        <TreatmentPhotoFlow
+          category="nails"
+          details={details}
+          onChange={(next) => onChange({ details: next })}
+          title="Client reference photo"
+        />
 
         <RegistrationContinueSection
           canContinue
