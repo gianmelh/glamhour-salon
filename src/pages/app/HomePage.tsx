@@ -5,10 +5,13 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Badge, Button, Card, ErrorState, LoadingState,
+  ProfessionalEditorModal, emptyProfessionalDraft, type ProfessionalDraft,
 } from '../../components'
-import { useDashboard } from '../../hooks/useGlamhourData'
+import { useDashboard, useNailSettings, useProfessionals, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
+import { useMutation } from '../../hooks/useMutation'
 import { cn } from '../../lib/cn'
 import { formatMoney, formatTime } from '../../lib/format'
+import { glamhourApi } from '../../services/glamhour-api'
 import type { DashboardAppointment } from '../../types/api'
 
 const HOME_BG = '#f2f5ff'
@@ -79,8 +82,24 @@ function serviceLabel(appointment: DashboardAppointment) {
 export function HomePage() {
   const navigate = useNavigate()
   const [selectedDate, setSelectedDate] = useState(() => isoDate(new Date()))
+  const [providerEditor, setProviderEditor] = useState<ProfessionalDraft | null>(null)
+  const [providerMessage, setProviderMessage] = useState('')
   const dashboard = useDashboard(selectedDate)
+  const professionals = useProfessionals()
+  const services = useServices()
+  const categories = useServiceCategories()
+  const nailSettings = useNailSettings()
+  const saveProvider = useMutation((input: ProfessionalDraft) => glamhourApi.createProfessional(input))
   const days = useMemo(() => weekDays(selectedDate), [selectedDate])
+  const enabledCategoryIds = useMemo(
+    () => new Set((categories.data ?? []).map((category) => category.id)),
+    [categories.data],
+  )
+  const assignableServices = useMemo(() => {
+    const list = (services.data ?? []).filter((service) => service.is_active)
+    if (!enabledCategoryIds.size) return list
+    return list.filter((service) => enabledCategoryIds.has(service.category_id))
+  }, [enabledCategoryIds, services.data])
 
   if (dashboard.loading) return <LoadingState label="Loading salon dashboard..." />
   if (!dashboard.data) {
@@ -91,13 +110,40 @@ export function HomePage() {
   const noAppointments = data.emptyStateFlags.noAppointmentsToday
   const noActiveStaff = data.emptyStateFlags.noActiveStaff
   const staffLimitReached = data.emptyStateFlags.staffLimitReached
+  const salonSchedule = nailSettings.data?.salonSchedule
+  const providerResourcesLoading = professionals.loading || services.loading || categories.loading || nailSettings.loading
+  const providerResourcesFallback = professionals.isFallback || services.isFallback || categories.isFallback
+
+  function openProviderEditor() {
+    if (staffLimitReached || providerResourcesLoading || providerResourcesFallback) {
+      return
+    }
+
+    setProviderMessage('')
+    setProviderEditor(emptyProfessionalDraft(salonSchedule))
+  }
+
+  async function submitProvider() {
+    if (!providerEditor) return
+
+    setProviderMessage('')
+    const payload = {
+      ...providerEditor,
+      serviceAssignments: providerEditor.serviceAssignments.filter((assignment) => assignment.isActive),
+    }
+    const saved = await saveProvider.mutate(payload)
+    professionals.setData((current) => [...(current ?? []), saved].sort((a, b) => a.full_name.localeCompare(b.full_name)))
+    setProviderEditor(null)
+    setProviderMessage('Provider added successfully.')
+    dashboard.retry()
+  }
 
   async function copyBookingLink() {
     await navigator.clipboard?.writeText(data.bookingLink)
   }
 
   return (
-    <div className="-mx-4 -mt-5 min-h-dvh px-5 pb-8 pt-11" style={{ backgroundColor: HOME_BG }}>
+    <div className="-mx-4 -mt-5 min-h-full px-5 pb-8 pt-11" style={{ backgroundColor: HOME_BG }}>
       <header>
         <h1 className="max-w-[335px] text-[34px] font-extrabold leading-[1.05] text-[#111827]">
           {greeting()}, {data.salon.name}!
@@ -182,11 +228,27 @@ export function HomePage() {
       <MetricCard label="Appointments" sublabel={`${data.slotsRemaining} slots remaining`} value={String(data.appointmentCount)} />
       <MetricCard icon={<UserRound className="size-4" />} label="Active Staff" value={`${data.activeStaffCount} / ${data.staffLimit}`} />
 
+      {!staffLimitReached && (
+        <Button
+          className="mt-3 min-h-12 rounded-[14px] text-[14px] font-medium"
+          disabled={providerResourcesLoading || providerResourcesFallback}
+          fullWidth
+          onClick={openProviderEditor}
+          variant="outline"
+        >
+          {providerResourcesLoading ? 'Loading provider setup...' : 'Add provider'}
+        </Button>
+      )}
+
       {staffLimitReached && (
         <Card className="mt-3 rounded-lg border-[#f6d6a8] bg-[#fff9ed]">
           <p className="text-[12px] font-bold text-[#111827]">Staff limit reached</p>
           <p className="mt-1 text-[11px] leading-4 text-[#8a6a32]">You&apos;ve reached the limit of 10 active staff members. Upgrade your plan to add more providers.</p>
         </Card>
+      )}
+
+      {providerMessage && (
+        <p className="mt-3 rounded-md bg-success-soft px-3 py-2 text-xs font-medium text-success">{providerMessage}</p>
       )}
 
       {!noAppointments ? (
@@ -221,7 +283,13 @@ export function HomePage() {
         <NoAppointmentsCard compact />
       )}
 
-      {noActiveStaff && <NoActiveStaffCard />}
+      {noActiveStaff && (
+        <NoActiveStaffCard
+          addProviderDisabled={staffLimitReached || providerResourcesLoading || providerResourcesFallback}
+          addProviderLabel={providerResourcesLoading ? 'Loading provider setup...' : staffLimitReached ? 'Limit reached' : 'Add provider'}
+          onAddProvider={openProviderEditor}
+        />
+      )}
 
       <Card className="mt-5 rounded-[14px] shadow-none" style={{ backgroundColor: LAVENDER_CARD, borderColor: LAVENDER_BORDER }}>
         <div className="flex items-center gap-2">
@@ -237,6 +305,19 @@ export function HomePage() {
         </div>
         <Link className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-[#7a3fe0]" to="/app/share">Go to share page <ArrowRight className="size-3" /></Link>
       </Card>
+
+      {providerEditor && (
+        <ProfessionalEditorModal
+          draft={providerEditor}
+          error={saveProvider.error}
+          loading={saveProvider.loading}
+          onCancel={() => setProviderEditor(null)}
+          onChange={setProviderEditor}
+          onSubmit={submitProvider}
+          salonSchedule={salonSchedule ?? providerEditor.schedule ?? emptyProfessionalDraft().schedule!}
+          services={assignableServices}
+        />
+      )}
     </div>
   )
 }
@@ -266,9 +347,9 @@ function NoAppointmentsCard({ compact = false }: { compact?: boolean }) {
   )
 }
 
-function NoActiveStaffCard() {
+function NoActiveStaffCard({ addProviderDisabled, addProviderLabel, onAddProvider }: { addProviderDisabled: boolean; addProviderLabel: string; onAddProvider: () => void }) {
   const actions = [
-    { icon: <Settings2 className="size-4" />, title: 'Manage provider schedules', description: 'Review and adjust staff times for your team to match availability.', to: '/app/staff', label: 'Go to Settings' },
+    { icon: <Settings2 className="size-4" />, title: 'Add a provider', description: 'Create a staff profile, assign services, earnings, languages, and working hours.', label: addProviderLabel, onClick: onAddProvider, disabled: addProviderDisabled },
     { icon: <CalendarDays className="size-4" />, title: 'Reassign pending appointments', description: 'Move today’s bookings to providers who will be available later.', to: '/app/appointments', label: 'View appointments' },
     { icon: <UserRound className="size-4" />, title: 'Check provider availability', description: 'See when each provider is scheduled to start their shift below.', to: '/app/calendar', label: 'See status below' },
   ]
@@ -283,6 +364,7 @@ function NoActiveStaffCard() {
       <p className="mt-5 text-left text-[8px] font-bold uppercase tracking-[0.12em] text-[#8b92a1]">What you can do</p>
       <div className="mt-2 space-y-2 text-left">
         {actions.map((action) => (
+          action.to ? (
           <Link className="grid grid-cols-[32px_1fr] gap-3 rounded-md bg-[#f8f9ff] p-3" key={action.title} to={action.to}>
             <span className="grid size-8 place-items-center rounded-md text-[#7a3fe0]" style={{ backgroundColor: LAVENDER_ICON }}>{action.icon}</span>
             <span>
@@ -291,6 +373,16 @@ function NoActiveStaffCard() {
               <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-[#7a3fe0]">{action.label} <ArrowRight className="size-3" /></span>
             </span>
           </Link>
+          ) : (
+          <button className="grid w-full grid-cols-[32px_1fr] gap-3 rounded-md bg-[#f8f9ff] p-3 text-left disabled:opacity-60" disabled={action.disabled} key={action.title} onClick={action.onClick} type="button">
+            <span className="grid size-8 place-items-center rounded-md text-[#7a3fe0]" style={{ backgroundColor: LAVENDER_ICON }}>{action.icon}</span>
+            <span>
+              <span className="block text-[11px] font-bold text-[#111827]">{action.title}</span>
+              <span className="mt-0.5 block text-[9px] leading-4 text-[#68738b]">{action.description}</span>
+              <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-[#7a3fe0]">{action.label} <ArrowRight className="size-3" /></span>
+            </span>
+          </button>
+          )
         ))}
       </div>
     </Card>

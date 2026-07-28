@@ -68,8 +68,8 @@ export function ProfessionalEditorModal({ draft, services, salonSchedule, loadin
   }, {})
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-end bg-black/40 p-3 sm:place-items-center">
-      <Card className="max-h-[88dvh] w-full max-w-[393px] overflow-y-auto bg-[#f2f5ff] p-5 shadow-2xl">
+    <div className="fixed inset-0 z-[80] grid place-items-end bg-black/40 p-0 sm:place-items-center sm:p-4">
+      <Card className="max-h-[calc(100dvh-16px)] w-full max-w-[393px] overflow-y-auto rounded-b-none bg-[#f2f5ff] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl sm:max-h-[88dvh] sm:rounded-2xl sm:p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <p className="text-lg font-bold text-[#11172a]">{draft.id ? 'Edit provider' : 'Add provider'}</p>
