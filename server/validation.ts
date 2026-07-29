@@ -178,6 +178,12 @@ export const updateAppointmentStatusSchema = z.object({
   taxMinor: z.number().int().min(0).optional(),
 })
 
+export const rescheduleAppointmentSchema = z.object({
+  professionalId: uuidSchema,
+  startsAt: isoDateTimeSchema,
+  endsAt: isoDateTimeSchema,
+})
+
 export const updateAppointmentTreatmentDetailsSchema = z.object({
   categoryCode: z.string().trim().min(1).max(80),
   treatmentDetails: z.record(z.string(), z.unknown()),

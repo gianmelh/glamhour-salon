@@ -91,6 +91,12 @@ interface UpdateAppointmentStatusInput {
   taxMinor?: number
 }
 
+interface RescheduleAppointmentInput {
+  professionalId: string
+  startsAt: string
+  endsAt: string
+}
+
 interface CreateClientInput {
   fullName: string
   email?: string
@@ -3319,6 +3325,11 @@ export const dataService = {
       const current = currentRows[0]
       if (!current) throw new ApiError(404, 'Appointment not found')
 
+      const appAllowedTransitions = new Set([
+        'completed:coming_up:owner',
+        'canceled:coming_up:owner',
+        'no_show:coming_up:owner',
+      ])
       const transitions = await clientRows<QueryResultRow>(
         client,
         `SELECT 1 FROM appointment_status_transitions
@@ -3326,7 +3337,8 @@ export const dataService = {
            AND allowed_actor_role IN ($3, 'any')`,
         [current.status_code, input.status, input.actorRole],
       )
-      if (!transitions[0]) {
+      const transitionKey = `${current.status_code}:${input.status}:${input.actorRole}`
+      if (!transitions[0] && !appAllowedTransitions.has(transitionKey)) {
         throw new ApiError(409, `Cannot move appointment from ${current.status_code} to ${input.status}.`)
       }
 
@@ -3334,8 +3346,16 @@ export const dataService = {
         client,
         `UPDATE appointments SET
            status_code = $3::varchar,
-           canceled_at = CASE WHEN $3::text = 'canceled' THEN now() ELSE canceled_at END,
-           canceled_by_user_id = CASE WHEN $3::text = 'canceled' THEN $4::uuid ELSE canceled_by_user_id END
+           canceled_at = CASE
+             WHEN $3::text = 'canceled' THEN now()
+             WHEN $3::text = 'coming_up' THEN NULL
+             ELSE canceled_at
+           END,
+           canceled_by_user_id = CASE
+             WHEN $3::text = 'canceled' THEN $4::uuid
+             WHEN $3::text = 'coming_up' THEN NULL
+             ELSE canceled_by_user_id
+           END
          WHERE salon_id = $1 AND id = $2
          RETURNING *`,
         [salonId, appointmentId, input.status, input.actorUserId ?? null],
@@ -3430,6 +3450,112 @@ export const dataService = {
           JSON.stringify({
             note: input.note,
             tipMinor: input.tipMinor ?? null,
+          }),
+        ],
+      )
+
+      return updated
+    })
+  },
+
+  rescheduleAppointment(
+    salonId: string,
+    appointmentId: string,
+    input: RescheduleAppointmentInput,
+  ): Promise<Appointment> {
+    return withTransaction(async (client) => {
+      const currentRows = await clientRows<Appointment>(
+        client,
+        'SELECT * FROM appointments WHERE salon_id = $1 AND id = $2 FOR UPDATE',
+        [salonId, appointmentId],
+      )
+      const current = currentRows[0]
+      if (!current) throw new ApiError(404, 'Appointment not found')
+
+      const serviceRows = await clientRows<QueryResultRow>(
+        client,
+        `SELECT service_id
+         FROM appointment_services
+         WHERE salon_id = $1 AND appointment_id = $2`,
+        [salonId, appointmentId],
+      )
+      const serviceIds = serviceRows.map((row) => String(row.service_id)).filter(Boolean)
+      if (serviceIds.length) {
+        const assignments = await clientRows<QueryResultRow>(
+          client,
+          `SELECT service_id
+           FROM professional_services
+           WHERE salon_id = $1
+             AND professional_id = $2
+             AND service_id = ANY($3::uuid[])
+             AND is_active = true`,
+          [salonId, input.professionalId, serviceIds],
+        )
+        if (assignments.length !== serviceIds.length) {
+          throw new ApiError(409, 'One or more services are unavailable for this professional.')
+        }
+      }
+
+      const conflicts = await clientRows<QueryResultRow>(
+        client,
+        `SELECT 1
+         FROM appointments
+         WHERE salon_id = $1
+           AND id <> $2
+           AND professional_id = $3
+           AND status_code NOT IN ('completed', 'canceled', 'no_show')
+           AND starts_at < $5::timestamptz
+           AND ends_at > $4::timestamptz
+         LIMIT 1`,
+        [salonId, appointmentId, input.professionalId, input.startsAt, input.endsAt],
+      )
+      if (conflicts[0]) {
+        throw new ApiError(409, 'The professional is unavailable for that time.')
+      }
+
+      const rows = await clientRows<Appointment>(
+        client,
+        `UPDATE appointments SET
+           professional_id = $3,
+           starts_at = $4::timestamptz,
+           ends_at = $5::timestamptz,
+           status_code = 'coming_up',
+           canceled_at = NULL,
+           canceled_by_user_id = NULL
+         WHERE salon_id = $1 AND id = $2
+         RETURNING *`,
+        [salonId, appointmentId, input.professionalId, input.startsAt, input.endsAt],
+      )
+      const updated = rows[0]
+      if (!updated) throw new ApiError(500, 'Appointment could not be rescheduled.')
+
+      await client.query(
+        `UPDATE appointment_services
+         SET status_code = 'coming_up'
+         WHERE salon_id = $1 AND appointment_id = $2`,
+        [salonId, appointmentId],
+      )
+      await client.query(
+        `INSERT INTO appointment_status_history
+          (salon_id, appointment_id, status_code, changed_by_user_id, note)
+         VALUES ($1, $2, 'coming_up', NULL, 'Appointment rescheduled')`,
+        [salonId, appointmentId],
+      )
+      await client.query(
+        `INSERT INTO appointment_events
+          (salon_id, appointment_id, event_type, actor_user_id, from_status_code, to_status_code, metadata_json)
+         VALUES ($1, $2, 'rescheduled', NULL, $3, 'coming_up', $4)`,
+        [
+          salonId,
+          appointmentId,
+          current.status_code,
+          JSON.stringify({
+            previousProfessionalId: current.professional_id,
+            previousStartsAt: current.starts_at,
+            previousEndsAt: current.ends_at,
+            professionalId: input.professionalId,
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
           }),
         ],
       )

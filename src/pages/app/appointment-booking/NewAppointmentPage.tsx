@@ -62,6 +62,17 @@ function parseDraftTime(details: Record<string, unknown>) {
   }
 }
 
+function readInitialDraft() {
+  if (typeof window === 'undefined') return readDraft()
+  const fresh = new URLSearchParams(window.location.search).get('fresh') === '1'
+  if (fresh) {
+    window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
+    window.history.replaceState(null, '', window.location.pathname)
+    return emptyDraft()
+  }
+  return readDraft()
+}
+
 export function NewAppointmentPage() {
   const navigate = useNavigate()
   const categories = useServiceCategories()
@@ -80,8 +91,9 @@ export function NewAppointmentPage() {
     treatmentDetails: input.treatmentDetails,
     treatmentNotes: input.treatmentNotes,
   }))
-  const [step, setStep] = useState<BookingStep>(() => initialBookingStep(readDraft()))
-  const [draft, setDraft] = useState<AppointmentDraft>(() => readDraft())
+  const initialDraft = useMemo(() => readInitialDraft(), [])
+  const [draft, setDraft] = useState<AppointmentDraft>(initialDraft)
+  const [step, setStep] = useState<BookingStep>(() => initialBookingStep(initialDraft))
   const [eligibleProviders, setEligibleProviders] = useState<EligibleProvider[]>([])
   const [providerLoading, setProviderLoading] = useState(false)
   const [availability, setAvailability] = useState<AvailabilitySlot[]>([])
@@ -370,6 +382,24 @@ export function NewAppointmentPage() {
     const treatmentDetails = buildTreatmentPayload(draft.categoryCode, draft.details, selectedClient!)
 
     try {
+      if (draft.appointmentId && draft.mode === 'reschedule') {
+        const assignment = await resolveBookableAssignment()
+        const appointmentTimes = await resolveAppointmentTimes(assignment.service.id, assignment.provider.id)
+        const updated = await glamhourApi.rescheduleAppointment(draft.appointmentId, {
+          professionalId: assignment.provider.id,
+          startsAt: appointmentTimes.startsAt,
+          endsAt: appointmentTimes.endsAt,
+        })
+        const appointmentId = draft.appointmentId
+        setDraft(emptyDraft())
+        window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
+        appointments.setData((current) => (current ?? []).map((item) => (
+          item.id === updated.id ? { ...item, ...updated } : item
+        )))
+        navigate(`/app/appointments/${appointmentId}`)
+        return
+      }
+
       if (draft.appointmentId) {
         const appointment = await updateMutation.mutate({
           appointmentId: draft.appointmentId,

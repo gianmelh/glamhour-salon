@@ -55,7 +55,7 @@ export function AppointmentDetailsPage() {
     window.sessionStorage.setItem(APPOINTMENT_DRAFT_KEY, JSON.stringify({
       categoryId: '',
       categoryCode,
-      serviceId: String((service as { service_id?: string } | undefined)?.service_id ?? service?.id ?? ''),
+      serviceId: String(service?.service_id ?? service?.id ?? ''),
       clientId: data.client_id,
       providerId: data.professional_id,
       date: appointmentDate,
@@ -67,6 +67,28 @@ export function AppointmentDetailsPage() {
     }))
     navigate('/app/appointments/new')
   }
+
+  const rescheduleAppointment = () => {
+    window.sessionStorage.setItem(APPOINTMENT_DRAFT_KEY, JSON.stringify({
+      categoryId: '',
+      categoryCode,
+      serviceId: String(service?.service_id ?? service?.id ?? ''),
+      clientId: data.client_id,
+      providerId: data.professional_id,
+      date: appointmentDate,
+      startsAt: data.starts_at,
+      endsAt: data.ends_at,
+      notes: data.internal_notes ?? data.customer_notes ?? '',
+      details: treatmentDetails,
+      appointmentId: data.id,
+      mode: 'reschedule',
+    }))
+    navigate('/app/appointments/new')
+  }
+
+  const canMarkComingUp = ['Completed', 'Canceled'].includes(status)
+  const canMarkComplete = ['Upcoming', 'Coming up', 'In progress'].includes(status)
+  const canCancel = ['Upcoming', 'Coming up', 'In progress'].includes(status)
 
   return (
     <div className="space-y-5">
@@ -103,11 +125,17 @@ export function AppointmentDetailsPage() {
 
       <MutationError error={mutation.error} />
       <div className="grid gap-3">
-        <Button fullWidth onClick={() => navigate(`/app/calendar?date=${appointmentDate}`)}>Go to calendar</Button>
-        {!terminalStatus && (
+        {canMarkComplete && (
+          <Button fullWidth loading={mutation.loading} onClick={() => updateStatus('completed')}>Mark as complete</Button>
+        )}
+        <Button fullWidth onClick={rescheduleAppointment} variant={canMarkComplete ? 'outline' : 'primary'}>Reschedule appointment</Button>
+        {canMarkComingUp && (
+          <Button fullWidth loading={mutation.loading} onClick={() => updateStatus('coming_up')} variant="outline">Mark as coming up</Button>
+        )}
+        {!terminalStatus && !canMarkComplete && (
           <Button fullWidth onClick={editAppointment} variant="outline">Edit appointment</Button>
         )}
-        {!terminalStatus && (
+        {canCancel && (
           <Button fullWidth loading={mutation.loading} onClick={() => updateStatus('canceled')} variant="ghost">Cancel appointment</Button>
         )}
       </div>

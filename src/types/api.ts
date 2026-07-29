@@ -104,6 +104,7 @@ export interface ServiceMaterial extends Timestamped {
 
 export interface AppointmentService {
   id: string
+  service_id?: string | null
   service_name_snapshot: string
   category_code_snapshot: string
   duration_minutes_snapshot: number
@@ -377,6 +378,12 @@ export interface CreateAppointmentInput {
   treatmentNotes?: string
   treatmentRecommendations?: string
   priceOverrideMinor?: number
+}
+
+export interface RescheduleAppointmentInput {
+  professionalId: string
+  startsAt: string
+  endsAt: string
 }
 
 export interface AppointmentCategory {

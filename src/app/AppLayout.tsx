@@ -20,12 +20,13 @@ export function AppLayout() {
   const salon = useSalon()
   const routeSegment = location.pathname.split('/')[2] ?? 'home'
   const isAppointmentFlow = location.pathname.startsWith('/app/appointments/new')
+  const isCalendar = routeSegment === 'calendar'
 
   return (
     <div className="min-h-screen bg-[#eceaf5] sm:py-6">
       <AppShell
-        className={isAppointmentFlow ? 'px-0 pt-0' : undefined}
-        header={routeSegment === 'home' || isAppointmentFlow ? undefined : <Header action={<Avatar name={salon.data?.name ?? 'Glamhour'} size="sm" />} title={salon.data?.name ?? 'Glamhour'} />}
+        className={isAppointmentFlow || isCalendar ? 'px-0 pt-0' : undefined}
+        header={routeSegment === 'home' || isAppointmentFlow || isCalendar ? undefined : <Header action={<Avatar name={salon.data?.name ?? 'Glamhour'} size="sm" />} title={salon.data?.name ?? 'Glamhour'} />}
         navigation={isAppointmentFlow ? undefined : <BottomNavigation activeItem={routeToNav[routeSegment] ?? 'home'} onChange={(item) => navigate(`/app/${item}`)} />}
       >
         <Outlet />

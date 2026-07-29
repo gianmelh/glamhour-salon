@@ -4,7 +4,7 @@ import type {
   NailSettingsResponse, ReassignProfessionalInput, UpdateNailSettingsInput, UpsertProfessionalInput,
   ConfirmPasswordResetInput, ConfirmPasswordResetResult, LoginInput, LoginResult, RegisterAppleSalonInput,
   RegisterFacebookSalonInput, RegisterGoogleSalonInput, RegisterSalonInput, RegisterSalonResult,
-  RequestPasswordResetInput, RequestPasswordResetResult, Salon, SalonSettings,
+  RequestPasswordResetInput, RequestPasswordResetResult, RescheduleAppointmentInput, Salon, SalonSettings,
   SalesHistoryItem, SalesHistoryResponse, SaveOnboardingInput, Service, ServiceCategory, UpdateSettingsInput, VerifyPasswordResetCodeInput,
   VerifyPasswordResetCodeResult,
 } from '../types/api'
@@ -83,6 +83,8 @@ export const glamhourApi = {
   notifications: (salonId?: string) => apiRequest<Notification[]>(`/salons/${resolveSalonId(salonId)}/notifications?limit=100`),
   saveOnboarding: (input: SaveOnboardingInput, salonId?: string) => apiRequest<Salon>(`/salons/${resolveSalonId(salonId)}/onboarding`, { method: 'PUT', body: JSON.stringify(input) }),
   createAppointment: (input: CreateAppointmentInput, salonId?: string) => apiRequest<Appointment>(`/salons/${resolveSalonId(salonId)}/appointments`, { method: 'POST', body: JSON.stringify({ source: 'internal', ...input }) }),
+  rescheduleAppointment: (id: string, input: RescheduleAppointmentInput, salonId?: string) =>
+    apiRequest<Appointment>(`/salons/${resolveSalonId(salonId)}/appointments/${id}/schedule`, { method: 'PATCH', body: JSON.stringify(input) }),
   uploadTreatmentMedia: (input: {
     dataBase64: string
     mimeType: string

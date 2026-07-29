@@ -28,6 +28,7 @@ export type AppointmentDraft = {
   details: Record<string, unknown>
   /** When set, confirm updates this appointment instead of creating a new one. */
   appointmentId?: string
+  mode?: 'edit' | 'reschedule'
 }
 
 export type DraftPatch = Omit<Partial<AppointmentDraft>, 'details'> & {
