@@ -23,6 +23,8 @@ export type LashesDetails = {
   healthAnswers?: Record<string, string>
   consentItems?: Record<string, boolean>
   consentAccepted?: boolean
+  consentDate?: string
+  consentTime?: string
   consents?: Array<Record<string, unknown>>
   professionalSignature?: string
   clientSignature?: string
@@ -52,6 +54,8 @@ export const LASHES_DETAIL_KEYS = [
   'healthAnswers',
   'consentItems',
   'consentAccepted',
+  'consentDate',
+  'consentTime',
   'consents',
   'professionalSignature',
   'clientSignature',

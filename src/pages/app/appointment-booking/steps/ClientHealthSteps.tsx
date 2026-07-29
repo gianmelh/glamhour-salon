@@ -4,6 +4,7 @@ import { Button, Card, Input } from '../../../../components'
 import { MutationError } from '../../../../components/screen/MutationError'
 import { useMutation } from '../../../../hooks/useMutation'
 import { cn } from '../../../../lib/cn'
+import { deferTask } from '../../../../lib/defer'
 import { formatShortDate } from '../../../../lib/format'
 import { glamhourApi } from '../../../../services/glamhour-api'
 import type { Client, HealthProfileVersion } from '../../../../types/api'
@@ -133,11 +134,13 @@ export function ClientStep({ clients, lastVisitByClientId, selectedClientId, onS
   )
 }
 
-export function HealthStep({ category, client, details, notes, onChange, onNext }: {
+export function HealthStep({ category, client, details, notes, serviceDate, serviceTime, onChange, onNext }: {
   category: { code: string; name: string }
   client: Client
   details: Record<string, unknown>
   notes: string
+  serviceDate: string
+  serviceTime: string
   onChange: (details: Record<string, unknown>, notes: string) => void
   onNext: () => void
 }) {
@@ -148,7 +151,7 @@ export function HealthStep({ category, client, details, notes, onChange, onNext 
 
   useEffect(() => {
     let active = true
-    queueMicrotask(() => setProfileLoading(true))
+    deferTask(() => setProfileLoading(true))
     glamhourApi.healthProfile(client.id, category.code).then((result) => {
       if (active) setProfile(result)
     }).catch(() => {
@@ -215,6 +218,8 @@ export function HealthStep({ category, client, details, notes, onChange, onNext 
         client={client}
         details={details}
         notes={notes}
+        serviceDate={serviceDate}
+        serviceTime={serviceTime}
         onChange={onChange}
       />
       <HealthQuestionnaireActions

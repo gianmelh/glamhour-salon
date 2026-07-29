@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Avatar,
   Badge,
@@ -15,8 +15,8 @@ import {
 import { useAppointments, useProfessionals } from "../../hooks/useGlamhourData";
 import {
   appointmentService,
-  appointmentStatus,
   formatTime,
+  timedAppointmentStatus,
 } from "../../lib/format";
 import type { Appointment } from "../../types/api";
 
@@ -57,8 +57,9 @@ function weekdayLetter(date: Date) {
 }
 
 export function CalendarPage() {
+  const [searchParams] = useSearchParams();
   const [selectedDate, setSelectedDate] = useState(() =>
-    startOfDay(new Date())
+    startOfDay(searchParams.get("date") ? new Date(`${searchParams.get("date")}T12:00:00`) : new Date())
   );
   const [providerId, setProviderId] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -175,6 +176,7 @@ export function CalendarPage() {
           { id: "coming_up", label: "Coming up" },
           { id: "in_progress", label: "In progress" },
           { id: "completed", label: "Completed" },
+          { id: "canceled", label: "Canceled" },
         ].map((item) => (
           <FilterChip
             active={statusFilter === item.id}
@@ -271,7 +273,7 @@ function AppointmentRow({
               {appointmentService(appointment)}
             </p>
             <p className="mt-1 text-[10px] font-semibold text-[#7344cd]">
-              {appointmentStatus(appointment.status_code)}
+              {timedAppointmentStatus(appointment)}
             </p>
           </div>
           <Avatar

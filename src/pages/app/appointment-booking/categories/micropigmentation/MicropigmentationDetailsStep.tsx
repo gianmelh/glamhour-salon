@@ -1,5 +1,6 @@
 import { Check } from 'lucide-react'
 import { cn } from '../../../../../lib/cn'
+import { clampToToday, localDateString } from '../../../../../lib/date'
 import { formatMoney } from '../../../../../lib/format'
 import type { Service } from '../../../../../types/api'
 import { micropigmentationBookingAssets } from '../../assets'
@@ -176,7 +177,7 @@ export function MicropigmentationDetailsStep({ services, selectedServiceId, deta
         </label>
         <label className="flex flex-col gap-2">
           <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Touch-up date</span>
-          <input className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none" onChange={(event) => set('touch_up_date', event.target.value)} type="date" value={String(details.touch_up_date ?? '')} />
+          <input className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none" min={localDateString()} onChange={(event) => set('touch_up_date', clampToToday(event.target.value))} type="date" value={String(details.touch_up_date ?? '')} />
         </label>
         <label className="flex flex-col gap-2">
           <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Procedure notes</span>

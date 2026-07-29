@@ -14,7 +14,6 @@ import type { Professional, Service, ServiceCategory } from '../../types/api'
 import {
   nailMaterialSetupItems,
   nailServiceSetupItems,
-  type OnboardingMaterialItem,
 } from './onboardingNailsSpec'
 
 const steps = ['categories', 'services', 'schedule', 'team', 'complete'] as const
@@ -51,6 +50,7 @@ type DraftProvider = {
   languages: string[]
   salonPercent: string
   professionalPercent: string
+  categoryIds?: string[]
   serviceIds: string[]
   schedule: Record<string, DraftDay>
   useSalonSchedule?: boolean
@@ -141,6 +141,14 @@ function serviceIdSuffix(name: string) {
   return name.toLowerCase().replace(/\s+/g, '-')
 }
 
+function isGeneratedPlaceholderService(serviceName: string, category: ServiceCategory | undefined) {
+  if (!category || category.code === 'nails') return false
+  const normalizedName = serviceName.trim().toLowerCase()
+  const normalizedCategoryName = category.name.trim().toLowerCase()
+  return normalizedName === `${normalizedCategoryName} signature`
+    || normalizedName === `${normalizedCategoryName} maintenance`
+}
+
 function withRequiredDraftServices(draft: OnboardingDraft, categories: ServiceCategory[]) {
   const services = [...draft.services]
   const serviceDraftKeys = new Set(services.map((service) => `${service.categoryId}:${service.name.toLowerCase()}:${service.section ?? 'service'}`))
@@ -192,18 +200,20 @@ function sanitizeStoredDraft(draft: OnboardingDraft | null, categories: ServiceC
   }
 
   const categoryIds = new Set(categories.map((category) => category.id))
+  const categoryById = new Map(categories.map((category) => [category.id, category]))
   const legacyMaterialNames = new Set(nailServiceSetupItems.map((name) => name.toLowerCase()))
   const sanitizedDraft = {
     ...draft,
     selectedCategoryIds: draft.selectedCategoryIds.filter((id) => categoryIds.has(id)),
     services: draft.services.filter((service) => {
       if (!categoryIds.has(service.categoryId)) return false
+      if (isGeneratedPlaceholderService(service.name, categoryById.get(service.categoryId))) return false
       if (service.section !== 'material') return true
       return !legacyMaterialNames.has(service.name.toLowerCase())
     }),
   }
 
-  return sanitizedDraft.services.length && sanitizedDraft.selectedCategoryIds.length ? withRequiredDraftServices(sanitizedDraft, categories) : null
+  return sanitizedDraft.selectedCategoryIds.length ? withRequiredDraftServices(sanitizedDraft, categories) : null
 }
 
 function isNailTreatmentService(service: DraftService, categories: ServiceCategory[]) {
@@ -223,10 +233,18 @@ function getProviderCategoryServices(draft: OnboardingDraft) {
   return draft.services.filter((service) => service.section !== 'material')
 }
 
+function getSelectedProviderCategoryServices(draft: OnboardingDraft) {
+  const selectedCategoryIds = new Set(draft.selectedCategoryIds)
+  return getProviderCategoryServices(draft).filter((service) => selectedCategoryIds.has(service.categoryId))
+}
+
 function createDraft(categories: ServiceCategory[], services: Service[], professionals: Professional[]): OnboardingDraft {
   const selectedCategoryIds: string[] = []
+  const categoryById = new Map(categories.map((category) => [category.id, category]))
   const serviceDrafts: DraftService[] = services.length
-    ? services.map((service) => ({
+    ? services
+      .filter((service) => !isGeneratedPlaceholderService(service.name, categoryById.get(service.category_id)))
+      .map((service) => ({
         id: service.id,
         categoryId: service.category_id,
         name: service.name,
@@ -235,15 +253,7 @@ function createDraft(categories: ServiceCategory[], services: Service[], profess
         duration: String(service.duration_minutes),
         section: 'service' as const,
       }))
-    : categories.flatMap((category) => ['Signature', 'Maintenance'].map((kind, index) => ({
-        id: `${category.id}-${index}`,
-        categoryId: category.id,
-        name: `${category.name} ${kind}`,
-        selected: false,
-        price: index === 0 ? '85' : '55',
-        duration: index === 0 ? '90' : '60',
-        section: 'service' as const,
-      })))
+    : []
   const serviceDraftKeys = new Set(serviceDrafts.map((service) => `${service.categoryId}:${service.name.toLowerCase()}:${service.section ?? 'service'}`))
 
   categories.forEach((category) => {
@@ -296,6 +306,7 @@ function createDraft(categories: ServiceCategory[], services: Service[], profess
       languages: professional.languages.length ? professional.languages : ['en'],
       salonPercent: professional.salon_earnings_percent.split('.')[0] ?? '60',
       professionalPercent: professional.professional_earnings_percent.split('.')[0] ?? '40',
+      categoryIds: [],
       serviceIds: serviceDrafts.filter((service) => service.selected).map((service) => service.id),
       schedule: defaultSchedule,
       useSalonSchedule: false,
@@ -312,6 +323,7 @@ function createBlankProvider(schedule: Record<string, DraftDay>): DraftProvider 
     languages: ['en'],
     salonPercent: '40',
     professionalPercent: '60',
+    categoryIds: [],
     serviceIds: [],
     schedule,
     useSalonSchedule: true,
@@ -562,14 +574,17 @@ function CategoriesStep({ categories, draft, updateDraft }: { categories: Servic
 
 function ServicesStep({ categories, draft, updateDraft }: { categories: ServiceCategory[]; draft: OnboardingDraft; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
   const selectedCategories = categories.filter((category) => draft.selectedCategoryIds.includes(category.id))
+  const selectedNailsCategory = selectedCategories.find((category) => category.code === 'nails')
   return (
     <OnboardingPanel backgroundColor="#F2F5FF" title="Select Services" subtitle="Choose the services you offer and set your base prices.">
       <div className="mt-5 space-y-5">
-        {selectedCategories.map((category) => (
-          category.code === 'nails'
-            ? <NailServicesSetup category={category} draft={draft} key={category.id} updateDraft={updateDraft} />
-            : <GenericServicesSetup category={category} draft={draft} key={category.id} updateDraft={updateDraft} />
-        ))}
+        {selectedNailsCategory
+          ? <NailServicesSetup category={selectedNailsCategory} draft={draft} updateDraft={updateDraft} />
+          : (
+            <p className="rounded-xl bg-white px-4 py-3 text-[13px] leading-5 text-[#68738b]">
+              Service setup can be completed later in Settings.
+            </p>
+          )}
       </div>
     </OnboardingPanel>
   )
@@ -585,9 +600,6 @@ function NailServicesSetup({ category, draft, updateDraft }: { category: Service
   const materialServices = nailMaterialSetupItems
     .map((material) => services.find((service) => service.name.toLowerCase() === material.name.toLowerCase() && service.section === 'material'))
     .filter((service): service is DraftService => Boolean(service))
-  const materialVisuals = Object.fromEntries(
-    nailMaterialSetupItems.map((material) => [material.name.toLowerCase(), material]),
-  ) as Record<string, OnboardingMaterialItem>
 
   return (
     <div className="rounded-2xl border border-[#d6dce8] bg-white px-6 py-7 shadow-[0_3px_10px_rgb(34_42_66_/_0.03)]">
@@ -630,7 +642,6 @@ function NailServicesSetup({ category, draft, updateDraft }: { category: Service
             {materialServices.map((service) => (
               <NailMaterialRow
                 key={service.id}
-                material={materialVisuals[service.name.toLowerCase()]}
                 service={service}
                 updateDraft={updateDraft}
               />
@@ -686,11 +697,9 @@ function NailServicePriceRow({ service, updateDraft }: { service: DraftService; 
 }
 
 function NailMaterialRow({
-  material,
   service,
   updateDraft,
 }: {
-  material?: OnboardingMaterialItem
   service: DraftService
   updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void
 }) {
@@ -719,71 +728,8 @@ function NailMaterialRow({
       )}>
         <Check className="size-3" />
       </span>
-      {material?.imageSrc && (
-        <span className={cn('relative shrink-0', material.imageFrame)}>
-          {material.imageCrop ? (
-            <span className="pointer-events-none absolute inset-0 overflow-hidden">
-              <img alt="" className={material.imageCrop} src={material.imageSrc} />
-            </span>
-          ) : (
-            <img alt="" className="absolute inset-0 size-full max-w-none object-cover" src={material.imageSrc} />
-          )}
-        </span>
-      )}
       <span className="min-w-0 flex-1 truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
     </button>
-  )
-}
-
-function GenericServicesSetup({ category, draft, updateDraft }: { category: ServiceCategory; draft: OnboardingDraft; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
-  return (
-    <div>
-      <p className="mb-2 text-[13px] font-bold leading-4 text-[#10172a]">{category.name} Services</p>
-      <div className="space-y-2">
-        {draft.services.filter((service) => service.categoryId === category.id).map((service) => (
-          <div
-            className={cn(
-              'rounded-xl border px-3 py-2.5 transition',
-              service.selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white',
-            )}
-            key={service.id}
-          >
-            <div className="grid grid-cols-[minmax(0,1fr)_46px_46px] items-center gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <button
-                  aria-label={service.selected ? 'Remove service' : 'Add service'}
-                  className={cn('grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)]', service.selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent')}
-                  onClick={() => updateDraft((current) => ({ ...current, services: current.services.map((item) => item.id === service.id ? { ...item, selected: !item.selected } : item) }))}
-                  type="button"
-                >
-                  <Check className="size-3" />
-                </button>
-                <p className="truncate text-[12px] font-medium leading-4 text-[#1b2133]">{service.name}</p>
-              </div>
-              <Input
-                aria-label={`${service.name} price`}
-                className="min-h-7 rounded-lg px-1.5 text-center text-[11px]"
-                onChange={(event) => updateDraft((current) => ({ ...current, services: current.services.map((item) => item.id === service.id ? { ...item, price: event.target.value } : item) }))}
-                type="number"
-                value={service.price}
-              />
-              <Input
-                aria-label={`${service.name} duration`}
-                className="min-h-7 rounded-lg px-1.5 text-center text-[11px]"
-                onChange={(event) => updateDraft((current) => ({ ...current, services: current.services.map((item) => item.id === service.id ? { ...item, duration: event.target.value } : item) }))}
-                type="number"
-                value={service.duration}
-              />
-            </div>
-            <div className="mt-1 grid grid-cols-[minmax(0,1fr)_46px_46px] gap-2 text-[9px] font-medium leading-3 text-[#8b92a1]">
-              <span />
-              <span className="text-center">Price</span>
-              <span className="text-center">Min</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   )
 }
 
@@ -970,7 +916,10 @@ function ProviderSummaryCard({ categories, draft, provider, onEdit }: { categori
   const providerNailServices = provider.serviceIds
     .map((serviceId) => nailServiceMap.get(serviceId))
     .filter((service): service is DraftService => Boolean(service))
-  const categoryIds = new Set(providerCategoryServices.map((service) => service.categoryId))
+  const categoryIds = new Set([
+    ...(provider.categoryIds ?? []),
+    ...providerCategoryServices.map((service) => service.categoryId),
+  ])
   const providerCategories = categories.filter((category) => categoryIds.has(category.id))
   const languageChips = provider.languages.length ? provider.languages.map(formatLanguageLabel) : ['English']
   const scheduleLabel = provider.useSalonSchedule === false ? 'Custom Working Hours' : 'Standard Salon Hours'
@@ -1052,17 +1001,26 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
   }
 
   function categoryAssigned(categoryId: string) {
-    return categoryServices(categoryId).some((service) => providerServiceIds.has(service.id))
+    return (provider.categoryIds ?? []).includes(categoryId)
+      || categoryServices(categoryId).some((service) => providerServiceIds.has(service.id))
   }
 
   function toggleCategory(categoryId: string) {
     const serviceIds = categoryServices(categoryId).map((service) => service.id)
     if (!serviceIds.length) {
+      updateProvider({
+        categoryIds: categoryAssigned(categoryId)
+          ? (provider.categoryIds ?? []).filter((id) => id !== categoryId)
+          : [...new Set([...(provider.categoryIds ?? []), categoryId])],
+      })
       return
     }
 
     if (categoryAssigned(categoryId)) {
-      updateProvider({ serviceIds: provider.serviceIds.filter((serviceId) => !serviceIds.includes(serviceId)) })
+      updateProvider({
+        categoryIds: (provider.categoryIds ?? []).filter((id) => id !== categoryId),
+        serviceIds: provider.serviceIds.filter((serviceId) => !serviceIds.includes(serviceId)),
+      })
       return
     }
 
@@ -1073,7 +1031,11 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
           ? { ...service, selected: true }
           : service
       )),
-      providers: current.providers.map((item) => item.id === provider.id ? { ...item, serviceIds: [...new Set([...item.serviceIds, ...serviceIds])] } : item),
+      providers: current.providers.map((item) => item.id === provider.id ? {
+        ...item,
+        categoryIds: [...new Set([...(item.categoryIds ?? []), categoryId])],
+        serviceIds: [...new Set([...item.serviceIds, ...serviceIds])],
+      } : item),
     }))
   }
 
@@ -1306,8 +1268,19 @@ function CompleteStep({ isSaving, onGoToCalendar }: { isSaving: boolean; onGoToC
 
 function isStepComplete(step: Step, draft: OnboardingDraft) {
   if (step === 'categories') return draft.selectedCategoryIds.length > 0
-  if (step === 'services') return draft.services.some((service) => service.selected && service.section !== 'material' && Number(service.price) > 0 && Number(service.duration) > 0)
+  if (step === 'services') {
+    const services = getSelectedProviderCategoryServices(draft)
+    if (!services.length) return true
+    return services.some((service) => service.selected && Number(service.price) > 0 && Number(service.duration) > 0)
+  }
   if (step === 'schedule') return Object.values(draft.schedule).some((day) => day.enabled && day.open && day.close && day.open < day.close)
-  if (step === 'team') return draft.providers.length > 0 && draft.providers.every((provider) => provider.name.trim() && provider.serviceIds.length > 0 && Number(provider.salonPercent) + Number(provider.professionalPercent) === 100)
+  if (step === 'team') {
+    const hasAssignableServices = getSelectedProviderCategoryServices(draft).length > 0
+    return draft.providers.length > 0 && draft.providers.every((provider) => (
+      provider.name.trim()
+      && (!hasAssignableServices || provider.serviceIds.length > 0)
+      && Number(provider.salonPercent) + Number(provider.professionalPercent) === 100
+    ))
+  }
   return true
 }

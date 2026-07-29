@@ -1,9 +1,10 @@
 import type { AppointmentDraft, BookingStep } from './types'
 import { sanitizeDetailsForCategory } from './categoryDetails'
+import { clampToToday, localDateString } from '../../../lib/date'
 
 export const APPOINTMENT_DRAFT_KEY = 'glamhour:new-appointment-draft'
 
-export const todayString = () => new Date().toISOString().slice(0, 10)
+export const todayString = localDateString
 
 export const emptyDraft = (): AppointmentDraft => ({
   categoryId: '',
@@ -22,6 +23,7 @@ export function readDraft(): AppointmentDraft {
   if (typeof window === 'undefined') return emptyDraft()
   try {
     const draft = { ...emptyDraft(), ...JSON.parse(window.sessionStorage.getItem(APPOINTMENT_DRAFT_KEY) ?? '{}') } as AppointmentDraft
+    draft.date = clampToToday(draft.date)
     if (draft.categoryCode) {
       draft.details = sanitizeDetailsForCategory(draft.categoryCode, draft.details ?? {})
     } else {

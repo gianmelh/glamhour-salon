@@ -34,20 +34,20 @@ export type NailTypeRowItem = {
 /** Grid rows for nail types (Figma 335:7183). */
 export const nailTypeRows: NailTypeRowItem[][] = [
   [
-    { label: 'Stilleto', variant: 'stiletto', imageSrc: nailsBookingAssets.nailTypes.stiletto, className: 'flex-1 h-[82px]' },
-    { label: 'Coffin', variant: 'coffin', imageSrc: nailsBookingAssets.nailTypes.coffin, className: 'flex-1 h-[82px]' },
+    { label: 'Stilleto', variant: 'stiletto', imageSrc: nailsBookingAssets.nailTypes.stiletto, className: 'flex-1 h-[50px]' },
+    { label: 'Coffin', variant: 'coffin', imageSrc: nailsBookingAssets.nailTypes.coffin, className: 'flex-1 h-[50px]' },
   ],
   [
-    { label: 'Almond', variant: 'almond', imageSrc: nailsBookingAssets.nailTypes.almond, className: 'flex-1 h-[82px]' },
-    { label: 'Oval', variant: 'oval', imageSrc: nailsBookingAssets.nailTypes.oval, className: 'flex-1 h-[82px]' },
+    { label: 'Almond', variant: 'almond', imageSrc: nailsBookingAssets.nailTypes.almond, className: 'flex-1 h-[50px]' },
+    { label: 'Oval', variant: 'oval', imageSrc: nailsBookingAssets.nailTypes.oval, className: 'flex-1 h-[50px]' },
   ],
   [
-    { label: 'Squoval', variant: 'squoval', imageSrc: nailsBookingAssets.nailTypes.squoval, className: 'flex-1 h-[82px]' },
-    { label: 'Square', variant: 'square', imageSrc: nailsBookingAssets.nailTypes.square, className: 'flex-1 h-[82px]' },
+    { label: 'Squoval', variant: 'squoval', imageSrc: nailsBookingAssets.nailTypes.squoval, className: 'flex-1 h-[50px]' },
+    { label: 'Square', variant: 'square', imageSrc: nailsBookingAssets.nailTypes.square, className: 'flex-1 h-[50px]' },
   ],
   [
-    { label: 'Round', variant: 'round', imageSrc: nailsBookingAssets.nailTypes.round, className: 'flex-1 h-[82px]' },
-    { label: 'Custom', variant: 'custom', imageSrc: nailsBookingAssets.nailTypes.custom, className: 'flex-1 h-[82px]' },
+    { label: 'Round', variant: 'round', imageSrc: nailsBookingAssets.nailTypes.round, className: 'flex-1 h-[50px]' },
+    { label: 'Custom', variant: 'custom', imageSrc: nailsBookingAssets.nailTypes.custom, className: 'flex-1 h-[50px]' },
   ],
 ]
 
@@ -64,9 +64,9 @@ export type MaterialSpec = {
 
 /** Material card layout from Figma 335:7214. */
 export const materialGridLayout = {
-  gapX: 26,
-  gapY: 32,
-  height: 196,
+  gapX: 16,
+  gapY: 16,
+  height: 112,
   width: 351,
 } as const
 
@@ -112,18 +112,11 @@ export const defaultMaterialSpecs: MaterialSpec[] = [
 export function buildMaterialSpecs(apiMaterials?: Array<{ id: string; name: string }>): MaterialSpec[] {
   if (!apiMaterials?.length) return defaultMaterialSpecs
 
-  const byName = Object.fromEntries(defaultMaterialSpecs.map((item) => [item.label, item]))
-  return apiMaterials.map((material) => {
-    const spec = byName[material.name]
-    return spec
-      ? { ...spec, id: material.id, label: material.name }
-      : {
-          id: material.id,
-          label: material.name,
-          imageSrc: '',
-          imageFrame: 'h-[67px] w-[37px]',
-          col: 1 as const,
-          row: 1 as const,
-        }
+  const apiMaterialsByName = new Map(apiMaterials.map((material) => [material.name.trim().toLowerCase(), material]))
+  return defaultMaterialSpecs.map((defaultSpec) => {
+    const material = apiMaterialsByName.get(defaultSpec.label.toLowerCase())
+    if (!material) return defaultSpec
+
+    return { ...defaultSpec, id: material.id, label: material.name }
   })
 }

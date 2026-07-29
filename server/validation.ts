@@ -77,6 +77,7 @@ export const createAppointmentSchema = z.object({
   treatmentDetails: z.record(z.string(), z.unknown()).optional(),
   treatmentNotes: z.string().max(5000).optional(),
   treatmentRecommendations: z.string().max(5000).optional(),
+  priceOverrideMinor: z.number().int().min(0).optional(),
   createdByUserId: uuidSchema.optional(),
 }).refine((value) => new Date(value.startsAt) < new Date(value.endsAt), {
   message: 'startsAt must be before endsAt',

@@ -53,7 +53,7 @@ function greeting() {
 }
 
 function appointmentStatusLabel(status: string) {
-  if (status === 'coming_up') return 'On the way'
+  if (status === 'coming_up') return 'Coming up'
   if (status === 'in_progress') return 'In progress'
   if (status === 'completed') return 'Completed'
   if (status === 'canceled' || status === 'no_show') return 'Cancelled'

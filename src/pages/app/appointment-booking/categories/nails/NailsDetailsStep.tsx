@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { cn } from '../../../../../lib/cn'
+import { scrollMainToTop } from '../../../../../lib/defer'
 import { useNailsServiceMaterials } from '../../../../../hooks/useServiceMaterials'
 import { hasNailsDownstreamSelections } from '../../../nails-booking/nailsDetailsTypes'
 import { normalizeServiceName } from '../../constants'
@@ -18,7 +19,7 @@ import { UpdateServiceSelectionModal } from '../../components/UpdateServiceSelec
 import type { CategoryStepProps, HandName } from '../../types'
 import type { ServiceCategory } from '../../../../../types/api'
 import { HandEditor } from './HandEditor'
-import { getNailsDetailsMissingItems, hasHandMeasurement, isHandComplete } from './nailsFingerOptions'
+import { applyActiveFingerMeasurementsToAll, getNailsDetailsMissingItems, hasHandMeasurement, isHandComplete } from './nailsFingerOptions'
 import {
   buildMaterialSpecs,
   materialGridLayout,
@@ -50,9 +51,8 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
 
   const applyServiceType = (label: string) => {
     const match = services.find((service) => normalizeServiceName(service.name).includes(normalizeServiceName(label)))
-      ?? services.find((service) => service.is_active)
     onChange({
-      serviceId: match?.id ?? selectedServiceId,
+      serviceId: match?.id ?? '',
       details: { ...details, nailServiceType: label },
     })
   }
@@ -85,8 +85,25 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
   const canContinue = missingItems.length === 0
 
   const ensureSelectedService = async () => {
+    const serviceType = String(details.nailServiceType ?? selectedType)
+    const selectedServiceMatchesType = selectedServiceId
+      && serviceType
+      && services.some((service) => (
+        service.id === selectedServiceId
+        && normalizeServiceName(service.name).includes(normalizeServiceName(serviceType))
+    ))
+    if (selectedServiceMatchesType) return selectedServiceId
+
+    const matchingService = services.find((service) => (
+      serviceType
+      && service.is_active
+      && normalizeServiceName(service.name).includes(normalizeServiceName(serviceType))
+    ))
+    if (matchingService) return matchingService.id
+
     if (selectedServiceId) return selectedServiceId
     if (services[0]) return services[0].id
+
     const categoryId = uuidPattern.test(category.id)
       ? category.id
       : categorySource?.find((item) => item.code === category.code)?.id
@@ -96,7 +113,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
 
     const service = await glamhourApi.createService({
       categoryId,
-      name: selectedType || 'Nails service',
+      name: serviceType || 'Nails service',
       description: 'Created from nails booking flow.',
       durationMinutes: 60,
       priceMinor: 0,
@@ -106,8 +123,12 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
     return service.id
   }
 
-  const continueNailsFlow = async (nextDetails = details) => {
+  const continueNailsFlow = async (requestedDetails = details) => {
     if (continuing) return
+    const nextDetails = applyActiveFingerMeasurementsToAll(requestedDetails)
+    if (nextDetails !== requestedDetails) {
+      setDetails(nextDetails)
+    }
     const nextMissingItems = getNailsDetailsMissingItems(nextDetails)
     const nextActiveHand = (nextDetails.activeHand as HandName | undefined) ?? 'rightHand'
     const nextRightHand = nextDetails.rightHand as Record<string, Record<string, string>> | undefined
@@ -118,7 +139,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
 
     if (nextUsesFingerMode && nextActiveHand === 'rightHand' && nextRightHandComplete && !nextLeftHandStarted) {
       setDetails((current) => ({ ...current, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' }))
-      queueMicrotask(() => document.querySelector('main')?.scrollTo({ top: 0 }))
+      scrollMainToTop()
       return
     }
     if (nextMissingItems.length > 0) {
@@ -213,20 +234,25 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
                 key={spec.id}
                 label={spec.label}
                 onClick={() => {
-                  const nextIds = new Set(selectedMaterialIds)
-                  const nextLabels = new Set(selectedMaterialLabels)
-                  if (nextIds.has(spec.id)) {
-                    nextIds.delete(spec.id)
-                    nextLabels.delete(spec.label)
-                  } else {
-                    nextIds.add(spec.id)
-                    nextLabels.add(spec.label)
-                  }
-                  setDetails({
-                    ...details,
-                    materialIds: [...nextIds],
-                    materialLabels: [...nextLabels],
-                    materials: [...nextLabels],
+                  setDetails((current) => {
+                    const currentIds = new Set((current.materialIds as string[] | undefined) ?? [])
+                    const currentLabels = new Set((current.materialLabels as string[] | undefined) ?? (current.materials as string[] | undefined) ?? [])
+                    const selected = currentIds.has(spec.id) || currentLabels.has(spec.label)
+
+                    if (selected) {
+                      currentIds.delete(spec.id)
+                      currentLabels.delete(spec.label)
+                    } else {
+                      currentIds.add(spec.id)
+                      currentLabels.add(spec.label)
+                    }
+
+                    return {
+                      ...current,
+                      materialIds: [...currentIds],
+                      materialLabels: [...currentLabels],
+                      materials: [...currentLabels],
+                    }
                   })
                 }}
               />

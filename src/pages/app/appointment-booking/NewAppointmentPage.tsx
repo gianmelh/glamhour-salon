@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../../components'
-import { useAppointments, useClients, useServiceCategories, useServices } from '../../../hooks/useGlamhourData'
+import { useAppointments, useClients, useProfessionals, useServiceCategories, useServices } from '../../../hooks/useGlamhourData'
 import { useMutation } from '../../../hooks/useMutation'
 import { cn } from '../../../lib/cn'
+import { clampToToday } from '../../../lib/date'
+import { deferTask, scrollMainToTop } from '../../../lib/defer'
 import { glamhourApi } from '../../../services/glamhour-api'
 import type { AvailabilitySlot, EligibleProvider } from '../../../types/api'
 import { NailsServicesScreen } from '../nails-booking/NailsServicesScreen'
@@ -31,12 +33,36 @@ function resolveCategoryServiceId(
     ?? ''
 }
 
+function appointmentDraftTime(draft: AppointmentDraft) {
+  if (typeof draft.details.consentTime === 'string' && draft.details.consentTime) return draft.details.consentTime
+  if (!draft.startsAt) return '09:00'
+  const date = new Date(draft.startsAt)
+  if (Number.isNaN(date.getTime())) return '09:00'
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function appointmentDraftDate(draft: AppointmentDraft) {
+  return clampToToday(typeof draft.details.consentDate === 'string' && draft.details.consentDate
+    ? draft.details.consentDate
+    : draft.date)
+}
+
+function parseDraftTime(details: Record<string, unknown>) {
+  const value = typeof details.consentTime === 'string' ? details.consentTime : ''
+  const [hour, minute] = value.split(':').map(Number)
+  return {
+    hour: Number.isFinite(hour) ? hour : 9,
+    minute: Number.isFinite(minute) ? minute : 0,
+  }
+}
+
 export function NewAppointmentPage() {
   const navigate = useNavigate()
   const categories = useServiceCategories()
   const services = useServices()
   const clients = useClients()
   const appointments = useAppointments()
+  const professionals = useProfessionals()
   const mutation = useMutation(glamhourApi.createAppointment)
   const updateMutation = useMutation((input: {
     appointmentId: string
@@ -55,10 +81,12 @@ export function NewAppointmentPage() {
   const [availability, setAvailability] = useState<AvailabilitySlot[]>([])
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [createdAppointmentId, setCreatedAppointmentId] = useState('')
+  const [confirmError, setConfirmError] = useState<Error | null>(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
   const devLashesBootstrapped = useRef(false)
 
   useEffect(() => {
-    document.querySelector('main')?.scrollTo({ top: 0 })
+    scrollMainToTop()
   }, [step])
 
   useEffect(() => {
@@ -88,15 +116,15 @@ export function NewAppointmentPage() {
 
   useEffect(() => {
     if (!draft.serviceId) {
-      queueMicrotask(() => setEligibleProviders([]))
+      deferTask(() => setEligibleProviders([]))
       return
     }
     let active = true
-    queueMicrotask(() => setProviderLoading(true))
+    deferTask(() => setProviderLoading(true))
     glamhourApi.eligibleProviders({
       serviceId: draft.serviceId,
       categoryId: draft.categoryId || undefined,
-      date: draft.date || undefined,
+      date: appointmentDraftDate(draft) || undefined,
     }).then((providers) => {
       if (active) setEligibleProviders(providers)
     }).catch(() => {
@@ -108,16 +136,16 @@ export function NewAppointmentPage() {
   }, [draft.categoryId, draft.date, draft.serviceId])
 
   useEffect(() => {
-    if (!draft.providerId || !draft.serviceId || !draft.date) {
-      queueMicrotask(() => setAvailability([]))
+    if (!draft.providerId || !draft.serviceId || !appointmentDraftDate(draft)) {
+      deferTask(() => setAvailability([]))
       return
     }
     let active = true
-    queueMicrotask(() => setAvailabilityLoading(true))
+    deferTask(() => setAvailabilityLoading(true))
     glamhourApi.appointmentAvailability({
       providerId: draft.providerId,
       serviceId: draft.serviceId,
-      date: draft.date,
+      date: appointmentDraftDate(draft),
     }).then((result) => {
       if (active) setAvailability(result.slots)
     }).catch(() => {
@@ -175,10 +203,10 @@ export function NewAppointmentPage() {
     }, {})
   }, [appointments.data])
 
-  const loading = categories.loading || services.loading || clients.loading || appointments.loading
+  const loading = categories.loading || services.loading || clients.loading || appointments.loading || professionals.loading
   if (loading) return <LoadingState label="Loading appointment flow..." />
-  if (!categories.data || !services.data || !clients.data || !appointments.data) {
-    return <ErrorState description="Appointment data could not be loaded." onRetry={() => { categories.retry(); services.retry(); clients.retry(); appointments.retry() }} />
+  if (!categories.data || !services.data || !clients.data || !appointments.data || !professionals.data) {
+    return <ErrorState description="Appointment data could not be loaded." onRetry={() => { categories.retry(); services.retry(); clients.retry(); appointments.retry(); professionals.retry() }} />
   }
 
   const appointmentCategories = buildAppointmentCategories(categories.data, services.data)
@@ -188,7 +216,17 @@ export function NewAppointmentPage() {
   ))
   const selectedService = services.data.find((service) => service.id === draft.serviceId) ?? categoryServices[0]
   const selectedClient = clients.data.find((client) => client.id === draft.clientId)
-  const selectedProvider = eligibleProviders.find((provider) => provider.id === draft.providerId)
+  const scheduleProviders = eligibleProviders.length
+    ? eligibleProviders
+    : professionals.data
+      .filter((provider) => provider.status !== 'inactive')
+      .map((provider) => ({
+        ...provider,
+        durationMinutes: selectedService?.duration_minutes ?? 60,
+        category_code: selectedCategory?.code,
+        category_name: selectedCategory?.name,
+      }))
+  const selectedProvider = scheduleProviders.find((provider) => provider.id === draft.providerId)
 
   const continueFromServiceDetails = (patch: DraftPatch = {}) => {
     const patchedDetails = typeof patch.details === 'function'
@@ -237,48 +275,110 @@ export function NewAppointmentPage() {
     else setStep(order[index - 1])
   }
 
-  const confirm = async () => {
-    const treatmentDetails = buildTreatmentPayload(draft.categoryCode, draft.details, selectedClient!)
+  const defaultAppointmentTimes = () => {
+    const [year, month, day] = appointmentDraftDate(draft).split('-').map(Number)
+    const { hour, minute } = parseDraftTime(draft.details)
+    const starts = new Date(year, (month || 1) - 1, day || 1, hour, minute, 0, 0)
+    const ends = new Date(starts)
+    ends.setMinutes(starts.getMinutes() + (selectedService?.duration_minutes ?? 60))
+    return { startsAt: starts.toISOString(), endsAt: ends.toISOString() }
+  }
 
-    if (draft.appointmentId) {
-      const appointment = await updateMutation.mutate({
-        appointmentId: draft.appointmentId,
-        categoryCode: draft.categoryCode,
-        treatmentDetails,
-        treatmentNotes: draft.notes,
-      })
-      const appointmentId = draft.appointmentId
-      setDraft(emptyDraft())
-      window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
-      appointments.setData((current) => (current ?? []).map((item) => (
-        item.id === appointment.id ? { ...item, ...appointment } : item
-      )))
-      navigate(`/app/appointments/${appointmentId}`)
-      return
+  const resolveBookableAssignment = async () => {
+    const uniqueCandidates = [
+      selectedService,
+      ...categoryServices.filter((service) => service.is_active),
+    ].filter((service, index, list): service is Service => (
+      Boolean(service) && list.findIndex((item) => item?.id === service?.id) === index
+    ))
+
+    for (const service of uniqueCandidates) {
+      const providers = service.id === draft.serviceId && eligibleProviders.length
+        ? eligibleProviders
+        : await glamhourApi.eligibleProviders({
+          serviceId: service.id,
+          categoryId: draft.categoryId || undefined,
+          date: appointmentDraftDate(draft) || undefined,
+        }).catch(() => [])
+      const provider = providers.find((item) => item.id === draft.providerId) ?? providers[0]
+      if (provider) return { service, provider }
     }
 
-    if (!selectedService || !draft.startsAt || !draft.endsAt) return
-    const appointment = await mutation.mutate({
-      clientId: draft.clientId,
-      professionalId: draft.providerId,
-      serviceIds: [draft.serviceId],
-      startsAt: draft.startsAt,
-      endsAt: draft.endsAt,
-      customerNotes: draft.notes,
-      treatmentDetails,
-      treatmentNotes: draft.notes,
-    })
-    setDraft(emptyDraft())
-    window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
-    appointments.setData((current) => [appointment, ...(current ?? [])])
-    setCreatedAppointmentId(appointment.id)
-    setStep('success')
+    throw new Error('Assign at least one Nails service to a provider in Staff settings before scheduling.')
+  }
+
+  const resolveAppointmentTimes = async (serviceId: string, providerId: string) => {
+    if (draft.startsAt && draft.endsAt) return { startsAt: draft.startsAt, endsAt: draft.endsAt }
+    if (typeof draft.details.consentTime === 'string' && draft.details.consentTime) return defaultAppointmentTimes()
+
+    const availableSlots = await glamhourApi.appointmentAvailability({
+      providerId,
+      serviceId,
+      date: appointmentDraftDate(draft),
+    }).then((result) => result.slots.filter((slot) => slot.available)).catch(() => [])
+
+    const slot = availableSlots[0]
+    if (slot) return { startsAt: slot.startsAt, endsAt: slot.endsAt }
+
+    return defaultAppointmentTimes()
+  }
+
+  const confirm = async () => {
+    setConfirmError(null)
+    setConfirmLoading(true)
+    const treatmentDetails = buildTreatmentPayload(draft.categoryCode, draft.details, selectedClient!)
+
+    try {
+      if (draft.appointmentId) {
+        const appointment = await updateMutation.mutate({
+          appointmentId: draft.appointmentId,
+          categoryCode: draft.categoryCode,
+          treatmentDetails,
+          treatmentNotes: draft.notes,
+        })
+        const appointmentId = draft.appointmentId
+        setDraft(emptyDraft())
+        window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
+        appointments.setData((current) => (current ?? []).map((item) => (
+          item.id === appointment.id ? { ...item, ...appointment } : item
+        )))
+        navigate(`/app/appointments/${appointmentId}`)
+        return
+      }
+
+      const assignment = await resolveBookableAssignment()
+      const appointmentTimes = await resolveAppointmentTimes(assignment.service.id, assignment.provider.id)
+      const appointment = await mutation.mutate({
+        clientId: draft.clientId,
+        professionalId: assignment.provider.id,
+        serviceIds: [assignment.service.id],
+        startsAt: appointmentTimes.startsAt,
+        endsAt: appointmentTimes.endsAt,
+        customerNotes: draft.notes,
+        treatmentDetails,
+        treatmentNotes: draft.notes,
+        priceOverrideMinor: typeof draft.details.appointmentPriceMinor === 'number'
+          ? draft.details.appointmentPriceMinor
+          : undefined,
+      })
+      const comingUpAppointment = await glamhourApi.updateAppointmentStatus(appointment.id, 'coming_up')
+      setDraft(emptyDraft())
+      window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
+      appointments.setData((current) => [comingUpAppointment, ...(current ?? [])])
+      setCreatedAppointmentId(comingUpAppointment.id)
+      setStep('success')
+    } catch (reason) {
+      setConfirmError(reason instanceof Error ? reason : new Error('Appointment could not be scheduled.'))
+    } finally {
+      setConfirmLoading(false)
+    }
   }
 
   const hideBack = step === 'success'
     || step === 'categories'
     || (step === 'service' && usesCategoryStepLayout(draft.categoryCode))
     || step === 'appointment-details'
+    || step === 'provider'
 
   const usesCategoryDetailsLayout = step === 'service' && usesCategoryStepLayout(draft.categoryCode)
 
@@ -286,8 +386,15 @@ export function NewAppointmentPage() {
 
   return (
     <div className={cn(
-      'min-h-full w-full min-w-0 bg-[#f2f5ff]',
-      step === 'categories' || usesCategoryDetailsLayout ? 'pt-0' : 'px-5 pt-5',
+      'min-h-full w-full min-w-0',
+      step === 'provider' ? 'bg-white' : 'bg-[#f2f5ff]',
+      step === 'categories' || usesCategoryDetailsLayout
+        ? 'pt-0'
+        : step === 'appointment-details'
+          ? 'px-4 pt-10'
+          : step === 'provider'
+            ? 'px-3 pt-8'
+          : 'px-5 pt-5',
     )}>
       {!hideBack && (
         <button className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-[#111827]" onClick={goBack} type="button">
@@ -302,7 +409,7 @@ export function NewAppointmentPage() {
           onCalendar={() => navigate('/app/calendar')}
           services={services.data}
           onSelect={(category) => {
-            setDraft({ ...emptyDraft(), categoryId: category.id, categoryCode: category.code, date: draft.date })
+            setDraft({ ...emptyDraft(), categoryId: category.id, categoryCode: category.code, date: appointmentDraftDate(draft) })
             setCreatedAppointmentId('')
             setStep('client')
           }}
@@ -326,11 +433,21 @@ export function NewAppointmentPage() {
           client={selectedClient}
           details={draft.details}
           notes={draft.notes}
-          onChange={(details, notes) => setDraft((current) => ({
-            ...current,
-            details: sanitizeDetailsForCategory(current.categoryCode, details),
-            notes,
-          }))}
+          serviceDate={appointmentDraftDate(draft)}
+          serviceTime={appointmentDraftTime(draft)}
+          onChange={(details, notes) => setDraft((current) => {
+            const nextDate = clampToToday(typeof details.consentDate === 'string' && details.consentDate
+              ? details.consentDate
+              : current.date)
+            return {
+              ...current,
+              date: nextDate,
+              startsAt: '',
+              endsAt: '',
+              details: sanitizeDetailsForCategory(current.categoryCode, details),
+              notes,
+            }
+          })}
           onNext={() => setStep('service')}
         />
       )}
@@ -362,8 +479,15 @@ export function NewAppointmentPage() {
         <AppointmentDetailsStep
           category={selectedCategory}
           client={selectedClient}
+          date={appointmentDraftDate(draft)}
           details={draft.details}
+          error={confirmError ?? mutation.error}
+          loading={confirmLoading || mutation.loading}
           notes={draft.notes}
+          onDetailsChange={(details) => setDraft((current) => ({
+            ...current,
+            details: sanitizeDetailsForCategory(current.categoryCode, details),
+          }))}
           onEdit={() => {
             setDraft((current) => ({
               ...current,
@@ -371,7 +495,7 @@ export function NewAppointmentPage() {
             }))
             setStep('service')
           }}
-          onNext={() => setStep('provider')}
+          onNext={() => void confirm()}
           service={selectedService}
         />
       )}
@@ -379,15 +503,15 @@ export function NewAppointmentPage() {
       {step === 'provider' && (
         <CalendarSetupStep
           availabilityLoading={availabilityLoading}
-          date={draft.date}
+          date={appointmentDraftDate(draft)}
           onBack={goBack}
-          onDateChange={(date) => setDraft({ ...draft, date, startsAt: '', endsAt: '' })}
+          onDateChange={(date) => setDraft({ ...draft, date: clampToToday(date), startsAt: '', endsAt: '' })}
           onExit={exitBooking}
           onNext={() => setStep('review')}
           onSelectProvider={(providerId) => setDraft({ ...draft, providerId, startsAt: '', endsAt: '' })}
           onSelectSlot={(slot) => setDraft({ ...draft, startsAt: slot.startsAt, endsAt: slot.endsAt })}
           providerLoading={providerLoading}
-          providers={eligibleProviders}
+          providers={scheduleProviders}
           selectedProviderId={draft.providerId}
           selectedStartsAt={draft.startsAt}
           serviceName={selectedService?.name}

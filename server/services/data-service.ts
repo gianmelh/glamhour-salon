@@ -77,6 +77,7 @@ interface CreateAppointmentInput {
   treatmentDetails?: Record<string, unknown>
   treatmentNotes?: string
   treatmentRecommendations?: string
+  priceOverrideMinor?: number
   createdByUserId?: string
 }
 
@@ -2768,7 +2769,12 @@ export const dataService = {
            SELECT jsonb_agg(to_jsonb(aps) ORDER BY aps.created_at)
            FROM appointment_services aps
            WHERE aps.salon_id = a.salon_id AND aps.appointment_id = a.id
-         ), '[]'::jsonb) AS services
+         ), '[]'::jsonb) AS services,
+         (
+           SELECT COALESCE(jsonb_object_agg(acd.category, acd.details_json), '{}'::jsonb)
+           FROM appointment_category_details acd
+           WHERE acd.salon_id = a.salon_id AND acd.appointment_id = a.id
+         ) AS treatment_details_by_category
        FROM appointments a
        JOIN clients c ON c.salon_id = a.salon_id AND c.id = a.client_id
        JOIN professionals p ON p.salon_id = a.salon_id AND p.id = a.professional_id
@@ -3159,7 +3165,7 @@ export const dataService = {
             service.name,
             service.category_code,
             service.duration_minutes,
-            service.price_minor,
+            input.priceOverrideMinor ?? service.price_minor,
           ],
         )
         const appointmentServiceId = appointmentServices[0]?.id

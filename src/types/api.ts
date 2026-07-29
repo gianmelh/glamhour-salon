@@ -376,6 +376,7 @@ export interface CreateAppointmentInput {
   treatmentDetails?: Record<string, unknown>
   treatmentNotes?: string
   treatmentRecommendations?: string
+  priceOverrideMinor?: number
 }
 
 export interface AppointmentCategory {

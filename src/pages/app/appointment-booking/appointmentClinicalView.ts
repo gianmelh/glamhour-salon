@@ -1,4 +1,5 @@
 import type { Appointment, ClinicalAnnotation, ClinicalConsent, ClinicalMedia, ClinicalSignature } from '../../../types/api'
+import { appointmentService } from '../../../lib/format'
 import { buildLashesTreatmentReviewRows } from '../lashes-booking/buildLashesReviewSections'
 import { healthQuestionnaires } from './health-questionnaires'
 import type { BookingCategoryCode, FingerName } from './types'
@@ -34,6 +35,23 @@ function formatAnswerValue(value: unknown): string {
   if (value == null || value === '') return '—'
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
+}
+
+function displayClinicalDate(startsAt: string, details: Record<string, unknown>) {
+  const consentDate = typeof details.consentDate === 'string' ? details.consentDate : ''
+  if (!consentDate) return new Date(startsAt).toLocaleDateString()
+  const [year, month, day] = consentDate.split('-').map(Number)
+  if (!year || !month || !day) return new Date(startsAt).toLocaleDateString()
+  return new Date(year, month - 1, day).toLocaleDateString()
+}
+
+function displayClinicalTime(startsAt: string, details: Record<string, unknown>) {
+  const consentTime = typeof details.consentTime === 'string' ? details.consentTime : ''
+  const [hour, minute] = consentTime.split(':').map(Number)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return new Date(startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+  return new Date(2026, 0, 1, hour, minute).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 function formatHandMeasurements(hand: Record<string, Record<string, string>> | undefined, handLabel: string) {
@@ -201,11 +219,11 @@ export function buildAppointmentClinicalView(appointment: Appointment): Appointm
 
   const appointmentRows = [
     { label: 'Category', value: service?.category_code_snapshot ?? categoryCode },
-    { label: 'Service', value: service?.service_name_snapshot ?? '—' },
+    { label: 'Service', value: appointmentService(appointment) },
     { label: 'Client', value: appointment.client_name ?? '—' },
     { label: 'Professional', value: appointment.professional_name ?? '—' },
-    { label: 'Date', value: new Date(appointment.starts_at).toLocaleDateString() },
-    { label: 'Time', value: new Date(appointment.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
+    { label: 'Date', value: displayClinicalDate(appointment.starts_at, details) },
+    { label: 'Time', value: displayClinicalTime(appointment.starts_at, details) },
   ]
   sections.push({ title: 'Appointment information', rows: appointmentRows })
 

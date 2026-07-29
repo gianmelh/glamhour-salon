@@ -2,8 +2,8 @@
 export const registrationFlowLayout = {
   pageMaxWidth: 375,
   pageBg: '#f2f5ff',
-  paddingX: 16,
-  paddingTop: 64,
-  sectionGap: 32,
+  paddingX: 20,
+  paddingTop: 44,
+  sectionGap: 20,
   contentMaxWidth: 351,
 } as const

@@ -1,21 +1,34 @@
-import { useState } from 'react'
 import { CalendarDays, ChevronLeft, Clock3, DollarSign, UserRound } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Avatar, Badge, Button, Card, DataSourceNotice, ErrorState, LoadingState, MutationError, PageTitle, ScreenSection } from '../../components'
 import { useAppointment } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
-import { appointmentService, appointmentStatus, formatDate, formatMoney, formatTime } from '../../lib/format'
+import { appointmentService, formatDate, formatMoney, formatTime, timedAppointmentStatus } from '../../lib/format'
 import { glamhourApi } from '../../services/glamhour-api'
 import { AppointmentClinicalDetails } from './AppointmentClinicalDetails'
 import { APPOINTMENT_DRAFT_KEY } from './appointment-booking/draft'
+
+function displayAppointmentDate(startsAt: string, treatmentDetails: Record<string, unknown>) {
+  const consentDate = typeof treatmentDetails.consentDate === 'string' ? treatmentDetails.consentDate : ''
+  if (!consentDate) return formatDate(startsAt)
+  const [year, month, day] = consentDate.split('-').map(Number)
+  if (!year || !month || !day) return formatDate(startsAt)
+  return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(year, month - 1, day))
+}
+
+function displayAppointmentTime(startsAt: string, treatmentDetails: Record<string, unknown>) {
+  const consentTime = typeof treatmentDetails.consentTime === 'string' ? treatmentDetails.consentTime : ''
+  const [hour, minute] = consentTime.split(':').map(Number)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return formatTime(startsAt)
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(2026, 0, 1, hour, minute))
+}
 
 export function AppointmentDetailsPage() {
   const navigate = useNavigate()
   const { appointmentId = '' } = useParams()
   const appointment = useAppointment(appointmentId)
-  const [tipDollars, setTipDollars] = useState('0')
-  const mutation = useMutation((input: { status: string; tipMinor?: number }) =>
-    glamhourApi.updateAppointmentStatus(appointmentId, input.status, { tipMinor: input.tipMinor }),
+  const mutation = useMutation((status: string) =>
+    glamhourApi.updateAppointmentStatus(appointmentId, status),
   )
 
   if (appointment.loading) return <LoadingState label="Loading booking details..." />
@@ -24,39 +37,35 @@ export function AppointmentDetailsPage() {
   }
 
   const data = appointment.data
-  const status = appointmentStatus(data.status_code)
+  const status = timedAppointmentStatus(data)
   const service = data.services?.[0]
   const categoryCode = service?.category_code_snapshot ?? ''
   const treatmentDetails = data.treatment_details_by_category?.[categoryCode] ?? {}
+  const terminalStatus = ['completed', 'canceled', 'no_show'].includes(data.status_code)
+  const appointmentDate = typeof treatmentDetails.consentDate === 'string' && treatmentDetails.consentDate
+    ? treatmentDetails.consentDate
+    : data.starts_at.slice(0, 10)
 
-  const updateStatus = async (next: string, tipMinor?: number) => {
-    const updated = await mutation.mutate({ status: next, tipMinor })
+  const updateStatus = async (next: string) => {
+    const updated = await mutation.mutate(next)
     appointment.setData((current) => current ? { ...current, ...updated } : updated)
   }
 
-  const openRegistration = async () => {
-    if (data.status_code === 'coming_up') {
-      await updateStatus('in_progress')
-    }
+  const editAppointment = () => {
     window.sessionStorage.setItem(APPOINTMENT_DRAFT_KEY, JSON.stringify({
       categoryId: '',
       categoryCode,
-      serviceId: service?.id ?? '',
+      serviceId: String((service as { service_id?: string } | undefined)?.service_id ?? service?.id ?? ''),
       clientId: data.client_id,
       providerId: data.professional_id,
-      date: data.starts_at.slice(0, 10),
-      startsAt: data.starts_at,
-      endsAt: data.ends_at,
-      notes: data.internal_notes ?? '',
+      date: appointmentDate,
+      startsAt: '',
+      endsAt: '',
+      notes: data.internal_notes ?? data.customer_notes ?? '',
       details: treatmentDetails,
       appointmentId: data.id,
     }))
     navigate('/app/appointments/new')
-  }
-
-  const completeService = async () => {
-    const tipMinor = Math.max(0, Math.round(Number.parseFloat(tipDollars || '0') * 100))
-    await updateStatus('completed', Number.isFinite(tipMinor) ? tipMinor : 0)
   }
 
   return (
@@ -68,7 +77,7 @@ export function AppointmentDetailsPage() {
       <PageTitle title="Appointment Details" subtitle="Review and manage this salon appointment." />
 
       <Card className="overflow-hidden border-0 bg-gradient-to-b from-[#7a48db] to-[#6138b8] p-6 text-white shadow-[0px_8px_16px_rgba(115,68,205,0.2)]">
-        <Badge className="bg-[#e3f6ed] text-[#12b76a]" tone="success">{status.toUpperCase()}</Badge>
+        <Badge tone="primary">{status.toUpperCase()}</Badge>
         <h2 className="mt-6 text-[32px] font-bold leading-10">{appointmentService(data)}</h2>
         <p className="mt-2 text-base text-white/80">with {data.professional_name ?? 'Professional'}</p>
       </Card>
@@ -76,8 +85,8 @@ export function AppointmentDetailsPage() {
       <ScreenSection title="Information">
         <div className="grid grid-cols-2 gap-4">
           <InfoCard icon={<UserRound className="size-4" />} label="Client" value={data.client_name ?? 'Client'} />
-          <InfoCard icon={<CalendarDays className="size-4" />} label="Date" value={formatDate(data.starts_at)} />
-          <InfoCard icon={<Clock3 className="size-4" />} label="Time" value={formatTime(data.starts_at)} />
+          <InfoCard icon={<CalendarDays className="size-4" />} label="Date" value={displayAppointmentDate(data.starts_at, treatmentDetails)} />
+          <InfoCard icon={<Clock3 className="size-4" />} label="Time" value={displayAppointmentTime(data.starts_at, treatmentDetails)} />
           <InfoCard icon={<DollarSign className="size-4" />} label="Cost" value={formatMoney(service?.unit_price_minor ?? 0)} />
         </div>
       </ScreenSection>
@@ -92,45 +101,13 @@ export function AppointmentDetailsPage() {
 
       <AppointmentClinicalDetails appointment={data} />
 
-      {!['completed', 'canceled', 'no_show'].includes(data.status_code) && (
-        <Card className="space-y-2">
-          <label className="text-[12px] font-semibold text-[#0c111d]" htmlFor="appointment-tip">Tips ($)</label>
-          <input
-            className="w-full rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] px-4 py-3 text-[16px] outline-none"
-            id="appointment-tip"
-            inputMode="decimal"
-            min="0"
-            onChange={(event) => setTipDollars(event.target.value)}
-            step="0.01"
-            type="number"
-            value={tipDollars}
-          />
-        </Card>
-      )}
-
       <MutationError error={mutation.error} />
       <div className="grid gap-3">
-        {data.status_code === 'scheduled' && (
-          <Button fullWidth loading={mutation.loading} onClick={() => updateStatus('coming_up')}>Mark as coming up</Button>
+        <Button fullWidth onClick={() => navigate(`/app/calendar?date=${appointmentDate}`)}>Go to calendar</Button>
+        {!terminalStatus && (
+          <Button fullWidth onClick={editAppointment} variant="outline">Edit appointment</Button>
         )}
-        {['coming_up', 'in_progress', 'scheduled'].includes(data.status_code) && (
-          <Button fullWidth loading={mutation.loading} onClick={() => void openRegistration()} variant="outline">
-            {data.status_code === 'in_progress' || Object.keys(treatmentDetails).length > 0
-              ? 'Continue registration'
-              : 'Open service registration'}
-          </Button>
-        )}
-        {data.status_code === 'coming_up' && (
-          <Button fullWidth loading={mutation.loading} onClick={() => updateStatus('in_progress')}>Start service</Button>
-        )}
-        {(data.status_code === 'coming_up' || data.status_code === 'in_progress') && (
-          <Button fullWidth loading={mutation.loading} onClick={() => void completeService()}>Complete service</Button>
-        )}
-        {data.status_code === 'completed' && (
-          <Button fullWidth onClick={() => navigate('/app')}>Go back to home</Button>
-        )}
-        <Button fullWidth variant="outline">Reschedule appointment</Button>
-        {!['completed', 'canceled'].includes(data.status_code) && (
+        {!terminalStatus && (
           <Button fullWidth loading={mutation.loading} onClick={() => updateStatus('canceled')} variant="ghost">Cancel appointment</Button>
         )}
       </div>

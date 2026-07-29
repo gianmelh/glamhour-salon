@@ -29,6 +29,8 @@ export type NailsDetails = {
   healthAnswers?: Record<string, string>
   consentItems?: Record<string, boolean>
   consentAccepted?: boolean
+  consentDate?: string
+  consentTime?: string
   consents?: Array<Record<string, unknown>>
   professionalSignature?: string
   clientSignature?: string
@@ -37,6 +39,7 @@ export type NailsDetails = {
   healthEmail?: string
   usedExistingHealthProfile?: boolean
   existingQuestionnaireId?: string
+  appointmentPriceMinor?: number
 }
 
 /** Keys allowed in a nails appointment draft — excludes lashes/cosmo/micro-specific fields. */
@@ -59,6 +62,8 @@ export const NAILS_DETAIL_KEYS = [
   'healthAnswers',
   'consentItems',
   'consentAccepted',
+  'consentDate',
+  'consentTime',
   'consents',
   'professionalSignature',
   'clientSignature',
@@ -67,6 +72,7 @@ export const NAILS_DETAIL_KEYS = [
   'healthEmail',
   'usedExistingHealthProfile',
   'existingQuestionnaireId',
+  'appointmentPriceMinor',
 ] as const
 
 export type NailsDetailKey = (typeof NAILS_DETAIL_KEYS)[number]

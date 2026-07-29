@@ -2,6 +2,7 @@ import { Check, UserRound } from 'lucide-react'
 import { Button, Card, Input, LoadingState } from '../../../../components'
 import { MutationError } from '../../../../components/screen/MutationError'
 import { cn } from '../../../../lib/cn'
+import { clampToToday, localDateString } from '../../../../lib/date'
 import type { AvailabilitySlot, Client, EligibleProvider, Service, ServiceCategory } from '../../../../types/api'
 import { buildReviewSections } from '../reviewSummary'
 import { ReviewRow, StepShell } from '../components/shared'
@@ -52,9 +53,11 @@ export function TimeStep({ service, date, selectedStartsAt, slots, loading, onDa
   onSelect: (slot: AvailabilitySlot) => void
   onNext: () => void
 }) {
+  const minDate = localDateString()
+
   return (
     <StepShell subtitle={`Real slots for ${service.duration_minutes} minutes.`} title="Date & time">
-      <Input label="Date" type="date" value={date} onChange={(event) => onDateChange(event.target.value)} />
+      <Input label="Date" min={minDate} type="date" value={clampToToday(date)} onChange={(event) => onDateChange(clampToToday(event.target.value))} />
       {loading && <LoadingState label="Checking availability..." />}
       {!loading && !slots.length && (
         <Card className="rounded-[18px] border-[#dde3f1] bg-white text-center">
@@ -120,9 +123,9 @@ export function SuccessStep({ onDone }: { onDone: () => void }) {
     <div className="grid min-h-[75dvh] place-items-center px-5">
       <Card className="w-full max-w-[393px] rounded-[28px] border-0 bg-white py-10 text-center shadow-xl">
         <span className="mx-auto grid size-20 place-items-center rounded-full bg-[#7a3fe0] text-white shadow-lg"><Check className="size-10" /></span>
-        <h1 className="mt-6 text-[28px] font-extrabold text-[#111827]">Successfully scheduled</h1>
-        <p className="mx-auto mt-3 max-w-[250px] text-sm leading-6 text-[#68738b]">The appointment was added to your salon schedule.</p>
-        <Button className="mt-8" fullWidth onClick={onDone}>View appointment details</Button>
+        <h1 className="mt-6 text-[28px] font-extrabold text-[#111827]">Successfully Scheduled!</h1>
+        <p className="mx-auto mt-3 max-w-[280px] text-sm leading-6 text-[#68738b]">The appointment has been updated and saved to your schedule.</p>
+        <Button className="mt-8" fullWidth onClick={onDone}>Done</Button>
       </Card>
     </div>
   )

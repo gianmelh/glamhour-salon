@@ -3,7 +3,7 @@ import { Avatar } from '../ui/Avatar'
 import { Badge } from '../ui/Badge'
 import { Card } from '../ui/Card'
 
-type AppointmentStatus = 'Upcoming' | 'In progress' | 'Completed' | 'Canceled'
+type AppointmentStatus = 'Upcoming' | 'Coming up' | 'In progress' | 'Completed' | 'Canceled'
 
 export interface AppointmentCardProps {
   time: string
@@ -15,6 +15,7 @@ export interface AppointmentCardProps {
 
 const statusTone = {
   Upcoming: 'neutral',
+  'Coming up': 'warning',
   'In progress': 'primary',
   Completed: 'success',
   Canceled: 'danger',

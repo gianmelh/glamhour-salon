@@ -13,7 +13,7 @@ const categoryTabs: Array<{ code: BookingCategoryCode; label: string; icon: stri
 
 export function RegistrationCategoryTabs({ activeCategory }: { activeCategory: BookingCategoryCode }) {
   return (
-    <div className="flex gap-[16px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex gap-[8px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {categoryTabs.map((tab) => (
         <CategoryTab active={tab.code === activeCategory} icon={tab.icon} key={tab.code}>
           {tab.label}

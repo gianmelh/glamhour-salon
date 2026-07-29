@@ -1,5 +1,7 @@
+import { useCallback, useEffect } from 'react'
 import { Button, Input, Textarea } from '../../../../components'
 import { cn } from '../../../../lib/cn'
+import { clampToToday, localDateString } from '../../../../lib/date'
 import type { Client } from '../../../../types/api'
 import { getHealthQuestionnaireMissingItems, healthQuestionnaires, isHealthQuestionnaireComplete, type YesNoAnswer } from '../health-questionnaires'
 import type { BookingCategoryCode } from '../types'
@@ -31,11 +33,13 @@ function YesNoRadioGroup({ value, onChange, name }: {
   )
 }
 
-export function HealthQuestionnaireForm({ categoryCode, client, details, notes, onChange }: {
+export function HealthQuestionnaireForm({ categoryCode, client, details, notes, serviceDate, serviceTime, onChange }: {
   categoryCode: BookingCategoryCode
   client: Client
   details: Record<string, unknown>
   notes: string
+  serviceDate: string
+  serviceTime: string
   onChange: (details: Record<string, unknown>, notes: string) => void
 }) {
   const definition = healthQuestionnaires[categoryCode]
@@ -47,7 +51,10 @@ export function HealthQuestionnaireForm({ categoryCode, client, details, notes, 
     email: String(details.healthEmail ?? client.email ?? ''),
   }
 
-  const patch = (patchDetails: Record<string, unknown>, nextNotes = notes) => onChange({ ...details, ...patchDetails }, nextNotes)
+  const patch = useCallback(
+    (patchDetails: Record<string, unknown>, nextNotes = notes) => onChange({ ...details, ...patchDetails }, nextNotes),
+    [details, notes, onChange],
+  )
 
   const setAnswer = (id: string, value: YesNoAnswer) => {
     patch({ healthAnswers: { ...answers, [id]: value } })
@@ -65,8 +72,19 @@ export function HealthQuestionnaireForm({ categoryCode, client, details, notes, 
     })
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const minDate = localDateString()
+  const defaultConsentDate = clampToToday(serviceDate || minDate)
+  const defaultConsentTime = serviceTime || '09:00'
   const hasContraindication = Object.values(answers).some((value) => value === 'yes')
+
+  useEffect(() => {
+    const nextDefaults: Record<string, unknown> = {}
+    if (!details.consentDate) nextDefaults.consentDate = defaultConsentDate
+    if (!details.consentTime) nextDefaults.consentTime = defaultConsentTime
+    if (Object.keys(nextDefaults).length) {
+      patch(nextDefaults)
+    }
+  }, [defaultConsentDate, defaultConsentTime, details.consentDate, details.consentTime, patch])
 
   return (
     <div className="space-y-8">
@@ -160,7 +178,21 @@ export function HealthQuestionnaireForm({ categoryCode, client, details, notes, 
             })}
             value={String(details.clientSignature ?? '')}
           />
-          <Input label="Date" readOnly type="date" value={String(details.consentDate ?? today)} />
+          <div className="grid grid-cols-1 gap-4">
+            <Input
+              label="Date"
+              min={minDate}
+              type="date"
+              value={String(details.consentDate ?? defaultConsentDate)}
+              onChange={(event) => patch({ consentDate: clampToToday(event.target.value) })}
+            />
+            <Input
+              label="Time"
+              type="time"
+              value={String(details.consentTime ?? defaultConsentTime)}
+              onChange={(event) => patch({ consentTime: event.target.value })}
+            />
+          </div>
         </div>
       </section>
 
@@ -209,4 +241,3 @@ export function HealthQuestionnaireActions({ categoryCode, details, onBack, onSu
     </div>
   )
 }
-

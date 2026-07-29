@@ -111,14 +111,14 @@ export function OptionSection({ title, children }: { title: string; children: Re
 
 export function NailsStepHeader({ title, onBack, children }: { title: string; onBack: () => void; children?: ReactNode }) {
   return (
-    <header className="space-y-6">
-      <div className="flex items-start gap-4">
-        <button className="flex h-9 w-[18px] shrink-0 items-center text-black" onClick={onBack} type="button" aria-label="Back">
-          <svg aria-hidden className="h-9 w-[18px]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+    <header className="space-y-4">
+      <div className="flex items-center gap-3">
+        <button className="flex size-7 shrink-0 items-center text-black" onClick={onBack} type="button" aria-label="Back">
+          <svg aria-hidden className="h-7 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
             <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <h1 className="text-[28px] font-extrabold leading-[1.44] tracking-[-0.56px] text-black">{title}</h1>
+        <h1 className="text-[18px] font-extrabold leading-tight tracking-normal text-black">{title}</h1>
       </div>
       {children}
     </header>
@@ -128,10 +128,10 @@ export function NailsStepHeader({ title, onBack, children }: { title: string; on
 export function CategoryTab({ active, icon, children }: { active?: boolean; icon: string; children: ReactNode }) {
   return (
     <span className={cn(
-      'inline-flex h-[54px] shrink-0 items-center gap-1 rounded-[16px] border border-[#d0d5dd] px-2 py-3 text-[21px] font-normal leading-[1.44] tracking-[-0.42px] text-black',
+      'inline-flex h-[30px] shrink-0 items-center gap-1 rounded-[8px] border border-[#d0d5dd] px-2 text-[12px] font-normal leading-none tracking-normal text-black',
       active ? 'bg-[#ebe7ff]' : 'bg-[#fcfcfd]',
     )}>
-      <img alt="" className="size-[30px] object-cover" src={icon} />
+      <img alt="" className="size-[16px] object-cover" src={icon} />
       {children}
     </span>
   )
@@ -147,7 +147,7 @@ function selectionCardShell(active: boolean, className?: string) {
 
 export function BookingSectionTitle({ children }: { children: string }) {
   return (
-    <h2 className="text-[28px] font-extrabold leading-[1.44] tracking-[-0.56px] text-black">
+    <h2 className="text-[16px] font-extrabold leading-tight tracking-normal text-black">
       {children}
     </h2>
   )
@@ -166,24 +166,24 @@ export function ServiceTypeCard({ active, label, onClick, imageSrc, variant = 'd
     <button
       className={selectionCardShell(
         active,
-        'flex h-[82px] w-[163.5px] shrink-0 items-center justify-center gap-[8px] rounded-[16px] px-[24px] py-[8px]',
+        'flex h-[48px] w-[158px] shrink-0 items-center justify-center gap-[6px] rounded-[10px] px-[12px]',
       )}
       onClick={onClick}
       type="button"
     >
       <span className={cn(
         'relative flex shrink-0 items-center justify-center',
-        isPressOn ? 'size-[49px]' : 'h-[27px] w-[36px]',
+        isPressOn ? 'size-[24px]' : 'h-[16px] w-[22px]',
       )}>
         <span className="flex-none">
           <img
             alt=""
-            className={cn('object-contain', isPressOn ? 'size-[49px]' : 'h-[27px] w-[36px]')}
+            className={cn('object-contain', isPressOn ? 'size-[24px]' : 'h-[16px] w-[22px]')}
             src={imageSrc}
           />
         </span>
       </span>
-      <span className="whitespace-nowrap text-[16px] font-normal leading-[1.44] tracking-[-0.32px] text-black">
+      <span className="whitespace-nowrap text-[11px] font-normal leading-none tracking-normal text-black">
         {label}
       </span>
     </button>
@@ -206,6 +206,7 @@ export function MaterialCard({ active, label, onClick, imageSrc, imageFrame, ima
         active,
         cn(
           'flex h-[82px] shrink-0 items-center justify-center gap-[8px] rounded-[16px] px-[24px] py-[8px]',
+          'h-[48px] gap-[6px] rounded-[10px] px-[12px]',
           className,
         ),
       )}
@@ -213,7 +214,7 @@ export function MaterialCard({ active, label, onClick, imageSrc, imageFrame, ima
       type="button"
     >
       {imageSrc && (
-        <span className={cn('relative shrink-0', imageFrame ?? 'h-[67px] w-[37px]')}>
+        <span className={cn('relative shrink-0 scale-[0.52]', imageFrame ?? 'h-[67px] w-[37px]')}>
           {imageCrop ? (
             <span className="pointer-events-none absolute inset-0 overflow-hidden">
               <img alt="" className={imageCrop} src={imageSrc} />
@@ -223,7 +224,7 @@ export function MaterialCard({ active, label, onClick, imageSrc, imageFrame, ima
           )}
         </span>
       )}
-      <span className="whitespace-nowrap text-[21px] font-normal leading-[1.44] tracking-[-0.42px] text-black">
+      <span className="whitespace-nowrap text-[12px] font-normal leading-none tracking-normal text-black">
         {label}
       </span>
     </button>
@@ -231,18 +232,18 @@ export function MaterialCard({ active, label, onClick, imageSrc, imageFrame, ima
 }
 
 const nailTypeImageRotation = '-rotate-90'
-const nailTypeImageSlot = 'flex h-[62px] w-[58px] items-center justify-center'
+const nailTypeImageSlot = 'flex h-[38px] w-[42px] items-center justify-center'
 
 /** Per-variant image fit inside the shared slot — rotation applied uniformly. */
 const nailTypeImageSpec: Record<NailTypeImageVariant, string> = {
-  stiletto: 'h-[58px] w-[62px] object-contain object-center',
-  coffin: 'h-[58px] w-[58px] object-contain object-center',
-  almond: 'h-[58px] w-[58px] object-contain object-center',
-  oval: 'h-[58px] w-[58px] object-contain object-center',
-  squoval: 'h-[58px] w-[58px] object-contain object-center',
-  square: 'h-[58px] w-[58px] object-contain object-center',
-  round: 'h-[44px] w-[58px] object-contain object-center',
-  custom: 'h-[58px] w-[58px] object-contain object-center',
+  stiletto: 'h-[38px] w-[42px] object-contain object-center',
+  coffin: 'h-[38px] w-[42px] object-contain object-center',
+  almond: 'h-[38px] w-[42px] object-contain object-center',
+  oval: 'h-[38px] w-[42px] object-contain object-center',
+  squoval: 'h-[38px] w-[42px] object-contain object-center',
+  square: 'h-[38px] w-[42px] object-contain object-center',
+  round: 'h-[32px] w-[42px] object-contain object-center',
+  custom: 'h-[38px] w-[42px] object-contain object-center',
 }
 
 function NailTypeCardImage({ imageSrc, variant }: { imageSrc: string; variant: NailTypeImageVariant }) {
@@ -268,13 +269,14 @@ export function NailTypeCard({ active, label, onClick, imageSrc, variant, classN
         active,
         cn(
           'grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_58px] items-center gap-[8px] rounded-[16px] px-[8px] text-left',
+          'grid-cols-[minmax(0,1fr)_42px] gap-[4px] rounded-[10px] px-[8px]',
           className,
         ),
       )}
       onClick={onClick}
       type="button"
     >
-      <span className="whitespace-nowrap text-[16px] font-normal leading-[1.44] tracking-[-0.32px] text-black">
+      <span className="whitespace-nowrap text-[11px] font-normal leading-none tracking-normal text-black">
         {label}
       </span>
       <NailTypeCardImage imageSrc={imageSrc} variant={variant} />
@@ -292,7 +294,7 @@ export function HandSelectionSection({ mode, handTitle, onSwap, onModeChange, ha
   markers: ReactNode
 }) {
   return (
-    <section className="flex flex-col gap-[16px]">
+    <section className="flex flex-col gap-[12px]">
       <div className="flex flex-col gap-[4px]">
         <BookingSectionTitle>Select finger</BookingSectionTitle>
         <div className="flex items-center justify-between">
@@ -300,30 +302,30 @@ export function HandSelectionSection({ mode, handTitle, onSwap, onModeChange, ha
             You are currently seeing the full hand.
           </p>
           <button
-            className="flex items-center justify-center gap-[10px] rounded-full bg-[#ebe7ff] px-[12px] py-[6px]"
+            className="flex h-[24px] items-center justify-center gap-[6px] rounded-full bg-[#ebe7ff] px-[10px]"
             onClick={onSwap}
             type="button"
           >
-            <img alt="" className="size-[24px]" src={nailsBookingAssets.hands.swap} />
-            <span className="whitespace-nowrap text-[12px] font-normal leading-[1.4] tracking-[0.24px] text-[#0c111d]">
+            <img alt="" className="size-[14px]" src={nailsBookingAssets.hands.swap} />
+            <span className="whitespace-nowrap text-[10px] font-normal leading-none tracking-normal text-[#0c111d]">
               Swap sides
             </span>
           </button>
         </div>
       </div>
 
-      <div className="flex gap-[16px]">
+      <div className="flex gap-[12px]">
         <button
           className={cn(
-            'flex h-[54px] min-w-0 flex-1 items-center justify-center gap-[8px] rounded-[16px] p-[4px]',
+            'flex h-[36px] min-w-0 flex-1 items-center justify-center gap-[6px] rounded-[10px] p-[4px]',
             mode === 'finger' ? 'bg-[#7344cd]' : 'border border-solid border-[#d0d5dd] bg-[#fcfcfd]',
           )}
           onClick={() => onModeChange('finger')}
           type="button"
         >
-          <img alt="" className="size-[34px]" src={nailsBookingAssets.hands.fingerToFingerIcon} />
+          <img alt="" className="size-[18px]" src={nailsBookingAssets.hands.fingerToFingerIcon} />
           <span className={cn(
-            'whitespace-nowrap text-[12px] font-normal leading-[1.44] tracking-[-0.24px]',
+            'whitespace-nowrap text-[11px] font-normal leading-none tracking-normal',
             mode === 'finger' ? 'text-[#f2f5ff]' : 'text-black',
           )}>
             Finger to finger
@@ -331,15 +333,15 @@ export function HandSelectionSection({ mode, handTitle, onSwap, onModeChange, ha
         </button>
         <button
           className={cn(
-            'flex h-[54px] min-w-0 flex-1 items-center justify-center gap-[8px] rounded-[16px] p-[4px]',
+            'flex h-[36px] min-w-0 flex-1 items-center justify-center gap-[6px] rounded-[10px] p-[4px]',
             mode === 'hand' ? 'bg-[#7344cd]' : 'border border-solid border-[#d0d5dd] bg-[#fcfcfd]',
           )}
           onClick={() => onModeChange('hand')}
           type="button"
         >
-          <img alt="" className="size-[34px]" src={nailsBookingAssets.hands.fullHandIcon} />
+          <img alt="" className="size-[18px]" src={nailsBookingAssets.hands.fullHandIcon} />
           <span className={cn(
-            'whitespace-nowrap text-[12px] font-normal leading-[1.44] tracking-[-0.24px]',
+            'whitespace-nowrap text-[11px] font-normal leading-none tracking-normal',
             mode === 'hand' ? 'text-[#f2f5ff]' : 'text-black',
           )}>
             Full hand
@@ -347,11 +349,13 @@ export function HandSelectionSection({ mode, handTitle, onSwap, onModeChange, ha
         </button>
       </div>
 
-      <p className="text-center text-[21px] font-bold leading-[1.2] text-black">{handTitle}</p>
+      <p className="text-center text-[15px] font-bold leading-tight text-black">{handTitle}</p>
 
-      <div className="inline-grid grid-cols-[max-content] grid-rows-[max-content] place-items-start leading-[0]">
+      <div className="mx-auto h-[281px] w-[281px] overflow-visible">
+      <div className="inline-grid origin-top-left scale-[0.82] grid-cols-[max-content] grid-rows-[max-content] place-items-start leading-[0]">
         <img alt="" className="col-1 row-1 size-[342.5px] object-cover" src={handImageSrc} />
         {markers}
+      </div>
       </div>
     </section>
   )

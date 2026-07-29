@@ -14,11 +14,18 @@ import { glamhourApi } from "../../services/glamhour-api";
 import type { RegisterSalonResult } from "../../types/api";
 import {
   clearSignUpDraft,
+  initialSignUpForm,
   readSignUpDraft,
   saveSignUpDraft,
+  type SignUpForm,
 } from "./signUpDraft";
 
 type RegistrationErrors = {
+  salonName?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  acceptedTerms?: string;
   document?: string;
   location?: string;
 };
@@ -29,6 +36,37 @@ type RegistrationState = {
 };
 
 const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim();
+
+function getAccountErrors(draft: SignUpForm) {
+  const errors: RegistrationErrors = {};
+
+  if (draft.authProvider !== "email" && draft.socialCredential) {
+    if (!draft.acceptedTerms) {
+      errors.acceptedTerms = "Please agree to the terms and conditions";
+    }
+    return errors;
+  }
+
+  if (!/^\S+@\S+\.\S+$/.test(draft.email.trim())) {
+    errors.email = "Please enter a valid email address";
+  }
+
+  if (draft.password.length < 6) {
+    errors.password = "Password must be at least 6 characters";
+  }
+
+  if (draft.confirmPassword.length < 6) {
+    errors.confirmPassword = "Password must be at least 6 characters";
+  } else if (draft.password !== draft.confirmPassword) {
+    errors.confirmPassword = "Passwords do not match";
+  }
+
+  if (!draft.acceptedTerms) {
+    errors.acceptedTerms = "Please agree to the terms and conditions";
+  }
+
+  return errors;
+}
 
 export function RegistrationPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,7 +86,24 @@ export function RegistrationPage() {
   const [created, setCreated] = useState(false);
   const [createdAccount, setCreatedAccount] =
     useState<RegisterSalonResult | null>(null);
-  const salonName = readSignUpDraft().salonName || state.salonName || "";
+  const [accountDraft, setAccountDraft] = useState<SignUpForm>(() => ({
+    ...initialSignUpForm,
+    ...readSignUpDraft(),
+  }));
+  const [salonName, setSalonName] = useState(
+    () => readSignUpDraft().salonName || state.salonName || ""
+  );
+  const accountErrors = useMemo(
+    () => (submitted ? getAccountErrors(accountDraft) : {}),
+    [accountDraft, submitted]
+  );
+  const needsAccountDetails = Boolean(
+    accountErrors.email ||
+      accountErrors.password ||
+      accountErrors.confirmPassword ||
+      accountErrors.acceptedTerms ||
+      (accountDraft.authProvider !== "email" && !accountDraft.socialCredential)
+  );
 
   const errors = useMemo<RegistrationErrors>(() => {
     if (!submitted) {
@@ -57,21 +112,26 @@ export function RegistrationPage() {
 
     const nextErrors: RegistrationErrors = {};
 
+    if (!salonName.trim()) {
+      nextErrors.salonName = "Salon name is required";
+    }
+
+    Object.assign(nextErrors, accountErrors);
+
     if (!documentFile) {
       nextErrors.document = "Proof of ownership is required";
     }
 
     if (!salonLocation.trim()) {
       nextErrors.location = "Location validation is required";
-    } else if (googleMapsApiKey && !selectedPlaceId) {
-      nextErrors.location = "Please select a location from Google Maps";
     }
 
     return nextErrors;
   }, [
+    accountErrors,
     documentFile,
+    salonName,
     salonLocation,
-    selectedPlaceId,
     submitted,
   ]);
 
@@ -125,6 +185,30 @@ export function RegistrationPage() {
     setDocumentFile(nextFile);
   }
 
+  function removeDocumentFile() {
+    setDocumentFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  function updateAccountField<Field extends keyof SignUpForm>(
+    field: Field,
+    value: SignUpForm[Field]
+  ) {
+    setAccountDraft((current) => {
+      const nextDraft = {
+        ...current,
+        authProvider: "email" as const,
+        socialCredential: "",
+        ownerFullName: "",
+        [field]: value,
+      };
+      saveSignUpDraft({ ...nextDraft, salonName: salonName.trim() });
+      return nextDraft;
+    });
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
@@ -133,18 +217,28 @@ export function RegistrationPage() {
     if (
       !salonName.trim() ||
       !documentFile ||
-      !salonLocation.trim() ||
-      (googleMapsApiKey && !selectedPlaceId)
+      !salonLocation.trim()
     ) {
+      setRegistrationError("Please complete the highlighted fields before submitting.");
       return;
     }
 
-    const draft = readSignUpDraft();
+    const draft = accountDraft;
     const nextDraft = {
       ...draft,
+      authProvider:
+        draft.authProvider !== "email" && !draft.socialCredential
+          ? ("email" as const)
+          : draft.authProvider,
       salonName: salonName.trim(),
     };
     saveSignUpDraft(nextDraft);
+
+    const nextAccountErrors = getAccountErrors(nextDraft);
+    if (Object.keys(nextAccountErrors).length > 0) {
+      setRegistrationError("Please complete the account details before submitting verification.");
+      return;
+    }
 
     if (!nextDraft.acceptedTerms) {
       setRegistrationError(
@@ -257,6 +351,91 @@ export function RegistrationPage() {
             </header>
 
             <form className="mt-7 space-y-4" noValidate onSubmit={handleSubmit}>
+              {!accountDraft.salonName && !state.salonName && (
+                <label className="block text-[11px] font-medium text-[#242a39]">
+                  Salon Name
+                  <input
+                    aria-invalid={Boolean(errors.salonName)}
+                    className={[
+                      "mt-1 h-11 w-full rounded-lg border bg-white px-3 text-[12px] text-[#1b2133] outline-none transition placeholder:text-[#a5acbb]",
+                      errors.salonName
+                        ? "border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10"
+                        : "border-transparent focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10",
+                    ].join(" ")}
+                    onChange={(event) => setSalonName(event.target.value)}
+                    placeholder="Enter salon name"
+                    value={salonName}
+                  />
+                  {errors.salonName && (
+                    <span className="mt-2 block text-[11px] text-[#ff3b4f]">
+                      {errors.salonName}
+                    </span>
+                  )}
+                </label>
+              )}
+              {needsAccountDetails && (
+                <section className="rounded-lg bg-white p-3 shadow-sm ring-1 ring-[#eef0f6]">
+                  <p className="text-[11px] font-semibold text-[#242a39]">
+                    Account Details
+                  </p>
+                  {accountDraft.authProvider !== "email" &&
+                    !accountDraft.socialCredential && (
+                      <p className="mt-1 text-[10px] leading-4 text-[#8b92a1]">
+                        Google sign up did not finish. Continue with email to
+                        submit verification.
+                      </p>
+                    )}
+                  <div className="mt-3 space-y-3">
+                    <RegistrationField
+                      error={errors.email}
+                      label="Email"
+                      onChange={(value) => updateAccountField("email", value)}
+                      placeholder="name@example.com"
+                      type="email"
+                      value={accountDraft.email}
+                    />
+                    <RegistrationField
+                      error={errors.password}
+                      label="Password"
+                      onChange={(value) =>
+                        updateAccountField("password", value)
+                      }
+                      placeholder="Enter your password"
+                      type="password"
+                      value={accountDraft.password}
+                    />
+                    <RegistrationField
+                      error={errors.confirmPassword}
+                      label="Confirm password"
+                      onChange={(value) =>
+                        updateAccountField("confirmPassword", value)
+                      }
+                      placeholder="Enter your password"
+                      type="password"
+                      value={accountDraft.confirmPassword}
+                    />
+                    <label className="flex items-start gap-2 text-[11px] leading-4 text-[#6f7788]">
+                      <input
+                        checked={accountDraft.acceptedTerms}
+                        className="mt-0.5 size-3.5 rounded border-[#d8dceb] accent-[#7a3fe0]"
+                        onChange={(event) =>
+                          updateAccountField(
+                            "acceptedTerms",
+                            event.target.checked
+                          )
+                        }
+                        type="checkbox"
+                      />
+                      <span>I agree to the terms and privacy policy</span>
+                    </label>
+                    {errors.acceptedTerms && (
+                      <p className="-mt-2 text-[11px] text-[#ff3b4f]">
+                        {errors.acceptedTerms}
+                      </p>
+                    )}
+                  </div>
+                </section>
+              )}
               <div>
                 <p className="mb-2 text-[11px] font-medium text-[#242a39]">
                   Salon Verification Document
@@ -270,7 +449,7 @@ export function RegistrationPage() {
                     <button
                       aria-label="Remove uploaded document"
                       className="grid size-7 place-items-center rounded-full text-[#8b92a1] hover:bg-[#f0edf8]"
-                      onClick={() => setDocumentFile(null)}
+                      onClick={removeDocumentFile}
                       type="button"
                     >
                       <X className="size-4" />
@@ -442,4 +621,44 @@ function providerLabel(provider: "email" | "google" | "facebook" | "apple") {
   if (provider === "apple") return "Apple";
   if (provider === "google") return "Google";
   return "email";
+}
+
+function RegistrationField({
+  error,
+  label,
+  onChange,
+  placeholder,
+  type = "text",
+  value,
+}: {
+  error?: string;
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  type?: string;
+  value: string;
+}) {
+  return (
+    <label className="block text-[11px] font-medium text-[#242a39]">
+      {label}
+      <input
+        aria-invalid={Boolean(error)}
+        className={[
+          "mt-1 h-11 w-full rounded-lg border bg-[#f8f9ff] px-3 text-[12px] text-[#1b2133] outline-none transition placeholder:text-[#a5acbb]",
+          error
+            ? "border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10"
+            : "border-[#c9ceda] focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10",
+        ].join(" ")}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        type={type}
+        value={value}
+      />
+      {error && (
+        <span className="mt-1 block text-[11px] font-normal text-[#ff3b4f]">
+          {error}
+        </span>
+      )}
+    </label>
+  );
 }
