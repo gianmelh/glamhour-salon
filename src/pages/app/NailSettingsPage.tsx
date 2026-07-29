@@ -4,7 +4,7 @@ import { ChevronLeft, Clock3, Plus, Save, Trash2, UserRound } from 'lucide-react
 import { Avatar, Badge, Button, Card, EmptyState, ErrorState, Input, LoadingState, Select } from '../../components'
 import { MutationError } from '../../components/screen/MutationError'
 import { ScreenSection } from '../../components/screen/ScreenSection'
-import { useAppointments, useNailSettings } from '../../hooks/useGlamhourData'
+import { useAppointments, useNailSettings, useServices } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { cn } from '../../lib/cn'
 import { glamhourApi } from '../../services/glamhour-api'
@@ -17,6 +17,12 @@ type ProviderDraft = UpsertProfessionalInput & { id?: string; photoName?: string
 
 const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const languageOptions = ['English', 'Spanish', 'Portuguese', 'Arabic']
+const treatmentCategories = [
+  { code: 'nails', name: 'Nails' },
+  { code: 'lashes', name: 'Lashes' },
+  { code: 'cosmetology', name: 'Cosmetology' },
+  { code: 'micropigmentation', name: 'Micropigmentation' },
+] as const
 
 function moneyFromMinor(value: number) {
   return String(Math.round(value / 100))
@@ -95,6 +101,7 @@ function providerDraft(provider: ProfessionalWithNailSettings | undefined, setti
 export function NailSettingsPage() {
   const navigate = useNavigate()
   const settings = useNailSettings()
+  const allServices = useServices()
   const appointments = useAppointments()
   const [categoryEnabled, setCategoryEnabled] = useState(true)
   const [services, setServices] = useState<NailSettingsServiceInput[]>([])
@@ -127,11 +134,12 @@ export function NailSettingsPage() {
     ...services.map((service) => ({ label: service.name, value: service.id ?? '' })).filter((option) => option.value),
   ], [services])
 
-  if (settings.loading) return <LoadingState label="Loading Nail settings..." />
+  if (settings.loading || allServices.loading) return <LoadingState label="Loading Nail settings..." />
   if (!settings.data && settings.error) return <ErrorState description={settings.error.message} onRetry={settings.retry} />
   if (!settings.data) return <ErrorState description="Nail settings could not be loaded." onRetry={settings.retry} />
 
   const data = settings.data
+  const providerServices = allServices.data ?? data.services
   const staffLimitReached = data.activeStaffCount >= data.staffLimit
 
   const saveAll = async (forceDisable = false) => {
@@ -177,7 +185,7 @@ export function NailSettingsPage() {
   ))
 
   return (
-    <div className="space-y-5 pb-8">
+    <div className="mx-auto w-full max-w-[393px] space-y-5 pb-8">
       <button className="inline-flex items-center gap-1 text-xs font-semibold text-primary" onClick={() => navigate('/app/settings')} type="button">
         <ChevronLeft className="size-4" /> Go back
       </button>
@@ -259,7 +267,7 @@ export function NailSettingsPage() {
               onDelete={() => removeProvider(provider)}
               onEdit={() => openProvider(provider)}
               provider={provider}
-              services={data.services}
+              services={providerServices}
             />
           ))}
           {!data.providers.length && <EmptyState compact description="Add providers and assign Nail services." title="No providers yet" />}
@@ -276,7 +284,7 @@ export function NailSettingsPage() {
           draft={editor}
           loading={saveProvider.loading}
           salonSchedule={data.salonSchedule}
-          services={data.services.filter((service) => service.is_active)}
+          services={providerServices.filter((service) => service.is_active)}
           error={saveProvider.error}
           onCancel={() => setEditor(null)}
           onChange={setEditor}
@@ -361,7 +369,9 @@ function ProviderCard({ provider, services, futureAppointments, onEdit, onDelete
   onDelete: () => void
 }) {
   const assignedServiceIds = new Set(provider.service_assignments.filter((assignment) => assignment.is_active).map((assignment) => assignment.service_id))
-  const assignedServices = services.filter((service) => assignedServiceIds.has(service.id))
+  const assignedCategoryNames = treatmentCategories
+    .filter((category) => services.some((service) => service.category_code === category.code && assignedServiceIds.has(service.id)))
+    .map((category) => category.name)
   return (
     <Card className="space-y-4">
       <div className="flex items-start gap-3">
@@ -376,7 +386,7 @@ function ProviderCard({ provider, services, futureAppointments, onEdit, onDelete
       <div>
         <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#11172a]">Services</p>
         <div className="mt-2 flex flex-wrap gap-1">
-          {assignedServices.length ? assignedServices.map((service) => <Badge key={service.id}>{service.name}</Badge>) : <Badge tone="warning">No services assigned</Badge>}
+          {assignedCategoryNames.length ? assignedCategoryNames.map((category) => <Badge key={category}>{category}</Badge>) : <Badge tone="warning">No services assigned</Badge>}
         </div>
       </div>
       {futureAppointments > 0 && <p className="text-xs text-warning">{futureAppointments} future appointments</p>}
@@ -400,12 +410,31 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
 }) {
   const selectedIds = new Set(draft.serviceAssignments.filter((assignment) => assignment.isActive).map((assignment) => assignment.serviceId))
   const update = (patch: Partial<ProviderDraft>) => onChange({ ...draft, ...patch })
-  const toggleService = (serviceId: string) => {
-    const exists = draft.serviceAssignments.find((assignment) => assignment.serviceId === serviceId)
+  const servicesByCategory = treatmentCategories.reduce<Record<string, NailSettingsResponse['services']>>((result, category) => {
+    result[category.code] = services.filter((service) => service.category_code === category.code)
+    return result
+  }, {})
+  const categoryIsSelected = (categoryCode: string) => {
+    const categoryServices = servicesByCategory[categoryCode] ?? []
+    return categoryServices.length > 0 && categoryServices.every((service) => selectedIds.has(service.id))
+  }
+  const toggleCategory = (categoryCode: string) => {
+    const categoryServices = servicesByCategory[categoryCode] ?? []
+    if (!categoryServices.length) return
+    const serviceIds = new Set(categoryServices.map((service) => service.id))
+    const shouldActivate = !categoryIsSelected(categoryCode)
+    const existingAssignments = draft.serviceAssignments.filter((assignment) => !serviceIds.has(assignment.serviceId))
+    const nextCategoryAssignments = categoryServices.map((service) => {
+      const existing = draft.serviceAssignments.find((assignment) => assignment.serviceId === service.id)
+      return {
+        serviceId: service.id,
+        isActive: shouldActivate,
+        durationOverrideMinutes: existing?.durationOverrideMinutes ?? service.duration_minutes,
+        priceOverrideMinor: existing?.priceOverrideMinor,
+      }
+    })
     update({
-      serviceAssignments: exists
-        ? draft.serviceAssignments.map((assignment) => assignment.serviceId === serviceId ? { ...assignment, isActive: !assignment.isActive } : assignment)
-        : [...draft.serviceAssignments, { serviceId, isActive: true, durationOverrideMinutes: services.find((service) => service.id === serviceId)?.duration_minutes ?? 60 }],
+      serviceAssignments: [...existingAssignments, ...nextCategoryAssignments],
     })
   }
 
@@ -452,30 +481,32 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
         {!draft.useSalonSchedule && <WeeklySchedule schedule={draft.schedule ?? salonSchedule} onChange={(schedule) => update({ schedule })} />}
         <Card className="space-y-3">
           <p className="text-sm font-bold text-[#11172a]">Services & Treatments</p>
-          {services.map((service) => {
-            const assignment = draft.serviceAssignments.find((item) => item.serviceId === service.id)
-            return (
-              <div className="grid grid-cols-[1fr_86px] gap-2" key={service.id}>
+          <div className="grid grid-cols-1 gap-2">
+            {treatmentCategories.map((category) => {
+              const categoryServices = servicesByCategory[category.code] ?? []
+              const selected = categoryIsSelected(category.code)
+              return (
                 <button
-                  className={cn('flex items-center gap-2 rounded-md border px-3 py-2 text-left text-xs font-semibold', selectedIds.has(service.id) ? 'border-primary bg-[#f2edff]' : 'border-border bg-surface')}
-                  onClick={() => toggleService(service.id)}
+                  className={cn(
+                    'flex items-center justify-between gap-3 rounded-md border px-3 py-3 text-left text-sm font-semibold',
+                    selected ? 'border-primary bg-[#f2edff] text-[#11172a]' : 'border-border bg-surface text-[#68738b]',
+                    !categoryServices.length && 'opacity-55',
+                  )}
+                  disabled={!categoryServices.length}
+                  key={category.code}
+                  onClick={() => toggleCategory(category.code)}
                   type="button"
                 >
-                  <CheckBox checked={selectedIds.has(service.id)} /> {service.name}
+                  <span className="inline-flex items-center gap-2">
+                    <CheckBox checked={selected} /> {category.name}
+                  </span>
+                  <span className="text-xs font-medium text-[#68738b]">
+                    {categoryServices.length ? `${categoryServices.length} services` : 'No services'}
+                  </span>
                 </button>
-                <Input
-                  aria-label={`${service.name} duration`}
-                  min={1}
-                  placeholder="40 min"
-                  type="number"
-                  value={assignment?.durationOverrideMinutes ?? service.duration_minutes}
-                  onChange={(event) => update({
-                    serviceAssignments: draft.serviceAssignments.map((item) => item.serviceId === service.id ? { ...item, durationOverrideMinutes: Number(event.target.value) } : item),
-                  })}
-                />
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </Card>
         <MutationError error={error} />
         <div className="grid grid-cols-2 gap-3">

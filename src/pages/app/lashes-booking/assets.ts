@@ -13,6 +13,11 @@ export const lashesBookingAssets = {
     catEye: `${lashesBase}/lash-map-cat-eye.png`,
     diagram: `${lashesBase}/lash-map-diagram.svg`,
   },
+  variants: {
+    Base: `${lashesBase}/variants/base.png`,
+    Volume: `${lashesBase}/variants/volume.png`,
+    Hybrid: `${lashesBase}/variants/hybrid.png`,
+  },
   swap: `${iconsBase}/swap.svg`,
   help: `${lashesBase}/QuestionMark.png`,
   photoPlaceholder: `${cosmetologyBase}/Image (Vista previa de la foto).png`,

@@ -25,9 +25,14 @@ function normalizeProfileAnswers(answers: Record<string, unknown> | undefined) {
   )
 }
 
-export function ClientStep({ clients, lastVisitByClientId, selectedClientId, onSelect, onNext, onCreate }: {
+type ClientVisitLabel = {
+  kind: 'upcoming' | 'last'
+  date: string
+}
+
+export function ClientStep({ clients, clientVisitByClientId, selectedClientId, onSelect, onNext, onCreate }: {
   clients: Client[]
-  lastVisitByClientId: Record<string, string>
+  clientVisitByClientId: Record<string, ClientVisitLabel>
   selectedClientId: string
   onSelect: (id: string) => void
   onNext: () => void
@@ -49,8 +54,11 @@ export function ClientStep({ clients, lastVisitByClientId, selectedClientId, onS
 
   const selectedClient = clients.find((client) => client.id === selectedClientId)
   const lastVisitLabel = (clientId: string) => {
-    const lastVisit = lastVisitByClientId[clientId]
-    return lastVisit ? `Last visit ${formatShortDate(lastVisit)}` : undefined
+    const visit = clientVisitByClientId[clientId]
+    if (!visit) return undefined
+    return visit.kind === 'upcoming'
+      ? `Upcoming ${formatShortDate(visit.date)}`
+      : `Last visit ${formatShortDate(visit.date)}`
   }
 
   if (creating) {

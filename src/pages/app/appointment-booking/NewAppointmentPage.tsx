@@ -22,6 +22,12 @@ import { mergeDetailsPatchForCategory, sanitizeDetailsForCategory } from './cate
 import type { AppointmentDraft, BookingStep, DraftPatch } from './types'
 import type { Service } from '../../../types/api'
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function optionalUuid(value: string) {
+  return uuidPattern.test(value) ? value : undefined
+}
+
 function resolveCategoryServiceId(
   draft: AppointmentDraft,
   categoryServices: Service[],
@@ -83,6 +89,7 @@ export function NewAppointmentPage() {
   const [createdAppointmentId, setCreatedAppointmentId] = useState('')
   const [confirmError, setConfirmError] = useState<Error | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
+  const [nowTimestamp] = useState(() => Date.now())
   const devLashesBootstrapped = useRef(false)
 
   useEffect(() => {
@@ -123,7 +130,7 @@ export function NewAppointmentPage() {
     deferTask(() => setProviderLoading(true))
     glamhourApi.eligibleProviders({
       serviceId: draft.serviceId,
-      categoryId: draft.categoryId || undefined,
+      categoryId: optionalUuid(draft.categoryId),
       date: appointmentDraftDate(draft) || undefined,
     }).then((providers) => {
       if (active) setEligibleProviders(providers)
@@ -187,26 +194,53 @@ export function NewAppointmentPage() {
     }
   }, [categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, services.data, step])
 
-  const lastVisitByClientId = useMemo(() => {
-    const inactiveStatuses = new Set(['canceled', 'cancelled', 'no_show'])
-    const now = Date.now()
-    return (appointments.data ?? []).reduce<Record<string, string>>((result, appointment) => {
+  const clientVisitByClientId = useMemo(() => {
+    const canceledStatuses = new Set(['canceled', 'cancelled', 'no_show'])
+    const completedStatuses = new Set(['completed'])
+    const visits = (appointments.data ?? []).reduce<Record<string, { upcoming?: string; last?: string }>>((result, appointment) => {
       const appointmentTime = new Date(appointment.starts_at).getTime()
-      if (!Number.isFinite(appointmentTime) || appointmentTime >= now) return result
-      if (inactiveStatuses.has(appointment.status_code.toLowerCase())) return result
+      if (!Number.isFinite(appointmentTime)) return result
+      const status = appointment.status_code.toLowerCase()
+      if (canceledStatuses.has(status)) return result
 
-      const previousTime = result[appointment.client_id]
-        ? new Date(result[appointment.client_id]).getTime()
-        : 0
-      if (appointmentTime > previousTime) result[appointment.client_id] = appointment.starts_at
+      const current = result[appointment.client_id] ?? {}
+      if (appointmentTime >= nowTimestamp && !completedStatuses.has(status)) {
+        const previousUpcomingTime = current.upcoming ? new Date(current.upcoming).getTime() : Number.POSITIVE_INFINITY
+        if (appointmentTime < previousUpcomingTime) current.upcoming = appointment.starts_at
+      } else {
+        const previousLastTime = current.last ? new Date(current.last).getTime() : 0
+        if (appointmentTime > previousLastTime) current.last = appointment.starts_at
+      }
+      result[appointment.client_id] = current
       return result
     }, {})
-  }, [appointments.data])
+
+    return Object.entries(visits).reduce<Record<string, { kind: 'upcoming' | 'last'; date: string }>>((result, [clientId, visit]) => {
+      if (visit.upcoming) result[clientId] = { kind: 'upcoming', date: visit.upcoming }
+      else if (visit.last) result[clientId] = { kind: 'last', date: visit.last }
+      return result
+    }, {})
+  }, [appointments.data, nowTimestamp])
 
   const loading = categories.loading || services.loading || clients.loading || appointments.loading || professionals.loading
   if (loading) return <LoadingState label="Loading appointment flow..." />
   if (!categories.data || !services.data || !clients.data || !appointments.data || !professionals.data) {
     return <ErrorState description="Appointment data could not be loaded." onRetry={() => { categories.retry(); services.retry(); clients.retry(); appointments.retry(); professionals.retry() }} />
+  }
+
+  const currentSalonDraft = {
+    ...draft,
+    clientId: clients.data.some((client) => client.id === draft.clientId) ? draft.clientId : '',
+    serviceId: services.data.some((service) => service.id === draft.serviceId) ? draft.serviceId : '',
+    providerId: professionals.data.some((provider) => provider.id === draft.providerId) ? draft.providerId : '',
+  }
+  if (
+    currentSalonDraft.clientId !== draft.clientId
+    || currentSalonDraft.serviceId !== draft.serviceId
+    || currentSalonDraft.providerId !== draft.providerId
+  ) {
+    deferTask(() => setDraft(currentSalonDraft))
+    return <LoadingState label="Refreshing appointment flow..." />
   }
 
   const appointmentCategories = buildAppointmentCategories(categories.data, services.data)
@@ -297,14 +331,21 @@ export function NewAppointmentPage() {
         ? eligibleProviders
         : await glamhourApi.eligibleProviders({
           serviceId: service.id,
-          categoryId: draft.categoryId || undefined,
+          categoryId: optionalUuid(draft.categoryId),
           date: appointmentDraftDate(draft) || undefined,
         }).catch(() => [])
       const provider = providers.find((item) => item.id === draft.providerId) ?? providers[0]
       if (provider) return { service, provider }
     }
 
-    throw new Error('Assign at least one Nails service to a provider in Staff settings before scheduling.')
+    const fallbackService = selectedService ?? categoryServices.find((service) => service.is_active)
+    const fallbackProvider = scheduleProviders.find((provider) => provider.id === draft.providerId)
+      ?? scheduleProviders[0]
+    if (fallbackService && fallbackProvider) {
+      return { service: fallbackService, provider: fallbackProvider }
+    }
+
+    throw new Error(`Assign at least one ${selectedCategory?.name ?? 'selected'} service to a provider in Staff settings before scheduling.`)
   }
 
   const resolveAppointmentTimes = async (serviceId: string, providerId: string) => {
@@ -419,7 +460,7 @@ export function NewAppointmentPage() {
       {step === 'client' && (
         <ClientStep
           clients={clients.data}
-          lastVisitByClientId={lastVisitByClientId}
+          clientVisitByClientId={clientVisitByClientId}
           selectedClientId={draft.clientId}
           onCreate={(client) => clients.setData((current) => [client, ...(current ?? [])])}
           onSelect={(clientId) => setDraft({ ...draft, clientId })}
@@ -497,6 +538,7 @@ export function NewAppointmentPage() {
           }}
           onNext={() => void confirm()}
           service={selectedService}
+          time={appointmentDraftTime(draft)}
         />
       )}
 

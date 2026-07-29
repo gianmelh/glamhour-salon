@@ -26,7 +26,7 @@ export function LashStylePicker({ value, onChange }: { value: string; onChange: 
           key={option.key}
           onClick={() => onChange(option.key)}
         >
-          <span className="whitespace-nowrap text-[16px] font-normal leading-[1.44] tracking-[-0.32px] text-black">{option.label}</span>
+          <span className="whitespace-nowrap text-[14px] font-normal leading-[1.44] tracking-[-0.28px] text-black">{option.label}</span>
         </LashSelectionCard>
       ))}
     </LashOptionGrid>

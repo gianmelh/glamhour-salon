@@ -21,10 +21,10 @@ const signatureLabels: Record<string, string> = {
 
 const consentLabels: Record<string, string> = {
   appointment_consent: 'Treatment consent',
-  nails_photography_consent: 'Photo consent',
-  lashes_photography_consent: 'Photo consent',
-  cosmetology_photography_consent: 'Photo consent',
-  micropigmentation_photography_consent: 'Photo consent',
+  nails_photography_consent: 'Consent for photographs',
+  lashes_photography_consent: 'Consent for photographs',
+  cosmetology_photography_consent: 'Consent for photographs',
+  micropigmentation_photography_consent: 'Consent for photographs',
 }
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:3001/api'

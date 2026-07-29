@@ -21,7 +21,22 @@ function formatAmount(minor: number) {
   return Number.isInteger(amount) ? String(amount) : amount.toFixed(2)
 }
 
+function formatAppointmentTime(time: string) {
+  const [hour, minute] = time.split(':').map(Number)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return time
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(2026, 0, 1, hour, minute))
+}
+
 function buildServiceDisplayName(service: Service, details: Record<string, unknown>) {
+  const lashStyle = details.style
+  const lashVariant = details.variant
+  if (typeof lashStyle === 'string' && lashStyle) {
+    return typeof lashVariant === 'string' && lashVariant ? `${lashStyle} - ${lashVariant}` : lashStyle
+  }
+
   const serviceType = String(details.nailServiceType ?? service.name)
   const materials = Array.isArray(details.materialLabels) && details.materialLabels.length
     ? details.materialLabels
@@ -140,11 +155,12 @@ function HighlightChip({ children, tone = 'warning' }: { children: string; tone?
   )
 }
 
-export function AppointmentDetailsStep({ category, service, client, date, details, notes, loading, error, onDetailsChange, onEdit, onNext }: {
+export function AppointmentDetailsStep({ category, service, client, date, time, details, notes, loading, error, onDetailsChange, onEdit, onNext }: {
   category: ServiceCategory
   service: Service
   client: Client
   date: string
+  time: string
   details: Record<string, unknown>
   notes: string
   loading?: boolean
@@ -201,7 +217,7 @@ export function AppointmentDetailsStep({ category, service, client, date, detail
 
       <section className="mt-9 space-y-4">
         <h2 className="text-[20px] font-extrabold leading-tight text-[#0c111d]">Appointment Settings</h2>
-        <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
+        <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
           <label className="grid min-w-0 gap-2 text-[16px] text-[#101828]">
             Date
             <span className="relative block">
@@ -213,6 +229,19 @@ export function AppointmentDetailsStep({ category, service, client, date, detail
               />
             </span>
           </label>
+          <label className="grid min-w-0 gap-2 text-[16px] text-[#101828]">
+            Time
+            <span className="relative block">
+              <Clock className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#7f3ff2]" />
+              <input
+                className="min-h-[50px] w-full rounded-[7px] border border-[#d0d5dd] bg-white pl-12 pr-3 text-[15px] text-[#344054] outline-none shadow-sm"
+                readOnly
+                value={formatAppointmentTime(time)}
+              />
+            </span>
+          </label>
+        </div>
+        <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)]">
           <label className="grid min-w-0 gap-2 text-[16px] text-[#101828]">
             Duration
             <span className="flex items-center gap-2">
@@ -234,16 +263,25 @@ export function AppointmentDetailsStep({ category, service, client, date, detail
             <span className="w-4 shrink-0 text-[18px] leading-none text-[#101828]">$</span>
             <input
               className="min-h-[50px] w-full rounded-[15px] border border-[#d0d5dd] bg-white px-4 text-[16px] text-[#667085] outline-none shadow-sm"
+              defaultValue={amountValue}
               inputMode="decimal"
+              key={service.id}
               min="0"
               onChange={(event) => {
-                const nextPriceMinor = Math.max(0, Math.round(Number(event.target.value || '0') * 100))
+                const rawValue = event.target.value
+                if (!/^\d*\.?\d{0,2}$/.test(rawValue)) {
+                  event.target.value = formatAmount(manualPriceMinor)
+                  return
+                }
+                const nextPriceMinor = Math.max(0, Math.round(Number(rawValue || '0') * 100))
                 onDetailsChange?.({ ...details, appointmentPriceMinor: nextPriceMinor })
+              }}
+              onFocus={(event) => {
+                if (priceIsEditable && event.currentTarget.value === '0') event.currentTarget.value = ''
               }}
               readOnly={!priceIsEditable}
               step="0.01"
-              type="number"
-              value={amountValue}
+              type="text"
             />
           </span>
           {priceIsEditable && <span className="text-xs text-[#667085]">This service has no base price yet. Add the appointment amount.</span>}

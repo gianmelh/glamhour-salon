@@ -59,7 +59,7 @@ export function buildConsentsFromDetails(
       type: `${categoryCode}_photography_consent`,
       version: 1,
       accepted: true,
-      text: 'Client authorizes photo storage for this appointment.',
+      text: 'Client authorizes taking and storing photographs for this appointment.',
     })
   }
   return consents.filter(

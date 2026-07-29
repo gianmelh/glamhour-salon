@@ -101,13 +101,15 @@ interface CreateClientInput {
 }
 
 interface CreateServiceInput {
-  categoryId: string
+  categoryId?: string
+  categoryCode?: string
   name: string
   description?: string
   durationMinutes: number
   priceMinor: number
   currencyCode: string
   isPubliclyBookable: boolean
+  assignToActiveProviders: boolean
 }
 
 interface UpdateSettingsInput {
@@ -1974,12 +1976,11 @@ export const dataService = {
          FROM professionals p
          LEFT JOIN professional_services ps
            ON ps.salon_id = p.salon_id
-          AND ps.professional_id = p.id
-          AND ps.service_id IN (SELECT id FROM services WHERE salon_id = $1 AND category_id = $2)
+         AND ps.professional_id = p.id
          WHERE p.salon_id = $1 AND p.deleted_at IS NULL
          GROUP BY p.id
          ORDER BY p.full_name`,
-        [salonId, category.id],
+        [salonId],
       ),
     ])
 
@@ -2741,8 +2742,28 @@ export const dataService = {
     )
   },
 
-  createService(salonId: string, input: CreateServiceInput): Promise<Service> {
-    return oneOrNotFound<Service>(
+  async createService(salonId: string, input: CreateServiceInput): Promise<Service> {
+    let categoryId = input.categoryId
+    if (!categoryId && input.categoryCode) {
+      const categories = await query<{ id: string }>(
+        'SELECT id FROM service_categories WHERE code = $1 AND is_active LIMIT 1',
+        [input.categoryCode],
+      )
+      categoryId = categories[0]?.id
+    }
+    if (!categoryId) {
+      throw Object.assign(new Error('Service category not found'), { statusCode: 404 })
+    }
+
+    await query(
+      `INSERT INTO salon_service_categories (salon_id, category_id, is_active)
+       VALUES ($1, $2, true)
+       ON CONFLICT (salon_id, category_id)
+       DO UPDATE SET is_active = true, updated_at = now()`,
+      [salonId, categoryId],
+    )
+
+    const service = await oneOrNotFound<Service>(
       `INSERT INTO services (
          salon_id, category_id, name, description, duration_minutes, price_minor,
          currency_code, is_publicly_bookable
@@ -2750,7 +2771,7 @@ export const dataService = {
        RETURNING *`,
       [
         salonId,
-        input.categoryId,
+        categoryId,
         input.name,
         input.description ?? null,
         input.durationMinutes,
@@ -2760,6 +2781,20 @@ export const dataService = {
       ],
       'Service could not be created',
     )
+    if (input.assignToActiveProviders) {
+      await query(
+        `INSERT INTO professional_services (
+           salon_id, professional_id, service_id, is_active, duration_override_minutes
+         )
+         SELECT $1, p.id, $2, true, $3
+         FROM professionals p
+         WHERE p.salon_id = $1 AND p.status = 'active' AND p.deleted_at IS NULL
+         ON CONFLICT (professional_id, service_id)
+         DO UPDATE SET is_active = true, duration_override_minutes = EXCLUDED.duration_override_minutes, updated_at = now()`,
+        [salonId, service.id, input.durationMinutes],
+      )
+    }
+    return service
   },
 
   listAppointments(salonId: string, filters: AppointmentFilters): Promise<Appointment[]> {
@@ -2921,18 +2956,39 @@ export const dataService = {
         `SELECT s.*, sc.code AS category_code
          FROM services s
          JOIN service_categories sc ON sc.id = s.category_id
-         JOIN professional_services ps
-           ON ps.salon_id = s.salon_id AND ps.service_id = s.id
          WHERE s.salon_id = $1
-           AND ps.professional_id = $2
-           AND s.id = ANY($3::uuid[])
-           AND s.is_active AND ps.is_active`,
-        [input.salonId, input.professionalId, input.serviceIds],
+           AND s.id = ANY($2::uuid[])
+           AND s.is_active`,
+        [input.salonId, input.serviceIds],
       )
 
       if (services.length !== new Set(input.serviceIds).size) {
         throw new ApiError(400, 'One or more services are unavailable for this professional.')
       }
+
+      const providerRows = await clientRows<QueryResultRow>(
+        client,
+        `SELECT 1
+         FROM professionals
+         WHERE salon_id = $1 AND id = $2 AND status = 'active' AND deleted_at IS NULL
+         LIMIT 1`,
+        [input.salonId, input.professionalId],
+      )
+      if (!providerRows[0]) {
+        throw new ApiError(400, 'Professional is unavailable.')
+      }
+
+      await client.query(
+        `INSERT INTO professional_services (
+           salon_id, professional_id, service_id, is_active, duration_override_minutes
+         )
+         SELECT $1, $2, s.id, true, s.duration_minutes
+         FROM services s
+         WHERE s.salon_id = $1 AND s.id = ANY($3::uuid[]) AND s.is_active
+         ON CONFLICT (professional_id, service_id)
+         DO UPDATE SET is_active = true, duration_override_minutes = EXCLUDED.duration_override_minutes, updated_at = now()`,
+        [input.salonId, input.professionalId, input.serviceIds],
+      )
 
       const conflicts = await clientRows<QueryResultRow>(
         client,

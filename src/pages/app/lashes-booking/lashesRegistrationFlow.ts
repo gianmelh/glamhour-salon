@@ -47,7 +47,7 @@ export const LASHES_REGISTRATION_STEP_KEY = 'registrationStep'
 
 export function readLashesRegistrationStep(details: Record<string, unknown>): LashesRegistrationStep {
   const step = details[LASHES_REGISTRATION_STEP_KEY]
-  if (step === 'complete') return 'length'
+  if (step === 'complete' || step === 'thickness' || step === 'length') return 'lash-map'
   if (typeof step === 'string' && LASHES_REGISTRATION_STEPS.includes(step as LashesRegistrationStep)) {
     return step as LashesRegistrationStep
   }
@@ -56,7 +56,7 @@ export function readLashesRegistrationStep(details: Record<string, unknown>): La
 
 export function isDetailsCoreComplete(details: Record<string, unknown>) {
   const data = details as LashesDetails
-  return Boolean(data.style && data.eyeShape && data.volume && data.curl)
+  return Boolean(data.style && data.eyeShape && data.volume && data.curl && data.thickness && (data.defaultLength || data.lashMapLength))
 }
 
 export function canAdvanceLashesStep(step: LashesRegistrationStep, details: Record<string, unknown>) {
@@ -73,15 +73,11 @@ export function canAdvanceLashesStep(step: LashesRegistrationStep, details: Reco
     case 'photo-capture':
       return true
     case 'photo-confirm':
-      return Boolean(data.photoPreviewUrl && data.photoStorageKey && data.photoConsent)
+      return Boolean(data.photoPreviewUrl && data.photoStorageKey)
     case 'photo-preview':
-      return Boolean(data.photoPreviewUrl && data.photoStorageKey && data.photoConsent)
+      return Boolean(data.photoPreviewUrl && data.photoStorageKey)
     case 'lash-map':
-      return isLashMapComplete(data.lashMap)
-    case 'thickness':
-      return Boolean(data.thickness)
-    case 'length':
-      return Boolean(data.defaultLength || data.lashMapLength)
+      return isDetailsCoreComplete(details) && isLashMapComplete(data.lashMap)
     default:
       return false
   }
@@ -95,7 +91,7 @@ export function getNextLashesRegistrationStep(
 ): LashesRegistrationStep | null {
   switch (step) {
     case 'details':
-      return 'style-preview'
+      return 'select-variant'
     case 'style-preview':
       return 'select-variant'
     case 'select-variant':
@@ -109,9 +105,8 @@ export function getNextLashesRegistrationStep(
     case 'photo-preview':
       return 'lash-map'
     case 'lash-map':
-      return 'thickness'
+      return null
     case 'thickness':
-      return 'length'
     case 'length':
       return null
     default:
@@ -129,7 +124,7 @@ export function getPreviousLashesRegistrationStep(
     case 'style-preview':
       return 'details'
     case 'select-variant':
-      return 'style-preview'
+      return 'details'
     case 'photo-method':
       return 'select-variant'
     case 'photo-capture':
@@ -141,9 +136,8 @@ export function getPreviousLashesRegistrationStep(
     case 'lash-map':
       return 'photo-preview'
     case 'thickness':
-      return 'lash-map'
     case 'length':
-      return 'thickness'
+      return 'lash-map'
     default:
       return 'exit'
   }

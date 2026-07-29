@@ -47,6 +47,8 @@ export function appointmentService(appointment: Appointment) {
   const categoryCode = service?.category_code_snapshot ?? ''
   const details = categoryCode ? appointment.treatment_details_by_category?.[categoryCode] : undefined
   const nailsType = details?.nailServiceType
+  const lashStyle = details?.style
+  const lashVariant = details?.variant
   const materialLabels = details?.materialLabels
   const materials = details?.materials
   const material = Array.isArray(materialLabels) && materialLabels.length
@@ -57,6 +59,10 @@ export function appointmentService(appointment: Appointment) {
 
   if (typeof nailsType === 'string' && nailsType) {
     return typeof material === 'string' && material ? `${nailsType} - ${material}` : nailsType
+  }
+
+  if (categoryCode === 'lashes' && typeof lashStyle === 'string' && lashStyle) {
+    return typeof lashVariant === 'string' && lashVariant ? `${lashStyle} - ${lashVariant}` : lashStyle
   }
 
   return service?.service_name_snapshot ?? 'Salon service'

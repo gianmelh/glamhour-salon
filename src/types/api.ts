@@ -437,13 +437,15 @@ export interface CreateClientInput {
 }
 
 export interface CreateServiceInput {
-  categoryId: string
+  categoryId?: string
+  categoryCode?: string
   name: string
   description?: string
   durationMinutes: number
   priceMinor: number
   currencyCode?: string
   isPubliclyBookable?: boolean
+  assignToActiveProviders?: boolean
 }
 
 export interface UpdateSettingsInput {

@@ -33,6 +33,7 @@ export type LashesDetails = {
   healthEmail?: string
   usedExistingHealthProfile?: boolean
   existingQuestionnaireId?: string
+  appointmentPriceMinor?: number
 }
 
 /** Keys allowed in a lashes appointment draft — excludes all nails-specific fields. */
@@ -64,6 +65,7 @@ export const LASHES_DETAIL_KEYS = [
   'healthEmail',
   'usedExistingHealthProfile',
   'existingQuestionnaireId',
+  'appointmentPriceMinor',
   'registrationStep',
   'photoCapturePending',
 ] as const

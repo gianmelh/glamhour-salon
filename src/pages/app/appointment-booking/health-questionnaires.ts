@@ -93,6 +93,7 @@ export const healthQuestionnaires: Record<BookingCategoryCode, HealthQuestionnai
       { id: 'truthful', label: 'I confirm having answered the health questionnaire truthfully.' },
       { id: 'no_infection', label: 'I do not have active ocular infections.' },
       { id: 'habits_results', label: 'I understand that my habits may affect the results and retention.' },
+      { id: 'photographs', label: 'Consent for photographs.' },
       { id: 'liability', label: 'I release the professional from liability if I concealed relevant information.' },
     ],
   },
@@ -192,10 +193,6 @@ export function getHealthQuestionnaireMissingItems(
   if (!details.professionalSignature) {
     missing.push('Professional signature is required — draw in the box above')
   }
-  if (!details.clientSignature) {
-    missing.push('Client signature is required — draw in the box above')
-  }
-
   if (definition.showPhototype && !details.phototype) {
     missing.push('Select a Fitzpatrick phototype')
   }

@@ -10,9 +10,13 @@ function useResolvedSalonId(salonId?: string) {
   return resolveSalonId(salonId)
 }
 
+function fallbackForSalon<T>(resolvedSalonId: string, fallback: T) {
+  return resolvedSalonId === fallbackSalon.id ? fallback : undefined
+}
+
 export const useSalon = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.salon(resolvedSalonId), [resolvedSalonId]), fallbackSalon)
+  return useApiResource(useCallback(() => glamhourApi.salon(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackSalon))
 }
 export const useDashboard = (date?: string, salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
@@ -20,27 +24,27 @@ export const useDashboard = (date?: string, salonId?: string) => {
 }
 export const useAppointments = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.appointments(resolvedSalonId), [resolvedSalonId]), fallbackAppointments)
+  return useApiResource(useCallback(() => glamhourApi.appointments(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackAppointments))
 }
 export const useAppointment = (id: string, salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.appointment(id, resolvedSalonId), [id, resolvedSalonId]), fallbackAppointments.find((item) => item.id === id))
+  return useApiResource(useCallback(() => glamhourApi.appointment(id, resolvedSalonId), [id, resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackAppointments.find((item) => item.id === id)))
 }
 export const useClients = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.clients(resolvedSalonId), [resolvedSalonId]), fallbackClients)
+  return useApiResource(useCallback(() => glamhourApi.clients(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackClients))
 }
 export const useServices = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.services(resolvedSalonId), [resolvedSalonId]), fallbackServices)
+  return useApiResource(useCallback(() => glamhourApi.services(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackServices))
 }
 export const useServiceCategories = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.categories(resolvedSalonId), [resolvedSalonId]), fallbackCategories)
+  return useApiResource(useCallback(() => glamhourApi.categories(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackCategories))
 }
 export const useProfessionals = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.professionals(resolvedSalonId), [resolvedSalonId]), fallbackProfessionals)
+  return useApiResource(useCallback(() => glamhourApi.professionals(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackProfessionals))
 }
 export const useNailSettings = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
@@ -56,9 +60,9 @@ export const useSalesHistoryDetail = (recordId: string, salonId?: string) => {
 }
 export const useSettings = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.settings(resolvedSalonId), [resolvedSalonId]), fallbackSettings)
+  return useApiResource(useCallback(() => glamhourApi.settings(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackSettings))
 }
 export const useNotifications = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.notifications(resolvedSalonId), [resolvedSalonId]), fallbackNotifications)
+  return useApiResource(useCallback(() => glamhourApi.notifications(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackNotifications))
 }
