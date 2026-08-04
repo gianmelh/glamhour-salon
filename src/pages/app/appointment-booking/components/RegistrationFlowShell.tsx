@@ -72,7 +72,7 @@ export function RegistrationContinueSection({
 }) {
   return (
     <div className="flex flex-col items-center py-[32px]">
-      {!canContinue && disabledMessage && (
+      {disabledMessage && (
         <p className="mb-3 px-2 text-center text-[12px] leading-[1.44] text-[#475467]">
           {disabledMessage}
         </p>

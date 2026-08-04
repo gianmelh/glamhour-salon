@@ -98,10 +98,17 @@ export function NewAppointmentPage() {
   const [availability, setAvailability] = useState<AvailabilitySlot[]>([])
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [createdAppointmentId, setCreatedAppointmentId] = useState('')
+  const [localServices, setLocalServices] = useState<Service[]>([])
   const [confirmError, setConfirmError] = useState<Error | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [nowTimestamp] = useState(() => Date.now())
   const devLashesBootstrapped = useRef(false)
+  const allServices = useMemo(() => {
+    const byId = new Map<string, Service>()
+    for (const service of services.data ?? []) byId.set(service.id, service)
+    for (const service of localServices) byId.set(service.id, service)
+    return [...byId.values()]
+  }, [localServices, services.data])
 
   useEffect(() => {
     scrollMainToTop()
@@ -176,14 +183,14 @@ export function NewAppointmentPage() {
 
   useEffect(() => {
     if (step !== 'appointment-details') return
-    if (!categories.data || !services.data || !clients.data) return
+    if (!categories.data || !clients.data || !allServices.length) return
 
-    const appointmentCategories = buildAppointmentCategories(categories.data, services.data)
+    const appointmentCategories = buildAppointmentCategories(categories.data, allServices)
     const category = appointmentCategories.find((item) => item.code === draft.categoryCode || item.id === draft.categoryId)
-    const categoryServices = services.data.filter((service) => (
+    const categoryServices = allServices.filter((service) => (
       (service.category_id === draft.categoryId || service.category_code === draft.categoryCode) && service.is_active
     ))
-    const service = services.data.find((item) => item.id === draft.serviceId) ?? categoryServices[0]
+    const service = allServices.find((item) => item.id === draft.serviceId) ?? categoryServices[0]
     const client = clients.data.find((item) => item.id === draft.clientId)
 
     if (!category) {
@@ -199,11 +206,11 @@ export function NewAppointmentPage() {
       return
     }
 
-    const resolvedServiceId = resolveCategoryServiceId(draft, categoryServices, services.data)
+    const resolvedServiceId = resolveCategoryServiceId(draft, categoryServices, allServices)
     if (resolvedServiceId && resolvedServiceId !== draft.serviceId) {
       setDraft((current) => ({ ...current, serviceId: resolvedServiceId }))
     }
-  }, [categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, services.data, step])
+  }, [allServices, categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, step])
 
   const clientVisitByClientId = useMemo(() => {
     const canceledStatuses = new Set(['canceled', 'cancelled', 'no_show'])
@@ -242,7 +249,7 @@ export function NewAppointmentPage() {
   const currentSalonDraft = {
     ...draft,
     clientId: clients.data.some((client) => client.id === draft.clientId) ? draft.clientId : '',
-    serviceId: services.data.some((service) => service.id === draft.serviceId) ? draft.serviceId : '',
+    serviceId: allServices.some((service) => service.id === draft.serviceId) ? draft.serviceId : '',
     providerId: professionals.data.some((provider) => provider.id === draft.providerId) ? draft.providerId : '',
   }
   if (
@@ -254,12 +261,12 @@ export function NewAppointmentPage() {
     return <LoadingState label="Refreshing appointment flow..." />
   }
 
-  const appointmentCategories = buildAppointmentCategories(categories.data, services.data)
+  const appointmentCategories = buildAppointmentCategories(categories.data, allServices)
   const selectedCategory = appointmentCategories.find((category) => category.code === draft.categoryCode || category.id === draft.categoryId)
-  const categoryServices = services.data.filter((service) => (
+  const categoryServices = allServices.filter((service) => (
     (service.category_id === draft.categoryId || service.category_code === draft.categoryCode) && service.is_active
   ))
-  const selectedService = services.data.find((service) => service.id === draft.serviceId) ?? categoryServices[0]
+  const selectedService = allServices.find((service) => service.id === draft.serviceId) ?? categoryServices[0]
   const selectedClient = clients.data.find((client) => client.id === draft.clientId)
   const scheduleProviders = eligibleProviders.length
     ? eligibleProviders
@@ -282,7 +289,7 @@ export function NewAppointmentPage() {
     const nextDetails = sanitizeDetailsForCategory(draft.categoryCode, restDetails)
     const patchedDraft = { ...draft, ...patch, details: nextDetails }
     const nextServiceId = patch.serviceId
-      ?? resolveCategoryServiceId(patchedDraft, categoryServices, services.data ?? [])
+      ?? resolveCategoryServiceId(patchedDraft, categoryServices, allServices)
 
     setDraft((current) => ({
       ...current,
@@ -477,7 +484,7 @@ export function NewAppointmentPage() {
           appointments={appointments.data}
           categories={appointmentCategories}
           onCalendar={() => navigate('/app/calendar')}
-          services={services.data}
+          services={allServices}
           onSelect={(category) => {
             setDraft({ ...emptyDraft(), categoryId: category.id, categoryCode: category.code, date: appointmentDraftDate(draft) })
             setCreatedAppointmentId('')
@@ -513,7 +520,10 @@ export function NewAppointmentPage() {
             }
           })}
           categorySource={categories.data}
-          onServiceCreated={(service) => services.setData((current) => [service, ...(current ?? [])])}
+          onServiceCreated={(service) => {
+            setLocalServices((current) => [service, ...current.filter((item) => item.id !== service.id)])
+            services.setData((current) => [service, ...(current ?? []).filter((item) => item.id !== service.id)])
+          }}
           onNext={continueFromServiceDetails}
           selectedServiceId={draft.serviceId}
           services={categoryServices}

@@ -80,23 +80,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
   const materialsError = materialsQuery.error
 
   const ensureSelectedService = async () => {
-    const serviceType = String(details.nailServiceType ?? selectedType)
-    const selectedServiceMatchesType = selectedServiceId
-      && serviceType
-      && services.some((service) => (
-        service.id === selectedServiceId
-        && normalizeServiceName(service.name).includes(normalizeServiceName(serviceType))
-    ))
-    if (selectedServiceMatchesType) return selectedServiceId
-
-    const matchingService = services.find((service) => (
-      serviceType
-      && service.is_active
-      && normalizeServiceName(service.name).includes(normalizeServiceName(serviceType))
-    ))
-    if (matchingService) return matchingService.id
-
-    if (selectedServiceId) return selectedServiceId
+    if (selectedServiceId && services.some((service) => service.id === selectedServiceId)) return selectedServiceId
     if (services[0]) return services[0].id
 
     const categoryId = uuidPattern.test(category.id)
@@ -108,8 +92,8 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
 
     const service = await glamhourApi.createService({
       categoryId,
-      name: serviceType || 'Nails service',
-      description: 'Created from nails booking flow.',
+      name: 'Nails service',
+      description: 'Created from quick nails booking flow.',
       durationMinutes: 60,
       priceMinor: 0,
       isPubliclyBookable: true,
