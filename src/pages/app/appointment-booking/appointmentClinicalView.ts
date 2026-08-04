@@ -207,10 +207,6 @@ type ClinicalMediaLike = ClinicalMedia & {
   mimeType?: string
 }
 
-function readClinicalMediaLabel(media: ClinicalMediaLike, fallback: string) {
-  return media.media_type || media.mediaType || fallback
-}
-
 function readClinicalMediaStorageKey(media: ClinicalMediaLike) {
   return media.storage_key || media.storageKey || ''
 }
@@ -291,37 +287,14 @@ export function buildAppointmentClinicalView(appointment: Appointment): Appointm
     : appointment.customer_notes ?? appointment.internal_notes ?? ''
   if (notes) sections.push({ title: 'Notes', rows: [{ label: 'Clinical notes', value: notes }] })
 
-  const mediaFromApi = appointment.clinical_media ?? []
-  const mediaFromDetails = (details.mediaItems as ClinicalMediaLike[] | undefined) ?? []
-  const seenPhotoKeys = new Set<string>()
-  const photos = [...mediaFromApi, ...mediaFromDetails]
-    .map((item, index) => {
-      const url = resolveClinicalMediaUrl(item)
-      const storageKey = readClinicalMediaStorageKey(item)
-      return {
-        key: storageKey || url,
-        label: readClinicalMediaLabel(item, `Photo ${index + 1}`),
-        url,
-      }
-    })
-    .filter((item) => {
-      if (!item.url || seenPhotoKeys.has(item.key)) return false
-      seenPhotoKeys.add(item.key)
-      return true
-    })
-
-  if (photos.length) {
-    sections.push({
-      title: 'Photos',
-      rows: photos.map((photo) => ({ label: photo.label, value: 'Attached' })),
-    })
-  }
+  // Reference photos are collected in the booking flow, but they are not part of
+  // the appointment details view requested for the current service review.
 
   return {
     sections,
     signatures: appointment.clinical_signatures ?? [],
     consents: appointment.clinical_consents ?? [],
-    photos,
+    photos: [],
     contraindications,
   }
 }
