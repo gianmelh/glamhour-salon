@@ -1,6 +1,6 @@
 import { cn } from '../../../../lib/cn'
 import { lashesBookingAssets } from '../assets'
-import { lashMapPositions } from '../lashesDetailsSpec'
+import { lashLengthOptions, lashMapPositions } from '../lashesDetailsSpec'
 import { getLashEyeProgress } from '../lashesDetailsValidation'
 import type { LashEyeName } from '../types'
 import { LashesSectionTitle } from './lashesUi'
@@ -18,6 +18,19 @@ const lashMapHotspots = [
 
 type LashMapState = Partial<Record<LashEyeName, Array<{ position: number; length: number }>>>
 
+function mirroredPercent(value: string) {
+  const numeric = Number(value.replace('%', ''))
+  return Number.isFinite(numeric) ? `${100 - numeric}%` : value
+}
+
+function hotspotsForEye(eye: LashEyeName) {
+  if (eye === 'rightEye') return lashMapHotspots
+  return lashMapHotspots.map((hotspot) => ({
+    ...hotspot,
+    left: mirroredPercent(hotspot.left),
+  }))
+}
+
 function readLashMapEditorState(details: Record<string, unknown>) {
   const eye = (details.activeLashEye as LashEyeName | undefined) ?? 'rightEye'
   const map = { ...((details.lashMap as LashMapState | undefined) ?? {}) }
@@ -29,8 +42,9 @@ export function LashMapEditor({ details, onChange }: {
   details: Record<string, unknown>
   onChange: (next: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>)) => void
 }) {
-  const { eye, map, current } = readLashMapEditorState(details)
+  const { eye, map, length, current } = readLashMapEditorState(details)
   const eyeLabel = eye === 'rightEye' ? 'Right side' : 'Left side'
+  const activeHotspots = hotspotsForEye(eye)
   const progress = getLashEyeProgress(map)
   const rightCompleted = progress.find((item) => item.eye === 'rightEye')?.completed ?? 0
   const leftCompleted = progress.find((item) => item.eye === 'leftEye')?.completed ?? 0
@@ -49,6 +63,15 @@ export function LashMapEditor({ details, onChange }: {
         lashMapLength: zoneLength,
       }
     })
+  }
+
+  const selectLength = (value: string) => {
+    const nextLength = Number(value)
+    onChange((currentDetails) => ({
+      ...currentDetails,
+      defaultLength: value,
+      lashMapLength: Number.isFinite(nextLength) ? nextLength : undefined,
+    }))
   }
 
   /** Switch which eye is being edited — same as Nails HandEditor, does not move map data. */
@@ -101,14 +124,41 @@ export function LashMapEditor({ details, onChange }: {
         )}
       </div>
 
+      <div className="flex w-full min-w-0 flex-col gap-3">
+        <p className="text-[13px] font-semibold text-[#0c111d]">Length (mm)</p>
+        <div className="grid grid-cols-5 gap-2">
+          {lashLengthOptions.map((option) => {
+            const active = String(length).padStart(2, '0') === option
+            return (
+              <button
+                className={cn(
+                  'min-h-10 rounded-[12px] border px-2 text-[14px] font-semibold transition',
+                  active
+                    ? 'border-[#7344cd] bg-[#ebe7ff] text-[#0c111d]'
+                    : 'border-[#d0d5dd] bg-white text-[#475467]',
+                )}
+                key={option}
+                onClick={() => selectLength(option)}
+                type="button"
+              >
+                {option}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       <div className="relative aspect-[361/179] w-full min-w-0 overflow-hidden">
         <img
           alt=""
           aria-hidden
-          className="absolute inset-0 size-full object-contain object-left"
+          className={cn(
+            'absolute inset-0 size-full object-contain object-left',
+            eye === 'leftEye' && '-scale-x-100',
+          )}
           src={lashesBookingAssets.lashMap.catEye}
         />
-        {lashMapHotspots.map(({ position, left, top }) => {
+        {activeHotspots.map(({ position, left, top }) => {
           const assigned = current.find((item) => item.position === position)
           return (
             <button

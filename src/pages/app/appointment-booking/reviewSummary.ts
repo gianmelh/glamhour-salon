@@ -52,6 +52,18 @@ function formatFaceAnnotations(annotations: Array<{ x: number; y: number; type: 
   return Object.entries(grouped).map(([type, count]) => ({ label: 'Face map', value: `${type} (${count})` }))
 }
 
+function formatMaterialLabels(details: Record<string, unknown>) {
+  const labels = Array.isArray(details.materialLabels) && details.materialLabels.length
+    ? details.materialLabels
+    : Array.isArray(details.materials)
+      ? details.materials
+      : []
+  const otherMaterialName = String(details.otherMaterialName ?? '').trim()
+  return labels.map((label) => (
+    label === 'Other' && otherMaterialName ? `Other: ${otherMaterialName}` : String(label)
+  ))
+}
+
 function buildNailsTreatmentReviewRows(details: Record<string, unknown>) {
   const rows: Array<{ label: string; value: string }> = []
   if (details.nailServiceType) rows.push({ label: 'Service type', value: String(details.nailServiceType) })
@@ -59,11 +71,8 @@ function buildNailsTreatmentReviewRows(details: Record<string, unknown>) {
   if (details.handMode) {
     rows.push({ label: 'Hand mode', value: details.handMode === 'finger' ? 'Finger to finger' : 'Full hand' })
   }
-  if (Array.isArray(details.materialLabels) && details.materialLabels.length) {
-    rows.push({ label: 'Materials', value: (details.materialLabels as string[]).join(', ') })
-  } else if (Array.isArray(details.materials) && details.materials.length) {
-    rows.push({ label: 'Materials', value: (details.materials as string[]).join(', ') })
-  }
+  const materialLabels = formatMaterialLabels(details)
+  if (materialLabels.length) rows.push({ label: 'Materials', value: materialLabels.join(', ') })
   rows.push(...formatHandMeasurements(details.rightHand as Record<string, Record<string, string>>, 'Right hand'))
   rows.push(...formatHandMeasurements(details.leftHand as Record<string, Record<string, string>>, 'Left hand'))
   if (details.lengthPreference) rows.push({ label: 'Length preference', value: String(details.lengthPreference) })
@@ -72,11 +81,21 @@ function buildNailsTreatmentReviewRows(details: Record<string, unknown>) {
 
 function buildCosmetologyTreatmentReviewRows(details: Record<string, unknown>) {
   const rows: Array<{ label: string; value: string }> = []
+  if (details.serviceType) rows.push({ label: 'Service type', value: String(details.serviceType) })
   if (details.phototype) rows.push({ label: 'Phototype', value: String(details.phototype) })
   if (details.skin_type) rows.push({ label: 'Skin type', value: String(details.skin_type) })
+  if (Array.isArray(details.healthHistory) && details.healthHistory.length) {
+    rows.push({ label: 'Health history', value: (details.healthHistory as string[]).join(', ') })
+  }
+  if (Array.isArray(details.alterations) && details.alterations.length) {
+    rows.push({ label: 'Alterations', value: (details.alterations as string[]).join(', ') })
+  }
   if (Array.isArray(details.equipment) && details.equipment.length) {
     rows.push({ label: 'Equipment', value: (details.equipment as string[]).join(', ') })
   }
+  if (details.cosmeticBrandLine) rows.push({ label: 'Brand / line', value: String(details.cosmeticBrandLine) })
+  if (details.products) rows.push({ label: 'Products', value: String(details.products) })
+  if (details.recommendations) rows.push({ label: 'Recommendations', value: String(details.recommendations) })
   rows.push(...formatFaceAnnotations(details.faceAnnotations as Array<{ x: number; y: number; type: string }>))
   return rows
 }

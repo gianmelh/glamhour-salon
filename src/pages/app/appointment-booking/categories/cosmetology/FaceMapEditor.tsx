@@ -1,9 +1,8 @@
 import { useState, type PointerEvent } from 'react'
 import { Eraser, RotateCcw } from 'lucide-react'
 import { Button } from '../../../../../components'
+import { cn } from '../../../../../lib/cn'
 import { cosmetologyBookingAssets } from '../../assets'
-import { HelpModal } from '../../components/HelpModal'
-import { ChipGroup } from '../../components/shared'
 import { cosmetologyAnnotationTypes } from './cosmetologyDetailsSpec'
 
 /** Figma 662:8803 — Mark what is detected (face map + notes). */
@@ -15,8 +14,20 @@ export function FaceMapEditor({
   onChange: (details: Record<string, unknown>) => void
 }) {
   const [type, setType] = useState<string>(cosmetologyAnnotationTypes[0])
+  const [showOnlyCurrentType, setShowOnlyCurrentType] = useState(false)
   const annotations = (details.faceAnnotations as Array<{ x: number; y: number; type: string }> | undefined) ?? []
+  const visibleAnnotations = showOnlyCurrentType
+    ? annotations.filter((annotation) => annotation.type === type)
+    : annotations
   const notes = String(details.skinAlterationNotes ?? '')
+  const annotationColors: Record<string, string> = {
+    'Active acne': '#ff6b7a',
+    Pigmentation: '#6ea8ff',
+    'Sensitivity/redness': '#f7c948',
+    'Dullness/uneven tone': '#a78bfa',
+    'Fine lines/wrinkles': '#34d399',
+    'Contraindicated area': '#ef4444',
+  }
 
   const add = (event: PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -29,24 +40,41 @@ export function FaceMapEditor({
   }
 
   return (
-    <div className="rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4" data-node-id="662:8803">
+    <div className="rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4 shadow-sm" data-node-id="662:8803">
       <div className="mb-3">
-        <p className="text-[28px] font-bold leading-[1.2] text-[#0c111d]">Mark what is detected</p>
+        <p className="text-[28px] font-extrabold leading-[1.2] text-[#0c111d]">Mark what is detected</p>
         <p className="mt-2 text-[16px] leading-[1.4] text-[#475467]">
           Select an alteration type, then draw over the affected areas on the face.
         </p>
       </div>
 
-      <ChipGroup
-        label="Alteration type"
-        onChange={(value) => setType(String(value))}
-        options={[...cosmetologyAnnotationTypes]}
-        value={type}
-      />
-      <div className="mt-2 flex justify-end">
-        <HelpModal title="Facial mapping" triggerLabel="Help">
-          Tap the face diagram to mark skin concerns. Choose the annotation type first, then tap the area on the face.
-        </HelpModal>
+      <div className="space-y-3">
+        <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#68738b]">Alteration type</p>
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {cosmetologyAnnotationTypes.map((option) => (
+            <button
+              className={cn(
+                'inline-flex min-h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-[12px] font-semibold transition',
+                type === option ? 'border-[#7344cd] bg-[#ebe7ff] text-[#0c111d]' : 'border-[#d0d5dd] bg-white text-[#475467]',
+              )}
+              key={option}
+              onClick={() => setType(option)}
+              type="button"
+            >
+              <span className="size-2.5 rounded-full" style={{ backgroundColor: annotationColors[option] ?? '#7344cd' }} />
+              {option}
+            </button>
+          ))}
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-[#475467]">
+          <input
+            checked={showOnlyCurrentType}
+            className="size-4 accent-[#7344cd]"
+            onChange={(event) => setShowOnlyCurrentType(event.target.checked)}
+            type="checkbox"
+          />
+          Show only this alteration
+        </label>
       </div>
 
       <div
@@ -54,11 +82,15 @@ export function FaceMapEditor({
         onPointerDown={add}
       >
         <img alt="" className="absolute inset-0 size-full object-cover" src={cosmetologyBookingAssets.faceDiagram} />
-        {annotations.map((annotation, index) => (
+        {visibleAnnotations.map((annotation, index) => (
           <span
-            className="absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#7344cd] shadow"
-            key={`${annotation.x}-${annotation.y}-${index}`}
-            style={{ left: `${annotation.x}%`, top: `${annotation.y}%` }}
+            className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow"
+            key={`${annotation.x}-${annotation.y}-${annotation.type}-${index}`}
+            style={{
+              backgroundColor: annotationColors[annotation.type] ?? '#7344cd',
+              left: `${annotation.x}%`,
+              top: `${annotation.y}%`,
+            }}
             title={annotation.type}
           />
         ))}
@@ -90,6 +122,14 @@ export function FaceMapEditor({
           <RotateCcw className="size-4" /> Clear
         </Button>
       </div>
+      <Button
+        className="mt-3 min-h-[48px] rounded-[12px]"
+        fullWidth
+        onClick={() => onChange({ ...details, faceMapSavedAt: new Date().toISOString() })}
+        type="button"
+      >
+        Save annotations
+      </Button>
     </div>
   )
 }

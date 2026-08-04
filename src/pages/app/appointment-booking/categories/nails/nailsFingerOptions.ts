@@ -50,30 +50,6 @@ export function hasHandMeasurement(handData: Record<string, Record<string, strin
   return getHandProgress(handData).completed > 0
 }
 
-export function applyActiveFingerMeasurementsToAll(details: Record<string, unknown>) {
-  const activeHand = (details.activeHand as 'rightHand' | 'leftHand' | undefined) ?? 'rightHand'
-  const activeFinger = (details.activeFinger as FingerName | undefined) ?? 'thumb'
-  const handData = (details[activeHand] as Record<string, Record<string, string>> | undefined) ?? {}
-  const fingerData = handData[activeFinger]
-  const widthMm = fingerData?.widthMm
-  const capsuleNumber = fingerData?.capsuleNumber
-
-  if (!widthMm || !capsuleNumber) return details
-
-  const nextHandData = Object.fromEntries(
-    fingerOrder.map((finger) => [finger, { widthMm, capsuleNumber }]),
-  )
-
-  return {
-    ...details,
-    rightHand: nextHandData,
-    leftHand: nextHandData,
-    activeHand,
-    activeFinger,
-    handMode: 'finger',
-  }
-}
-
 export function mergeHandData(
   current: Record<string, Record<string, string>> | undefined,
   patch: Record<string, Record<string, string>> | undefined,
@@ -108,19 +84,11 @@ export function mergeDetailsPatch(
 
 export function getNailsDetailsMissingItems(details: Record<string, unknown>) {
   const missing: string[] = []
-  if (!details.nailServiceType) missing.push('Type of service')
   if (!details.nailType) missing.push('Type of nails')
   const materials = (details.materialLabels as string[] | undefined) ?? (details.materials as string[] | undefined) ?? []
   if (!materials.length) missing.push('At least one material')
-
-  const rightHand = details.rightHand as Record<string, Record<string, string>> | undefined
-  if (!isHandComplete(rightHand)) {
-    missing.push('Right hand finger measurements')
-  }
-
-  const leftHand = details.leftHand as Record<string, Record<string, string>> | undefined
-  if (!isHandComplete(leftHand)) {
-    missing.push('Left hand finger measurements')
+  if (materials.includes('Other') && !String(details.otherMaterialName ?? '').trim()) {
+    missing.push('Other material name')
   }
 
   return missing

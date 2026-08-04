@@ -166,7 +166,7 @@ export function ServiceTypeCard({ active, label, onClick, imageSrc, variant = 'd
     <button
       className={selectionCardShell(
         active,
-        'flex h-[48px] w-[158px] shrink-0 items-center justify-center gap-[6px] rounded-[10px] px-[12px]',
+        'flex h-[48px] w-[150px] shrink-0 items-center justify-center gap-[6px] rounded-[10px] px-[10px]',
       )}
       onClick={onClick}
       type="button"
@@ -183,7 +183,7 @@ export function ServiceTypeCard({ active, label, onClick, imageSrc, variant = 'd
           />
         </span>
       </span>
-      <span className="whitespace-nowrap text-[11px] font-normal leading-none tracking-normal text-black">
+      <span className="min-w-0 truncate whitespace-nowrap text-[11px] font-normal leading-none tracking-normal text-black">
         {label}
       </span>
     </button>

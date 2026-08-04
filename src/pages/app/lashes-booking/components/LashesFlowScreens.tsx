@@ -2,7 +2,7 @@ import { Camera, ChevronRight, TriangleAlert, Upload } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../../../lib/cn";
 import { lashesBookingAssets } from "../assets";
-import { lashVariantOptions, lashesDetailsLayout } from "../lashesDetailsSpec";
+import { lashMapZoneNumbers, lashVariantOptions, lashesDetailsLayout } from "../lashesDetailsSpec";
 import {
   LashCurlPicker,
   LashEyeShapePicker,
@@ -725,6 +725,21 @@ export function LashesLashMapScreen({
   onContinue: () => void;
   canContinue: boolean;
 }) {
+  const activeEye = String(details.activeLashEye ?? "rightEye");
+  const lashMap = details.lashMap as
+    | Partial<Record<"rightEye" | "leftEye", Array<{ position: number; length: number }>>>
+    | undefined;
+  const completedForEye = (eye: "rightEye" | "leftEye") => {
+    const positions = new Set((lashMap?.[eye] ?? []).map((entry) => entry.position));
+    return lashMapZoneNumbers.every((zone) => positions.has(zone));
+  };
+  const allEyesComplete = completedForEye("rightEye") && completedForEye("leftEye");
+  const buttonLabel = allEyesComplete
+    ? "Mark service as complete"
+    : activeEye === "rightEye"
+      ? "Continue to left eye"
+      : "Continue to right eye";
+
   return (
     <LashesWizardShell gap={lashesDetailsLayout.sectionGap}>
       <LashesDetailsCategoryHeader onBack={onBack} />
@@ -759,20 +774,9 @@ export function LashesLashMapScreen({
           value={String(details.thickness ?? "")}
         />
       </LashSection>
-      <LashSection title="Length (mm)">
-        <LashLengthPicker
-          onChange={(value) =>
-            onChange({
-              defaultLength: value,
-              lashMapLength: Number(value) || undefined,
-            })
-          }
-          value={String(details.defaultLength ?? details.lashMapLength ?? "")}
-        />
-      </LashSection>
       <div className="py-8">
         <LashesPrimaryButton disabled={!canContinue} onClick={onContinue}>
-          Mark service as complete
+          {buttonLabel}
         </LashesPrimaryButton>
       </div>
     </LashesWizardShell>

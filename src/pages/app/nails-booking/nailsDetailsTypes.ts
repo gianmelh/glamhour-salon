@@ -16,6 +16,7 @@ export type NailsDetails = {
   materialIds?: string[]
   materialLabels?: string[]
   materials?: string[]
+  otherMaterialName?: string
   handMode?: NailsHandMode
   activeHand?: HandName
   activeFinger?: FingerName
@@ -49,6 +50,7 @@ export const NAILS_DETAIL_KEYS = [
   'materialIds',
   'materialLabels',
   'materials',
+  'otherMaterialName',
   'handMode',
   'activeHand',
   'activeFinger',

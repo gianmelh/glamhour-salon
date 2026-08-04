@@ -38,9 +38,9 @@ export function readDraft(): AppointmentDraft {
 export function initialBookingStep(draft: AppointmentDraft): BookingStep {
   if (draft.appointmentId && draft.mode === 'reschedule') return 'provider'
   if (draft.appointmentId && draft.categoryCode && draft.serviceId) return 'service'
-  if (draft.categoryCode && draft.clientId && draft.serviceId && draft.providerId && draft.startsAt) return 'review'
-  if (draft.categoryCode && draft.clientId && draft.serviceId) return 'appointment-details'
-  if (draft.categoryCode && draft.clientId) return 'health'
+  if (draft.categoryCode && draft.clientId && draft.serviceId && draft.providerId && draft.startsAt) return 'appointment-details'
+  if (draft.categoryCode && draft.clientId && draft.serviceId) return 'provider'
+  if (draft.categoryCode && draft.clientId) return 'service'
   if (draft.categoryCode) return 'client'
   return 'categories'
 }

@@ -30,6 +30,18 @@ function formatAppointmentTime(time: string) {
   }).format(new Date(2026, 0, 1, hour, minute))
 }
 
+function formatMaterialLabels(details: Record<string, unknown>) {
+  const labels = Array.isArray(details.materialLabels) && details.materialLabels.length
+    ? details.materialLabels
+    : Array.isArray(details.materials)
+      ? details.materials
+      : []
+  const otherMaterialName = String(details.otherMaterialName ?? '').trim()
+  return labels.map((label) => (
+    label === 'Other' && otherMaterialName ? `Other: ${otherMaterialName}` : String(label)
+  ))
+}
+
 function buildServiceDisplayName(service: Service, details: Record<string, unknown>) {
   const lashStyle = details.style
   const lashVariant = details.variant
@@ -38,11 +50,7 @@ function buildServiceDisplayName(service: Service, details: Record<string, unkno
   }
 
   const serviceType = String(details.nailServiceType ?? service.name)
-  const materials = Array.isArray(details.materialLabels) && details.materialLabels.length
-    ? details.materialLabels
-    : Array.isArray(details.materials)
-      ? details.materials
-      : []
+  const materials = formatMaterialLabels(details)
   const material = materials[0] ? String(materials[0]) : ''
   return material ? `${serviceType} - ${material}` : serviceType
 }
@@ -335,7 +343,7 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
           <div className="w-full max-w-[393px] space-y-4 rounded-[24px] border-0 bg-white p-6 shadow-xl">
             <h2 className="text-[21px] font-bold text-[#0c111d]">Edit selections?</h2>
             <p className="text-sm text-[#475467]">
-              You will return to the service details step. Your health questionnaire answers will be kept.
+              You will return to the schedule step. Appointment details will be kept.
             </p>
             <div className="grid grid-cols-2 gap-3">
               <Button fullWidth onClick={() => setShowUpdateModal(false)} variant="outline">Cancel</Button>

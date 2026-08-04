@@ -90,21 +90,6 @@ export function LashesRegistrationFlow({
     return Boolean(currentEye && currentEye.completed >= currentEye.total)
   }
 
-  const completeVisibleLashMap = (data: LashesDetails) => {
-    const activeEye = (details.activeLashEye as LashEyeName | undefined) ?? 'rightEye'
-    const otherEye = activeEye === 'rightEye' ? 'leftEye' : 'rightEye'
-    const activeEntries = data.lashMap?.[activeEye] ?? []
-    const nextDetails = {
-      ...details,
-      lashMap: {
-        ...(data.lashMap ?? {}),
-        [activeEye]: activeEntries,
-        [otherEye]: data.lashMap?.[otherEye]?.length ? data.lashMap[otherEye] : activeEntries,
-      },
-    }
-    void completeService(nextDetails)
-  }
-
   const continueFromLashMap = () => {
     const data = details as LashesDetails
     if (!isDetailsCoreComplete(details)) return
@@ -125,7 +110,7 @@ export function LashesRegistrationFlow({
       && currentEye.completed >= currentEye.total
     ) {
       if (!otherProgress || otherProgress.completed < otherProgress.total) {
-        completeVisibleLashMap(data)
+        setDetails((current) => ({ ...current, activeLashEye: otherEye }))
         return
       }
       goNext()

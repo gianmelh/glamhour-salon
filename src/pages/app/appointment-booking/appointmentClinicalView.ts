@@ -77,6 +77,18 @@ function formatFaceAnnotationsFromDetails(annotations: Array<{ x: number; y: num
   return Object.entries(grouped).map(([type, count]) => ({ label: 'Face map', value: `${type} (${count})` }))
 }
 
+function formatMaterialLabels(details: Record<string, unknown>) {
+  const labels = Array.isArray(details.materialLabels) && details.materialLabels.length
+    ? details.materialLabels
+    : Array.isArray(details.materials)
+      ? details.materials
+      : []
+  const otherMaterialName = String(details.otherMaterialName ?? '').trim()
+  return labels.map((label) => (
+    label === 'Other' && otherMaterialName ? `Other: ${otherMaterialName}` : String(label)
+  ))
+}
+
 function formatClinicalAnnotations(annotations: ClinicalAnnotation[] | undefined) {
   if (!annotations?.length) return []
   const grouped = annotations.reduce<Record<string, number>>((acc, item) => {
@@ -138,11 +150,7 @@ function buildNailsTreatmentRows(details: Record<string, unknown>) {
   if (details.nailType) rows.push({ label: 'Nail shape', value: String(details.nailType) })
   if (details.handMode) rows.push({ label: 'Hand mode', value: details.handMode === 'finger' ? 'Finger to finger' : 'Full hand' })
 
-  const materialLabels = Array.isArray(details.materialLabels)
-    ? (details.materialLabels as string[])
-    : Array.isArray(details.materials)
-      ? (details.materials as string[])
-      : []
+  const materialLabels = formatMaterialLabels(details)
   if (materialLabels.length) rows.push({ label: 'Materials', value: materialLabels.join(', ') })
 
   rows.push(...formatHandMeasurements(details.rightHand as Record<string, Record<string, string>>, 'Right hand'))
@@ -155,11 +163,21 @@ function buildNailsTreatmentRows(details: Record<string, unknown>) {
 
 function buildCosmetologyTreatmentRows(details: Record<string, unknown>) {
   const rows: Array<{ label: string; value: string }> = []
+  if (details.serviceType) rows.push({ label: 'Service type', value: String(details.serviceType) })
   if (details.phototype) rows.push({ label: 'Phototype', value: String(details.phototype) })
   if (details.skin_type) rows.push({ label: 'Skin type', value: String(details.skin_type) })
+  if (Array.isArray(details.healthHistory) && details.healthHistory.length) {
+    rows.push({ label: 'Health history', value: (details.healthHistory as string[]).join(', ') })
+  }
+  if (Array.isArray(details.alterations) && details.alterations.length) {
+    rows.push({ label: 'Alterations', value: (details.alterations as string[]).join(', ') })
+  }
   if (Array.isArray(details.equipment) && details.equipment.length) {
     rows.push({ label: 'Equipment', value: (details.equipment as string[]).join(', ') })
   }
+  if (details.cosmeticBrandLine) rows.push({ label: 'Brand / line', value: String(details.cosmeticBrandLine) })
+  if (details.products) rows.push({ label: 'Products', value: String(details.products) })
+  if (details.recommendations) rows.push({ label: 'Recommendations', value: String(details.recommendations) })
   rows.push(...formatFaceAnnotationsFromDetails(details.faceAnnotations as Array<{ x: number; y: number; type: string }>))
   return rows
 }

@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { cn } from '../../../../../lib/cn'
-import { scrollMainToTop } from '../../../../../lib/defer'
 import { useNailsServiceMaterials } from '../../../../../hooks/useServiceMaterials'
 import { hasNailsDownstreamSelections } from '../../../nails-booking/nailsDetailsTypes'
 import { normalizeServiceName } from '../../constants'
@@ -16,10 +15,10 @@ import {
   RegistrationFlowShell,
 } from '../../components/RegistrationFlowShell'
 import { UpdateServiceSelectionModal } from '../../components/UpdateServiceSelectionModal'
-import type { CategoryStepProps, HandName } from '../../types'
+import type { CategoryStepProps } from '../../types'
 import type { ServiceCategory } from '../../../../../types/api'
 import { HandEditor } from './HandEditor'
-import { applyActiveFingerMeasurementsToAll, getNailsDetailsMissingItems, hasHandMeasurement, isHandComplete } from './nailsFingerOptions'
+import { getNailsDetailsMissingItems } from './nailsFingerOptions'
 import {
   buildMaterialSpecs,
   materialGridLayout,
@@ -79,6 +78,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
   const selectedNailType = String(details.nailType ?? '')
   const selectedMaterialIds = new Set((details.materialIds as string[] | undefined) ?? [])
   const selectedMaterialLabels = new Set((details.materialLabels as string[] | undefined) ?? (details.materials as string[] | undefined) ?? [])
+  const otherMaterialSelected = selectedMaterialIds.has('other') || selectedMaterialLabels.has('Other')
   const missingItems = getNailsDetailsMissingItems(details)
   const materialsLoading = materialsQuery.loading
   const materialsError = materialsQuery.error
@@ -125,23 +125,8 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
 
   const continueNailsFlow = async (requestedDetails = details) => {
     if (continuing) return
-    const nextDetails = applyActiveFingerMeasurementsToAll(requestedDetails)
-    if (nextDetails !== requestedDetails) {
-      setDetails(nextDetails)
-    }
+    const nextDetails = requestedDetails
     const nextMissingItems = getNailsDetailsMissingItems(nextDetails)
-    const nextActiveHand = (nextDetails.activeHand as HandName | undefined) ?? 'rightHand'
-    const nextRightHand = nextDetails.rightHand as Record<string, Record<string, string>> | undefined
-    const nextLeftHand = nextDetails.leftHand as Record<string, Record<string, string>> | undefined
-    const nextUsesFingerMode = nextDetails.handMode === 'finger'
-    const nextRightHandComplete = isHandComplete(nextRightHand)
-    const nextLeftHandStarted = hasHandMeasurement(nextLeftHand)
-
-    if (nextUsesFingerMode && nextActiveHand === 'rightHand' && nextRightHandComplete && !nextLeftHandStarted) {
-      setDetails((current) => ({ ...current, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' }))
-      scrollMainToTop()
-      return
-    }
     if (nextMissingItems.length > 0) {
       setContinueError(`To continue, complete: ${nextMissingItems.join(' · ')}`)
       return
@@ -209,17 +194,16 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
           </p>
         )}
         <div
-          className="grid max-w-full grid-cols-2 grid-rows-2"
+          className="grid max-w-full grid-cols-2"
           style={{
             gap: `${materialGridLayout.gapY}px ${materialGridLayout.gapX}px`,
-            height: materialGridLayout.height,
             width: materialGridLayout.width,
           }}
         >
           {materialSpecs.map((spec) => {
             const active = selectedMaterialIds.has(spec.id) || selectedMaterialLabels.has(spec.label)
             const colClass = spec.col === 1 ? 'col-start-1' : 'col-start-2'
-            const rowClass = spec.row === 1 ? 'row-start-1' : 'row-start-2'
+            const rowClass = spec.row === 1 ? 'row-start-1' : spec.row === 2 ? 'row-start-2' : 'row-start-3'
             return (
               <MaterialCard
                 active={active}
@@ -252,6 +236,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
                       materialIds: [...currentIds],
                       materialLabels: [...currentLabels],
                       materials: [...currentLabels],
+                      otherMaterialName: currentLabels.has('Other') ? current.otherMaterialName : '',
                     }
                   })
                 }}
@@ -259,8 +244,19 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
             )
           })}
         </div>
+        {otherMaterialSelected && (
+          <label className="grid max-w-full gap-2 text-[13px] font-medium text-[#101828]" style={{ width: nailsDetailsLayout.contentMaxWidth }}>
+            Other product used
+            <input
+              className="min-h-[48px] rounded-[12px] border border-[#d0d5dd] bg-white px-3 text-[15px] text-[#101828] outline-none placeholder:text-[#98a2b3]"
+              placeholder="Write product name"
+              value={String(details.otherMaterialName ?? '')}
+              onChange={(event) => setDetails({ ...details, otherMaterialName: event.target.value })}
+            />
+          </label>
+        )}
 
-        <HandEditor details={details} onChange={setDetails} onComplete={continueNailsFlow} />
+        <HandEditor details={details} onChange={setDetails} />
 
         <RegistrationContinueSection
           canContinue={canContinue}

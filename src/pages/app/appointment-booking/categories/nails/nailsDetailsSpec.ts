@@ -22,6 +22,36 @@ export const serviceTypeOptions = [
     variant: 'press-on' as const,
     imageSrc: nailsBookingAssets.serviceTypes.pressOn,
   },
+  {
+    label: 'Fill',
+    variant: 'dual-system' as const,
+    imageSrc: nailsBookingAssets.serviceTypes.dualSystem,
+  },
+  {
+    label: 'Full set',
+    variant: 'press-on' as const,
+    imageSrc: nailsBookingAssets.serviceTypes.pressOn,
+  },
+  {
+    label: 'Gel polish',
+    variant: 'dual-system' as const,
+    imageSrc: nailsBookingAssets.serviceTypes.dualSystem,
+  },
+  {
+    label: 'Manicure',
+    variant: 'press-on' as const,
+    imageSrc: nailsBookingAssets.serviceTypes.pressOn,
+  },
+  {
+    label: 'Pedicure',
+    variant: 'dual-system' as const,
+    imageSrc: nailsBookingAssets.serviceTypes.dualSystem,
+  },
+  {
+    label: 'Removal',
+    variant: 'press-on' as const,
+    imageSrc: nailsBookingAssets.serviceTypes.pressOn,
+  },
 ] as const
 
 export type NailTypeRowItem = {
@@ -58,7 +88,7 @@ export type MaterialSpec = {
   imageFrame: string
   imageCrop?: string
   col: 1 | 2
-  row: 1 | 2
+  row: 1 | 2 | 3
   width?: string
 }
 
@@ -91,7 +121,7 @@ export const defaultMaterialSpecs: MaterialSpec[] = [
   },
   {
     id: 'dip-powder',
-    label: 'Dip Powder',
+    label: 'Did Powder',
     imageSrc: nailsBookingAssets.materials.dipPowder,
     imageFrame: 'h-[49px] w-[31px]',
     col: 1,
@@ -106,6 +136,15 @@ export const defaultMaterialSpecs: MaterialSpec[] = [
     col: 2,
     row: 2,
     width: 'w-[162.5px]',
+  },
+  {
+    id: 'other',
+    label: 'Other',
+    imageSrc: '',
+    imageFrame: '',
+    col: 1,
+    row: 3,
+    width: 'w-full col-span-2',
   },
 ]
 

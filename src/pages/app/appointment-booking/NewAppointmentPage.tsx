@@ -13,7 +13,7 @@ import { NailsServicesScreen } from '../nails-booking/NailsServicesScreen'
 import { CategoryServiceStep, usesCategoryStepLayout } from './CategoryServiceStep'
 import { buildAppointmentCategories } from './constants'
 import { APPOINTMENT_DRAFT_KEY, emptyDraft, initialBookingStep, readDraft, todayString } from './draft'
-import { ClientStep, HealthStep } from './steps/ClientHealthSteps'
+import { ClientStep } from './steps/ClientHealthSteps'
 import { AppointmentDetailsStep } from './steps/AppointmentDetailsStep'
 import { CalendarSetupStep } from './steps/CalendarSetupStep'
 import { ReviewStep, SuccessStep } from './steps/SchedulingSteps'
@@ -40,17 +40,16 @@ function resolveCategoryServiceId(
 }
 
 function appointmentDraftTime(draft: AppointmentDraft) {
+  if (draft.startsAt) {
+    const date = new Date(draft.startsAt)
+    if (!Number.isNaN(date.getTime())) return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  }
   if (typeof draft.details.consentTime === 'string' && draft.details.consentTime) return draft.details.consentTime
-  if (!draft.startsAt) return '09:00'
-  const date = new Date(draft.startsAt)
-  if (Number.isNaN(date.getTime())) return '09:00'
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  return '09:00'
 }
 
 function appointmentDraftDate(draft: AppointmentDraft) {
-  return clampToToday(typeof draft.details.consentDate === 'string' && draft.details.consentDate
-    ? draft.details.consentDate
-    : draft.date)
+  return clampToToday(draft.date)
 }
 
 function parseDraftTime(details: Record<string, unknown>) {
@@ -311,11 +310,11 @@ export function NewAppointmentPage() {
       return
     }
 
-    setStep('appointment-details')
+    setStep('provider')
   }
 
   const goBack = () => {
-    const order: BookingStep[] = ['categories', 'client', 'health', 'service', 'appointment-details', 'provider', 'review', 'success']
+    const order: BookingStep[] = ['categories', 'client', 'service', 'provider', 'appointment-details', 'review', 'success']
     const index = order.indexOf(step)
     if (index <= 0) navigate('/app/home')
     else setStep(order[index - 1])
@@ -492,33 +491,8 @@ export function NewAppointmentPage() {
           clients={clients.data}
           clientVisitByClientId={clientVisitByClientId}
           selectedClientId={draft.clientId}
-          onCreate={(client) => clients.setData((current) => [client, ...(current ?? [])])}
-          onSelect={(clientId) => setDraft({ ...draft, clientId })}
-          onNext={() => setStep('health')}
-        />
-      )}
-
-      {step === 'health' && selectedCategory && selectedClient && (
-        <HealthStep
-          category={selectedCategory}
-          client={selectedClient}
-          details={draft.details}
-          notes={draft.notes}
-          serviceDate={appointmentDraftDate(draft)}
-          serviceTime={appointmentDraftTime(draft)}
-          onChange={(details, notes) => setDraft((current) => {
-            const nextDate = clampToToday(typeof details.consentDate === 'string' && details.consentDate
-              ? details.consentDate
-              : current.date)
-            return {
-              ...current,
-              date: nextDate,
-              startsAt: '',
-              endsAt: '',
-              details: sanitizeDetailsForCategory(current.categoryCode, details),
-              notes,
-            }
-          })}
+          onCreate={(client) => clients.setData((current) => [client, ...(current ?? []).filter((item) => item.id !== client.id)])}
+          onSelect={(clientId) => setDraft((current) => ({ ...current, clientId }))}
           onNext={() => setStep('service')}
         />
       )}
@@ -564,7 +538,7 @@ export function NewAppointmentPage() {
               ...current,
               details: sanitizeDetailsForCategory(current.categoryCode, current.details),
             }))
-            setStep('service')
+            setStep('provider')
           }}
           onNext={() => void confirm()}
           service={selectedService}
@@ -576,10 +550,10 @@ export function NewAppointmentPage() {
         <CalendarSetupStep
           availabilityLoading={availabilityLoading}
           date={appointmentDraftDate(draft)}
-          onBack={goBack}
+          onBack={() => setStep('service')}
           onDateChange={(date) => setDraft({ ...draft, date: clampToToday(date), startsAt: '', endsAt: '' })}
           onExit={exitBooking}
-          onNext={() => setStep('review')}
+          onNext={() => setStep('appointment-details')}
           onSelectProvider={(providerId) => setDraft({ ...draft, providerId, startsAt: '', endsAt: '' })}
           onSelectSlot={(slot) => setDraft({ ...draft, startsAt: slot.startsAt, endsAt: slot.endsAt })}
           providerLoading={providerLoading}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
-import { deferTask, scrollMainToTop } from '../../../../../lib/defer'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { deferTask } from '../../../../../lib/defer'
 import { nailsBookingAssets } from '../../../nails-booking/assets'
 import type { FingerName, HandName } from '../../types'
 import { FingerMarker, HandSelectionSection } from '../../components/shared'
@@ -10,9 +10,7 @@ import {
   fingerMarkerPositions,
   fingerOrder,
   fingerWidthOptions,
-  applyActiveFingerMeasurementsToAll,
   getHandProgress,
-  isHandComplete,
   mirrorFingerMarkerPosition,
 } from './nailsFingerOptions'
 
@@ -53,10 +51,9 @@ function MeasurementDropdown({ label, value, options, placeholder, onChange }: {
   )
 }
 
-export function HandEditor({ details, onChange, onComplete }: {
+export function HandEditor({ details, onChange }: {
   details: Record<string, unknown>
   onChange: (next: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>)) => void
-  onComplete?: (details: Record<string, unknown>) => void
 }) {
   const [hand, setHand] = useState<HandName>((details.activeHand as HandName | undefined) ?? 'rightHand')
   const [finger, setFinger] = useState<FingerName>((details.activeFinger as FingerName | undefined) ?? 'index')
@@ -107,44 +104,7 @@ export function HandEditor({ details, onChange, onComplete }: {
         activeFinger: finger,
         handMode: mode,
       }
-      const currentHandComplete = isHandComplete(nextHandData)
-      const leftHandData = hand === 'leftHand'
-        ? nextHandData
-        : current.leftHand as Record<string, Record<string, string>> | undefined
-      const leftHandHasAnyMeasurement = getHandProgress(leftHandData).completed > 0
-      const leftHandComplete = isHandComplete(leftHandData)
 
-      if (hand === 'rightHand' && currentHandComplete && !leftHandHasAnyMeasurement) {
-        deferTask(() => {
-          setHand('leftHand')
-          setFinger('thumb')
-          setMode('finger')
-          scrollMainToTop()
-        })
-        return { ...nextDetails, activeHand: 'leftHand', activeFinger: 'thumb', handMode: 'finger' }
-      }
-
-      if ((hand === 'leftHand' && currentHandComplete) || (hand === 'rightHand' && currentHandComplete && leftHandComplete)) {
-        deferTask(() => onComplete?.(nextDetails))
-      }
-
-      return nextDetails
-    })
-  }
-
-  const applyCurrentFingerToAll = () => {
-    const widthMm = fingerData.widthMm
-    const capsuleNumber = fingerData.capsuleNumber
-    if (!widthMm || !capsuleNumber) return
-
-    onChange((current) => {
-      const nextDetails = applyActiveFingerMeasurementsToAll({
-        ...current,
-        activeHand: hand,
-        activeFinger: finger,
-      })
-
-      deferTask(() => onComplete?.(nextDetails))
       return nextDetails
     })
   }
@@ -168,9 +128,6 @@ export function HandEditor({ details, onChange, onComplete }: {
 
   const handTitle = hand === 'rightHand' ? 'Right hand' : 'Left hand'
   const currentHandProgress = getHandProgress(handData)
-  const rightHandComplete = isHandComplete(details.rightHand as Record<string, Record<string, string>> | undefined)
-  const leftHandComplete = isHandComplete(details.leftHand as Record<string, Record<string, string>> | undefined)
-
   if (mode === 'finger') {
     return (
       <div className="relative flex size-full flex-col content-stretch items-start gap-[16px]" data-node-id="335:7227">
@@ -254,12 +211,6 @@ export function HandEditor({ details, onChange, onComplete }: {
           </button>
         </div>
 
-        {rightHandComplete && !leftHandComplete && (
-          <p className="text-[12px] font-normal leading-[1.44] text-[#475467]">
-            Right hand complete. Tap Swap sides to measure the left hand.
-          </p>
-        )}
-
         <div className="grid grid-cols-2 gap-[16px]">
           <MeasurementDropdown
             label="Finger width"
@@ -276,21 +227,6 @@ export function HandEditor({ details, onChange, onComplete }: {
             value={fingerData.capsuleNumber ?? ''}
           />
         </div>
-
-        <button
-          className={[
-            'flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[16px] px-4 text-[14px] font-semibold transition',
-            fingerData.widthMm && fingerData.capsuleNumber
-              ? 'bg-[#ebe7ff] text-[#7344cd] ring-1 ring-[#7344cd]/25'
-              : 'cursor-not-allowed bg-[#e4e7ec] text-[#667085]',
-          ].join(' ')}
-          disabled={!fingerData.widthMm || !fingerData.capsuleNumber}
-          onClick={applyCurrentFingerToAll}
-          type="button"
-        >
-          <CheckCircle2 className="size-5" />
-          Apply this size to all nails
-        </button>
       </div>
     )
   }
