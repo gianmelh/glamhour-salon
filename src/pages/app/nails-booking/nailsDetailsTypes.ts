@@ -41,6 +41,7 @@ export type NailsDetails = {
   usedExistingHealthProfile?: boolean
   existingQuestionnaireId?: string
   appointmentPriceMinor?: number
+  appointmentNotes?: string
 }
 
 /** Keys allowed in a nails appointment draft — excludes lashes/cosmo/micro-specific fields. */
@@ -75,6 +76,7 @@ export const NAILS_DETAIL_KEYS = [
   'usedExistingHealthProfile',
   'existingQuestionnaireId',
   'appointmentPriceMinor',
+  'appointmentNotes',
 ] as const
 
 export type NailsDetailKey = (typeof NAILS_DETAIL_KEYS)[number]

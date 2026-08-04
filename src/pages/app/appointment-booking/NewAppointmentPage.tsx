@@ -317,7 +317,7 @@ export function NewAppointmentPage() {
       return
     }
 
-    setStep('provider')
+    setStep(draft.categoryCode === 'nails' ? 'appointment-details' : 'provider')
   }
 
   const goBack = () => {
@@ -386,6 +386,7 @@ export function NewAppointmentPage() {
     setConfirmError(null)
     setConfirmLoading(true)
     const treatmentDetails = buildTreatmentPayload(draft.categoryCode, draft.details, selectedClient!)
+    const appointmentNotes = String(draft.details.appointmentNotes ?? draft.notes ?? '')
 
     try {
       if (draft.appointmentId && draft.mode === 'reschedule') {
@@ -411,7 +412,7 @@ export function NewAppointmentPage() {
           appointmentId: draft.appointmentId,
           categoryCode: draft.categoryCode,
           treatmentDetails,
-          treatmentNotes: draft.notes,
+          treatmentNotes: appointmentNotes,
         })
         const appointmentId = draft.appointmentId
         setDraft(emptyDraft())
@@ -431,9 +432,9 @@ export function NewAppointmentPage() {
         serviceIds: [assignment.service.id],
         startsAt: appointmentTimes.startsAt,
         endsAt: appointmentTimes.endsAt,
-        customerNotes: draft.notes,
+        customerNotes: appointmentNotes,
         treatmentDetails,
-        treatmentNotes: draft.notes,
+        treatmentNotes: appointmentNotes,
         priceOverrideMinor: typeof draft.details.appointmentPriceMinor === 'number'
           ? draft.details.appointmentPriceMinor
           : undefined,

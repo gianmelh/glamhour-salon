@@ -322,8 +322,8 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
           <textarea
             className="min-h-[122px] resize-none rounded-[12px] border border-[#d0d5dd] bg-white px-4 py-3 text-[16px] leading-6 text-[#667085] outline-none shadow-sm placeholder:text-[#98a2b3]"
             placeholder="Add any special instructions or notes..."
-            readOnly
-            value={notes}
+            value={String(details.appointmentNotes ?? notes)}
+            onChange={(event) => onDetailsChange?.({ ...details, appointmentNotes: event.target.value })}
           />
         </label>
       </section>
