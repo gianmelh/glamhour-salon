@@ -72,6 +72,10 @@ function readInitialDraft() {
   return readDraft()
 }
 
+function shouldReviewAppointmentDetailsAfterService(categoryCode: string) {
+  return categoryCode === 'nails' || categoryCode === 'lashes'
+}
+
 export function NewAppointmentPage() {
   const navigate = useNavigate()
   const categories = useServiceCategories()
@@ -317,7 +321,7 @@ export function NewAppointmentPage() {
       return
     }
 
-    setStep(draft.categoryCode === 'nails' ? 'appointment-details' : 'provider')
+    setStep(shouldReviewAppointmentDetailsAfterService(draft.categoryCode) ? 'appointment-details' : 'provider')
   }
 
   const goBack = () => {
@@ -564,7 +568,7 @@ export function NewAppointmentPage() {
               ...current,
               details: sanitizeDetailsForCategory(current.categoryCode, current.details),
             }))
-            setStep('provider')
+            setStep(shouldReviewAppointmentDetailsAfterService(draft.categoryCode) ? 'service' : 'provider')
           }}
           onNext={() => void confirm()}
           service={selectedService}
