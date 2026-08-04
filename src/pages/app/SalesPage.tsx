@@ -60,7 +60,7 @@ export function SalesPage() {
         <p className="mt-2 text-[17px] leading-6 text-[#68738b]">View your past appointments and service details.</p>
       </header>
 
-      <Card className="space-y-4 rounded-[18px] border-0 bg-white shadow-[0_4px_14px_rgb(18_24_38_/_0.04)]">
+      <Card className="min-w-0 space-y-4 overflow-hidden rounded-[18px] border-0 bg-white shadow-[0_4px_14px_rgb(18_24_38_/_0.04)]">
         <Select label="LIST BY" onChange={(event) => setProviderId(event.target.value)} options={providerOptions} value={providerId} />
         <Select label="CATEGORY" onChange={(event) => setCategoryId(event.target.value)} options={categoryOptions} value={categoryId} />
         <div className="space-y-2">
@@ -138,11 +138,11 @@ function IncomeCard({ icon, label, value }: { icon: React.ReactNode; label: stri
 
 function DateField({ value, onChange, ariaLabel }: { value: string; onChange: (value: string) => void; ariaLabel: string }) {
   return (
-    <label className="relative block">
+    <label className="relative block min-w-0 max-w-full overflow-hidden">
       <CalendarRange className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[#7b8498]" />
       <input
         aria-label={ariaLabel}
-        className="min-h-[58px] w-full rounded-[14px] border border-[#b8bfcb] bg-white px-12 pr-4 text-[18px] font-medium leading-none text-[#111827] outline-none transition focus:border-[#7a3fe0] focus:ring-3 focus:ring-[#7a3fe0]/10"
+        className="block min-h-[58px] w-full min-w-0 max-w-full appearance-none rounded-[14px] border border-[#b8bfcb] bg-white pl-12 pr-3 text-[16px] font-medium leading-none text-[#111827] outline-none transition focus:border-[#7a3fe0] focus:ring-3 focus:ring-[#7a3fe0]/10"
         onChange={(event) => onChange(event.target.value)}
         type="date"
         value={value}

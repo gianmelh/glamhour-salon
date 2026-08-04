@@ -164,7 +164,7 @@ export function HomePage() {
           </div>
         </div>
         <div className="mt-5">
-          <Button className="min-h-[64px] rounded-[14px] text-[18px] font-medium shadow-[0_14px_20px_rgb(78_35_153_/_0.32)]" fullWidth onClick={() => navigate('/app/appointments/new')}>
+          <Button className="min-h-[64px] rounded-[14px] text-[18px] font-medium shadow-[0_14px_20px_rgb(78_35_153_/_0.32)]" fullWidth onClick={() => navigate('/app/appointments/new?fresh=1')}>
             Create new appointment
           </Button>
         </div>
