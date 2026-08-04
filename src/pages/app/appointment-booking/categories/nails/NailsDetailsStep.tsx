@@ -86,17 +86,20 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
     const categoryId = uuidPattern.test(category.id)
       ? category.id
       : categorySource?.find((item) => item.code === category.code)?.id
-    if (!categoryId) {
+    const categoryCode = category.code || 'nails'
+    if (!categoryId && !categoryCode) {
       throw new Error('Nails category is not available for this salon.')
     }
 
     const service = await glamhourApi.createService({
       categoryId,
+      categoryCode,
       name: 'Nails service',
       description: 'Created from quick nails booking flow.',
       durationMinutes: 60,
       priceMinor: 0,
       isPubliclyBookable: true,
+      assignToActiveProviders: true,
     })
     onServiceCreated?.(service)
     return service.id
