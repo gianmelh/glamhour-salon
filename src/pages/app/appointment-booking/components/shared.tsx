@@ -241,7 +241,7 @@ const nailTypeImageSpec: Record<NailTypeImageVariant, string> = {
   oval: 'h-[58px] w-[86px] object-contain object-center',
   squoval: 'h-[58px] w-[86px] object-contain object-center',
   square: 'h-[58px] w-[86px] object-contain object-center',
-  round: 'h-[58px] w-[72px] object-contain object-center',
+  round: 'h-[46px] w-[64px] object-contain object-center',
   custom: 'h-[58px] w-[58px] object-contain object-center',
 }
 
