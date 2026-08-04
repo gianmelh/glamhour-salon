@@ -7,13 +7,13 @@ import { LashesSectionTitle } from './lashesUi'
 
 /** Label positions from Figma 650:6335–6341 (361px-wide map). */
 const lashMapHotspots = [
-  { position: 8, left: '3.05%', top: '61.7%' },
-  { position: 9, left: '9.42%', top: '42.5%' },
-  { position: 10, left: '16.62%', top: '28.5%' },
-  { position: 11, left: '26.59%', top: '17.3%' },
-  { position: 12, left: '44.88%', top: '5.6%' },
-  { position: 13, left: '67.04%', top: '6.1%' },
-  { position: 14, left: '90.58%', top: '11.7%' },
+  { position: 8, left: '8%', top: '69%' },
+  { position: 9, left: '14%', top: '52%' },
+  { position: 10, left: '22%', top: '38%' },
+  { position: 11, left: '33%', top: '27%' },
+  { position: 12, left: '49%', top: '20%' },
+  { position: 13, left: '68%', top: '24%' },
+  { position: 14, left: '88%', top: '39%' },
 ] as const
 
 type LashMapState = Partial<Record<LashEyeName, Array<{ position: number; length: number }>>>
@@ -149,14 +149,17 @@ export function LashMapEditor({ details, onChange }: {
       </div>
 
       <div className="relative aspect-[361/179] w-full min-w-0 overflow-hidden">
-        <img
-          alt=""
+        <div
           aria-hidden
           className={cn(
-            'absolute inset-0 size-full object-contain object-left',
+            'absolute inset-0 bg-no-repeat',
             eye === 'leftEye' && '-scale-x-100',
           )}
-          src={lashesBookingAssets.lashMap.clean}
+          style={{
+            backgroundImage: `url("${lashesBookingAssets.lashMap.clean}")`,
+            backgroundPosition: '50% 58%',
+            backgroundSize: '148% auto',
+          }}
         />
         {activeHotspots.map(({ position, left, top }) => {
           const assigned = current.find((item) => item.position === position)
