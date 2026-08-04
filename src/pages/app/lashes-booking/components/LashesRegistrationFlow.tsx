@@ -24,7 +24,6 @@ import {
   LashesPhotoMethodScreen,
   LashesPhotoPreviewScreen,
   LashesSelectVariantScreen,
-  LashesStylePreviewScreen,
 } from './LashesFlowScreens'
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -210,15 +209,7 @@ export function LashesRegistrationFlow({
             onBack={goBack}
             onChange={updateDetails}
             onContinue={() => goNext()}
-            onOpenStylePreview={() => setStep('style-preview')}
-          />
-        )}
-
-        {step === 'style-preview' && (
-          <LashesStylePreviewScreen
-            details={details}
-            onBack={() => setStep('details')}
-            onContinue={() => setStep('select-variant')}
+            onOpenStylePreview={() => setStep('select-variant')}
           />
         )}
 
