@@ -156,7 +156,7 @@ export function LashMapEditor({ details, onChange }: {
             'absolute inset-0 size-full object-contain object-left',
             eye === 'leftEye' && '-scale-x-100',
           )}
-          src={lashesBookingAssets.lashMap.catEye}
+          src={lashesBookingAssets.lashMap.clean}
         />
         {activeHotspots.map(({ position, left, top }) => {
           const assigned = current.find((item) => item.position === position)
