@@ -201,13 +201,30 @@ function buildMicropigmentationTreatmentRows(details: Record<string, unknown>) {
 }
 
 
-export function resolveClinicalMediaUrl(media: ClinicalMedia): string {
+type ClinicalMediaLike = ClinicalMedia & {
+  mediaType?: string
+  storageKey?: string
+  mimeType?: string
+}
+
+function readClinicalMediaLabel(media: ClinicalMediaLike, fallback: string) {
+  return media.media_type || media.mediaType || fallback
+}
+
+function readClinicalMediaStorageKey(media: ClinicalMediaLike) {
+  return media.storage_key || media.storageKey || ''
+}
+
+export function resolveClinicalMediaUrl(media: ClinicalMediaLike): string {
   if (media.url) {
     if (media.url.startsWith('http://') || media.url.startsWith('https://')) return media.url
     if (media.url.startsWith('/api/')) return `${API_BASE.replace(/\/api$/, '')}${media.url}`
+    if (media.url.startsWith('/media/')) return `${API_BASE.replace(/\/api$/, '')}/api${media.url}`
+    if (media.url.startsWith('/')) return `${API_BASE.replace(/\/api$/, '')}${media.url}`
     return media.url
   }
-  if (media.storage_key) return `${API_BASE}/media/${media.storage_key}`
+  const storageKey = readClinicalMediaStorageKey(media)
+  if (storageKey) return `${API_BASE}/media/${storageKey}`
   return ''
 }
 
@@ -275,13 +292,23 @@ export function buildAppointmentClinicalView(appointment: Appointment): Appointm
   if (notes) sections.push({ title: 'Notes', rows: [{ label: 'Clinical notes', value: notes }] })
 
   const mediaFromApi = appointment.clinical_media ?? []
-  const mediaFromDetails = (details.mediaItems as ClinicalMedia[] | undefined) ?? []
+  const mediaFromDetails = (details.mediaItems as ClinicalMediaLike[] | undefined) ?? []
+  const seenPhotoKeys = new Set<string>()
   const photos = [...mediaFromApi, ...mediaFromDetails]
-    .map((item, index) => ({
-      label: item.media_type ? String(item.media_type) : `Photo ${index + 1}`,
-      url: resolveClinicalMediaUrl(item),
-    }))
-    .filter((item) => item.url)
+    .map((item, index) => {
+      const url = resolveClinicalMediaUrl(item)
+      const storageKey = readClinicalMediaStorageKey(item)
+      return {
+        key: storageKey || url,
+        label: readClinicalMediaLabel(item, `Photo ${index + 1}`),
+        url,
+      }
+    })
+    .filter((item) => {
+      if (!item.url || seenPhotoKeys.has(item.key)) return false
+      seenPhotoKeys.add(item.key)
+      return true
+    })
 
   if (photos.length) {
     sections.push({

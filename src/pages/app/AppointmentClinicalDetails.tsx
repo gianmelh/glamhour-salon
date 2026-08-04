@@ -1,4 +1,5 @@
-import { AlertTriangle } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, ImageOff } from 'lucide-react'
 import { Card } from '../../components'
 import { ReviewRow } from './appointment-booking/components/shared'
 import { buildAppointmentClinicalView, signaturePathData } from './appointment-booking/appointmentClinicalView'
@@ -64,17 +65,36 @@ export function AppointmentClinicalDetails({ appointment }: { appointment: Appoi
           <p className="text-[21px] font-bold text-[#0c111d]">Reference photos</p>
           <div className="grid gap-3 sm:grid-cols-2">
             {view.photos.map((photo, index) => (
-              <div key={`${photo.url}-${index}`}>
+              <div key={`${photo.url}-${index}`} className="min-w-0">
                 <p className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-[#68738b] capitalize">{photo.label}</p>
-                <img
-                  alt={photo.label}
-                  className="h-44 w-full rounded-[18px] border border-[#d8deec] object-cover"
-                  src={photo.url}
-                />
+                <ReferencePhoto alt={photo.label} src={photo.url} />
               </div>
             ))}
           </div>
         </Card>
+      )}
+    </div>
+  )
+}
+
+function ReferencePhoto({ alt, src }: { alt: string; src: string }) {
+  const [failed, setFailed] = useState(false)
+
+  return (
+    <div className="relative grid h-44 w-full overflow-hidden rounded-[18px] border border-[#d8deec] bg-[#f8f9fc]">
+      {!failed ? (
+        <img
+          alt=""
+          aria-label={alt}
+          className="size-full object-cover"
+          onError={() => setFailed(true)}
+          src={src}
+        />
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-2 px-4 text-center text-sm text-[#667085]">
+          <ImageOff className="size-7 text-[#98a2b3]" />
+          <span>Photo unavailable</span>
+        </div>
       )}
     </div>
   )
