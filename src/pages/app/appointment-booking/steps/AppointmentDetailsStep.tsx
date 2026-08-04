@@ -10,6 +10,25 @@ function formatAmount(minor: number) {
   return Number.isInteger(amount) ? String(amount) : amount.toFixed(2)
 }
 
+function formatDisplayDate(date: string) {
+  if (!date) return ''
+  const [year, month, day] = date.split('-').map(Number)
+  if (!year || !month || !day) return date
+  return new Intl.DateTimeFormat('es', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(year, month - 1, day)).replace('.', '')
+}
+
+function formatDisplayTime(time: string) {
+  const [hourValue, minuteValue] = time.split(':').map(Number)
+  if (!Number.isFinite(hourValue) || !Number.isFinite(minuteValue)) return time
+  const period = hourValue >= 12 ? 'p.m.' : 'a.m.'
+  const hour = hourValue % 12 || 12
+  return `${hour}:${String(minuteValue).padStart(2, '0')} ${period}`
+}
+
 function formatMaterialLabels(details: Record<string, unknown>) {
   const labels = Array.isArray(details.materialLabels) && details.materialLabels.length
     ? details.materialLabels
@@ -210,10 +229,13 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
         <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
           <label className="grid min-w-0 gap-2 text-[16px] text-[#101828]">
             Date
-            <span className="relative block">
-              <Calendar className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#7f3ff2]" />
+            <span className="relative block min-w-0 overflow-hidden rounded-[7px] border border-[#d0d5dd] bg-white shadow-sm">
+              <span className="pointer-events-none flex min-h-[50px] min-w-0 items-center gap-3 pl-10 pr-3 text-[15px] text-[#344054]">
+                <Calendar className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#7f3ff2]" />
+                <span className="min-w-0 truncate">{formatDisplayDate(date)}</span>
+              </span>
               <input
-                className="min-h-[50px] w-full rounded-[7px] border border-[#d0d5dd] bg-white pl-12 pr-3 text-[15px] text-[#344054] outline-none shadow-sm"
+                className="absolute inset-0 size-full cursor-pointer opacity-0"
                 min={new Date().toISOString().slice(0, 10)}
                 onChange={(event) => onDateChange?.(event.target.value)}
                 type="date"
@@ -223,10 +245,13 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
           </label>
           <label className="grid min-w-0 gap-2 text-[16px] text-[#101828]">
             Time
-            <span className="relative block">
-              <Clock className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#7f3ff2]" />
+            <span className="relative block min-w-0 overflow-hidden rounded-[7px] border border-[#d0d5dd] bg-white shadow-sm">
+              <span className="pointer-events-none flex min-h-[50px] min-w-0 items-center gap-3 pl-10 pr-3 text-[15px] text-[#344054]">
+                <Clock className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#7f3ff2]" />
+                <span className="min-w-0 truncate">{formatDisplayTime(time)}</span>
+              </span>
               <input
-                className="min-h-[50px] w-full rounded-[7px] border border-[#d0d5dd] bg-white pl-12 pr-3 text-[15px] text-[#344054] outline-none shadow-sm"
+                className="absolute inset-0 size-full cursor-pointer opacity-0"
                 onChange={(event) => onTimeChange?.(event.target.value)}
                 type="time"
                 value={time}
