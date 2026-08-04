@@ -18,7 +18,6 @@ import { UpdateServiceSelectionModal } from '../../components/UpdateServiceSelec
 import type { CategoryStepProps } from '../../types'
 import type { ServiceCategory } from '../../../../../types/api'
 import { HandEditor } from './HandEditor'
-import { getNailsDetailsMissingItems } from './nailsFingerOptions'
 import {
   buildMaterialSpecs,
   nailTypeRows,
@@ -77,10 +76,8 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
   const selectedMaterialIds = new Set((details.materialIds as string[] | undefined) ?? [])
   const selectedMaterialLabels = new Set((details.materialLabels as string[] | undefined) ?? (details.materials as string[] | undefined) ?? [])
   const otherMaterialSelected = selectedMaterialIds.has('other') || selectedMaterialLabels.has('Other')
-  const missingItems = getNailsDetailsMissingItems(details)
   const materialsLoading = materialsQuery.loading
   const materialsError = materialsQuery.error
-  const canContinue = missingItems.length === 0
 
   const ensureSelectedService = async () => {
     const serviceType = String(details.nailServiceType ?? selectedType)
@@ -124,11 +121,6 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
   const continueNailsFlow = async (requestedDetails = details) => {
     if (continuing) return
     const nextDetails = requestedDetails
-    const nextMissingItems = getNailsDetailsMissingItems(nextDetails)
-    if (nextMissingItems.length > 0) {
-      setContinueError(`To continue, complete: ${nextMissingItems.join(' · ')}`)
-      return
-    }
 
     setContinuing(true)
     setContinueError('')
@@ -248,8 +240,8 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
         <HandEditor details={details} onChange={setDetails} />
 
         <RegistrationContinueSection
-          canContinue={canContinue}
-          disabledMessage={continueError || (missingItems.length ? `To continue, complete: ${missingItems.join(' · ')}` : undefined)}
+          canContinue
+          disabledMessage={continueError || undefined}
           label={continuing ? 'Continuing...' : 'Continue'}
           onContinue={continueNailsFlow}
         />

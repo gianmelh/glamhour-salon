@@ -81,15 +81,3 @@ export function mergeDetailsPatch(
   }
   return merged
 }
-
-export function getNailsDetailsMissingItems(details: Record<string, unknown>) {
-  const missing: string[] = []
-  if (!details.nailType) missing.push('Type of nails')
-  const materials = (details.materialLabels as string[] | undefined) ?? (details.materials as string[] | undefined) ?? []
-  if (!materials.length) missing.push('At least one material')
-  if (materials.includes('Other') && !String(details.otherMaterialName ?? '').trim()) {
-    missing.push('Other material name')
-  }
-
-  return missing
-}
