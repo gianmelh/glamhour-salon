@@ -32,10 +32,10 @@ function MeasurementDropdown({ label, value, options, placeholder, onChange }: {
   onChange: (value: string) => void
 }) {
   return (
-    <div className="space-y-4">
-      <div className="relative flex h-[82px] items-center justify-center rounded-[16px] border border-solid border-[#d0d5dd] bg-[#fcfcfd] px-[24px]">
+    <div className="min-w-0 space-y-3">
+      <div className="relative flex min-h-[64px] items-center justify-center rounded-[12px] border border-solid border-[#d0d5dd] bg-[#fcfcfd] px-3">
         <select
-          className="w-full appearance-none bg-transparent text-center text-[16px] font-normal tracking-[-0.32px] text-black outline-none"
+          className="w-full min-w-0 appearance-none bg-transparent pr-5 text-center text-[15px] font-normal tracking-normal text-black outline-none"
           onChange={(event) => onChange(event.target.value)}
           value={value}
         >
@@ -46,7 +46,7 @@ function MeasurementDropdown({ label, value, options, placeholder, onChange }: {
         </select>
         <ChevronRight className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 rotate-90 text-[#7344cd]" />
       </div>
-      <p className="text-center text-[12px] font-normal tracking-[-0.24px] text-black">{label}</p>
+      <p className="text-center text-[12px] font-normal tracking-normal text-black">{label}</p>
     </div>
   )
 }
@@ -130,52 +130,52 @@ export function HandEditor({ details, onChange }: {
   const currentHandProgress = getHandProgress(handData)
   if (mode === 'finger') {
     return (
-      <div className="relative flex size-full flex-col content-stretch items-start gap-[16px]" data-node-id="335:7227">
-        <div className="relative flex shrink-0 flex-col content-stretch items-start gap-[4px]" data-node-id="335:7228">
-          <p className="relative w-[343px] shrink-0 text-[28px] font-extrabold not-italic leading-[1.44] tracking-[-0.56px] text-black [word-break:break-word]" data-node-id="335:7229">
+      <div className="relative flex w-full min-w-0 flex-col content-stretch items-start gap-[16px]" data-node-id="335:7227">
+        <div className="relative flex w-full min-w-0 shrink-0 flex-col content-stretch items-start gap-[4px]" data-node-id="335:7228">
+          <p className="relative w-full shrink-0 text-[26px] font-extrabold not-italic leading-[1.3] tracking-normal text-black [word-break:break-word]" data-node-id="335:7229">
             Select finger
           </p>
-          <div className="relative flex w-full shrink-0 content-stretch items-center justify-between" data-node-id="728:9243">
-            <p className="relative shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[1.44] tracking-[-0.24px] text-black [word-break:break-word]">
+          <div className="relative flex w-full flex-wrap content-stretch items-center justify-between gap-2" data-node-id="728:9243">
+            <p className="relative min-w-0 flex-1 text-[12px] font-normal not-italic leading-[1.44] tracking-normal text-black [word-break:break-word]">
               {`Editing ${fingerLabels[finger].toLowerCase()} on ${hand === 'rightHand' ? 'right' : 'left'} hand · ${currentHandProgress.completed}/${currentHandProgress.total} fingers`}
             </p>
             <button
-              className="relative flex shrink-0 content-stretch items-center justify-center gap-[10px] rounded-[22686000px] bg-[#ebe7ff] px-[12px] py-[6px]"
+              className="relative flex shrink-0 content-stretch items-center justify-center gap-[8px] rounded-full bg-[#ebe7ff] px-[10px] py-[6px]"
               onClick={swapSides}
               type="button"
             >
-              <div className="relative size-[24px] shrink-0">
+              <div className="relative size-[18px] shrink-0">
                 <img alt="" className="absolute inset-0 block size-full max-w-none" src={nailsBookingAssets.hands.swap} />
               </div>
-              <p className="relative shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[1.4] tracking-[0.24px] text-[#0c111d] [word-break:break-word]">
+              <p className="relative shrink-0 whitespace-nowrap text-[11px] font-normal not-italic leading-[1.4] tracking-normal text-[#0c111d] [word-break:break-word]">
                 Swap sides
               </p>
             </button>
           </div>
         </div>
 
-        <div className="relative flex w-full shrink-0 content-stretch items-center gap-[16px]" data-node-id="335:7231">
+        <div className="relative grid w-full min-w-0 shrink-0 grid-cols-2 gap-3" data-node-id="335:7231">
           <button
-            className="relative flex h-[54px] min-w-px flex-[1_0_0] cursor-pointer content-stretch items-center justify-center gap-[8px] rounded-[16px] bg-[#7344cd] p-[4px]"
+            className="relative flex h-[48px] min-w-0 cursor-pointer content-stretch items-center justify-center gap-[6px] rounded-[12px] bg-[#7344cd] px-2 py-1"
             onClick={() => { setMode('finger'); patch({ handMode: 'finger' }) }}
             type="button"
           >
-            <div className="relative size-[34px] shrink-0">
+            <div className="relative size-[24px] shrink-0">
               <img alt="" className="absolute inset-0 block size-full max-w-none" src={nailsBookingAssets.hands.fingerToFingerIcon} />
             </div>
-            <p className="relative shrink-0 whitespace-nowrap text-left text-[12px] font-normal not-italic leading-[1.44] tracking-[-0.24px] text-[#f2f5ff] [word-break:break-word]">
+            <p className="relative min-w-0 truncate whitespace-nowrap text-left text-[11px] font-normal not-italic leading-[1.44] tracking-normal text-[#f2f5ff] [word-break:break-word]">
               Finger to finger
             </p>
           </button>
           <button
-            className="relative flex h-[54px] min-w-px flex-[1_0_0] content-stretch items-center justify-center gap-[8px] rounded-[16px] border border-solid border-[#d0d5dd] bg-[#fcfcfd] p-[4px]"
+            className="relative flex h-[48px] min-w-0 content-stretch items-center justify-center gap-[6px] rounded-[12px] border border-solid border-[#d0d5dd] bg-[#fcfcfd] px-2 py-1"
             onClick={() => { setMode('hand'); patch({ handMode: 'hand' }) }}
             type="button"
           >
-            <div className="relative size-[34px] shrink-0">
+            <div className="relative size-[24px] shrink-0">
               <img alt="" className="absolute inset-0 block size-full max-w-none" src={nailsBookingAssets.hands.fullHandIcon} />
             </div>
-            <p className="relative shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[1.44] tracking-[-0.24px] text-black [word-break:break-word]">
+            <p className="relative min-w-0 truncate whitespace-nowrap text-[11px] font-normal not-italic leading-[1.44] tracking-normal text-black [word-break:break-word]">
               Full hand
             </p>
           </button>
@@ -185,7 +185,7 @@ export function HandEditor({ details, onChange }: {
           {fingerLabels[finger]}
         </p>
 
-        <div className="relative mx-auto flex h-[285px] w-[343px] items-center justify-center">
+        <div className="relative mx-auto flex aspect-[343/285] w-full max-w-[343px] items-center justify-center">
           <button
             aria-label="Previous finger"
             className="absolute left-0 top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center text-[#7344cd] disabled:opacity-30"
@@ -197,7 +197,7 @@ export function HandEditor({ details, onChange }: {
           </button>
           <img
             alt={`${fingerLabels[finger]} finger`}
-            className="h-[285px] w-[176px] object-contain"
+            className="h-full max-h-[285px] w-[52%] max-w-[176px] object-contain"
             src={nailsBookingAssets.hands.singleFinger}
           />
           <button
@@ -211,7 +211,7 @@ export function HandEditor({ details, onChange }: {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-[16px]">
+        <div className="grid w-full min-w-0 grid-cols-2 gap-3">
           <MeasurementDropdown
             label="Finger width"
             onChange={(value) => updateFingerField('widthMm', value)}

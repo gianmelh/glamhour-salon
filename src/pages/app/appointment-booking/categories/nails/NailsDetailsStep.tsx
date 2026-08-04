@@ -21,9 +21,7 @@ import { HandEditor } from './HandEditor'
 import { getNailsDetailsMissingItems } from './nailsFingerOptions'
 import {
   buildMaterialSpecs,
-  materialGridLayout,
   nailTypeRows,
-  nailsDetailsLayout,
   serviceTypeOptions,
 } from './nailsDetailsSpec'
 
@@ -147,28 +145,23 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
   return (
     <RegistrationFlowShell activeCategory="nails" onBack={onBack}>
         <BookingSectionTitle>Type of service</BookingSectionTitle>
-        <div className="-mx-4 overflow-x-auto px-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex gap-[16px]">
-            {serviceTypeOptions.map((option) => (
-              <ServiceTypeCard
-                active={selectedType === option.label}
-                imageSrc={option.imageSrc}
-                key={option.label}
-                label={option.label}
-                onClick={() => requestServiceTypeChange(option.label)}
-                variant={option.variant}
-              />
-            ))}
-          </div>
+        <div className="grid w-full min-w-0 grid-cols-2 gap-3">
+          {serviceTypeOptions.map((option) => (
+            <ServiceTypeCard
+              active={selectedType === option.label}
+              imageSrc={option.imageSrc}
+              key={option.label}
+              label={option.label}
+              onClick={() => requestServiceTypeChange(option.label)}
+              variant={option.variant}
+            />
+          ))}
         </div>
 
         <BookingSectionTitle>Type of nails</BookingSectionTitle>
-        <div
-          className="flex max-w-full flex-col gap-[16px]"
-          style={{ width: nailsDetailsLayout.contentMaxWidth }}
-        >
+        <div className="flex w-full min-w-0 flex-col gap-3">
           {nailTypeRows.map((row) => (
-            <div className="flex w-full gap-[16px]" key={row.map((item) => item.label).join('-')}>
+            <div className="grid w-full min-w-0 grid-cols-2 gap-3" key={row.map((item) => item.label).join('-')}>
               {row.map((item) => (
                 <NailTypeCard
                   active={selectedNailType === item.label}
@@ -193,13 +186,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
             Materials could not be loaded. Using salon defaults.
           </p>
         )}
-        <div
-          className="grid max-w-full grid-cols-2"
-          style={{
-            gap: `${materialGridLayout.gapY}px ${materialGridLayout.gapX}px`,
-            width: materialGridLayout.width,
-          }}
-        >
+        <div className="grid w-full min-w-0 grid-cols-2 gap-3">
           {materialSpecs.map((spec) => {
             const active = selectedMaterialIds.has(spec.id) || selectedMaterialLabels.has(spec.label)
             const colClass = spec.col === 1 ? 'col-start-1' : 'col-start-2'
@@ -210,7 +197,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
                 className={cn(
                   colClass,
                   rowClass,
-                  spec.row === 1 ? 'justify-self-stretch' : spec.width,
+                  spec.label === 'Other' ? 'col-span-2' : 'justify-self-stretch',
                 )}
                 imageCrop={spec.imageCrop}
                 imageFrame={spec.imageFrame}
@@ -245,7 +232,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
           })}
         </div>
         {otherMaterialSelected && (
-          <label className="grid max-w-full gap-2 text-[13px] font-medium text-[#101828]" style={{ width: nailsDetailsLayout.contentMaxWidth }}>
+          <label className="grid w-full min-w-0 gap-2 text-[13px] font-medium text-[#101828]">
             Other product used
             <input
               className="min-h-[48px] rounded-[12px] border border-[#d0d5dd] bg-white px-3 text-[15px] text-[#101828] outline-none placeholder:text-[#98a2b3]"

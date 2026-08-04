@@ -166,7 +166,7 @@ export function ServiceTypeCard({ active, label, onClick, imageSrc, variant = 'd
     <button
       className={selectionCardShell(
         active,
-        'flex h-[48px] w-[150px] shrink-0 items-center justify-center gap-[6px] rounded-[10px] px-[10px]',
+        'flex min-h-[48px] min-w-0 items-center justify-center gap-[6px] rounded-[10px] px-[8px] py-2',
       )}
       onClick={onClick}
       type="button"
@@ -206,7 +206,7 @@ export function MaterialCard({ active, label, onClick, imageSrc, imageFrame, ima
         active,
         cn(
           'flex h-[82px] shrink-0 items-center justify-center gap-[8px] rounded-[16px] px-[24px] py-[8px]',
-          'h-[48px] gap-[6px] rounded-[10px] px-[12px]',
+          'min-h-[48px] gap-[6px] rounded-[10px] px-[10px]',
           className,
         ),
       )}
@@ -224,7 +224,7 @@ export function MaterialCard({ active, label, onClick, imageSrc, imageFrame, ima
           )}
         </span>
       )}
-      <span className="whitespace-nowrap text-[12px] font-normal leading-none tracking-normal text-black">
+      <span className="min-w-0 truncate whitespace-nowrap text-[12px] font-normal leading-none tracking-normal text-black">
         {label}
       </span>
     </button>
@@ -268,7 +268,7 @@ export function NailTypeCard({ active, label, onClick, imageSrc, variant, classN
       className={selectionCardShell(
         active,
         cn(
-          'grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_58px] items-center gap-[8px] rounded-[16px] px-[8px] text-left',
+          'grid w-full min-w-0 flex-1 grid-cols-[minmax(0,1fr)_58px] items-center gap-[8px] rounded-[16px] px-[8px] text-left',
           'grid-cols-[minmax(0,1fr)_42px] gap-[4px] rounded-[10px] px-[8px]',
           className,
         ),
@@ -276,7 +276,7 @@ export function NailTypeCard({ active, label, onClick, imageSrc, variant, classN
       onClick={onClick}
       type="button"
     >
-      <span className="whitespace-nowrap text-[11px] font-normal leading-none tracking-normal text-black">
+      <span className="min-w-0 truncate whitespace-nowrap text-[11px] font-normal leading-none tracking-normal text-black">
         {label}
       </span>
       <NailTypeCardImage imageSrc={imageSrc} variant={variant} />
@@ -297,12 +297,12 @@ export function HandSelectionSection({ mode, handTitle, onSwap, onModeChange, ha
     <section className="flex flex-col gap-[12px]">
       <div className="flex flex-col gap-[4px]">
         <BookingSectionTitle>Select finger</BookingSectionTitle>
-        <div className="flex items-center justify-between">
-          <p className="text-[12px] font-normal leading-[1.44] tracking-[-0.24px] text-black">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 flex-1 text-[12px] font-normal leading-[1.44] tracking-normal text-black">
             You are currently seeing the full hand.
           </p>
           <button
-            className="flex h-[24px] items-center justify-center gap-[6px] rounded-full bg-[#ebe7ff] px-[10px]"
+            className="flex h-[24px] shrink-0 items-center justify-center gap-[6px] rounded-full bg-[#ebe7ff] px-[10px]"
             onClick={onSwap}
             type="button"
           >
@@ -325,7 +325,7 @@ export function HandSelectionSection({ mode, handTitle, onSwap, onModeChange, ha
         >
           <img alt="" className="size-[18px]" src={nailsBookingAssets.hands.fingerToFingerIcon} />
           <span className={cn(
-            'whitespace-nowrap text-[11px] font-normal leading-none tracking-normal',
+            'min-w-0 truncate whitespace-nowrap text-[11px] font-normal leading-none tracking-normal',
             mode === 'finger' ? 'text-[#f2f5ff]' : 'text-black',
           )}>
             Finger to finger
@@ -341,7 +341,7 @@ export function HandSelectionSection({ mode, handTitle, onSwap, onModeChange, ha
         >
           <img alt="" className="size-[18px]" src={nailsBookingAssets.hands.fullHandIcon} />
           <span className={cn(
-            'whitespace-nowrap text-[11px] font-normal leading-none tracking-normal',
+            'min-w-0 truncate whitespace-nowrap text-[11px] font-normal leading-none tracking-normal',
             mode === 'hand' ? 'text-[#f2f5ff]' : 'text-black',
           )}>
             Full hand
@@ -351,7 +351,7 @@ export function HandSelectionSection({ mode, handTitle, onSwap, onModeChange, ha
 
       <p className="text-center text-[15px] font-bold leading-tight text-black">{handTitle}</p>
 
-      <div className="mx-auto h-[281px] w-[281px] overflow-visible">
+      <div className="mx-auto aspect-square w-full max-w-[281px] overflow-visible">
       <div className="inline-grid origin-top-left scale-[0.82] grid-cols-[max-content] grid-rows-[max-content] place-items-start leading-[0]">
         <img alt="" className="col-1 row-1 size-[342.5px] object-cover" src={handImageSrc} />
         {markers}

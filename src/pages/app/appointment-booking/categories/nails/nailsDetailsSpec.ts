@@ -64,20 +64,20 @@ export type NailTypeRowItem = {
 /** Grid rows for nail types (Figma 335:7183). */
 export const nailTypeRows: NailTypeRowItem[][] = [
   [
-    { label: 'Stilleto', variant: 'stiletto', imageSrc: nailsBookingAssets.nailTypes.stiletto, className: 'flex-1 h-[50px]' },
-    { label: 'Coffin', variant: 'coffin', imageSrc: nailsBookingAssets.nailTypes.coffin, className: 'flex-1 h-[50px]' },
+    { label: 'Stilleto', variant: 'stiletto', imageSrc: nailsBookingAssets.nailTypes.stiletto, className: 'h-[50px] w-full min-w-0' },
+    { label: 'Coffin', variant: 'coffin', imageSrc: nailsBookingAssets.nailTypes.coffin, className: 'h-[50px] w-full min-w-0' },
   ],
   [
-    { label: 'Almond', variant: 'almond', imageSrc: nailsBookingAssets.nailTypes.almond, className: 'flex-1 h-[50px]' },
-    { label: 'Oval', variant: 'oval', imageSrc: nailsBookingAssets.nailTypes.oval, className: 'flex-1 h-[50px]' },
+    { label: 'Almond', variant: 'almond', imageSrc: nailsBookingAssets.nailTypes.almond, className: 'h-[50px] w-full min-w-0' },
+    { label: 'Oval', variant: 'oval', imageSrc: nailsBookingAssets.nailTypes.oval, className: 'h-[50px] w-full min-w-0' },
   ],
   [
-    { label: 'Squoval', variant: 'squoval', imageSrc: nailsBookingAssets.nailTypes.squoval, className: 'flex-1 h-[50px]' },
-    { label: 'Square', variant: 'square', imageSrc: nailsBookingAssets.nailTypes.square, className: 'flex-1 h-[50px]' },
+    { label: 'Squoval', variant: 'squoval', imageSrc: nailsBookingAssets.nailTypes.squoval, className: 'h-[50px] w-full min-w-0' },
+    { label: 'Square', variant: 'square', imageSrc: nailsBookingAssets.nailTypes.square, className: 'h-[50px] w-full min-w-0' },
   ],
   [
-    { label: 'Round', variant: 'round', imageSrc: nailsBookingAssets.nailTypes.round, className: 'flex-1 h-[50px]' },
-    { label: 'Custom', variant: 'custom', imageSrc: nailsBookingAssets.nailTypes.custom, className: 'flex-1 h-[50px]' },
+    { label: 'Round', variant: 'round', imageSrc: nailsBookingAssets.nailTypes.round, className: 'h-[50px] w-full min-w-0' },
+    { label: 'Custom', variant: 'custom', imageSrc: nailsBookingAssets.nailTypes.custom, className: 'h-[50px] w-full min-w-0' },
   ],
 ]
 
