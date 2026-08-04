@@ -145,17 +145,19 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
   return (
     <RegistrationFlowShell activeCategory="nails" onBack={onBack}>
         <BookingSectionTitle>Type of service</BookingSectionTitle>
-        <div className="grid w-full min-w-0 grid-cols-2 gap-3">
-          {serviceTypeOptions.map((option) => (
-            <ServiceTypeCard
-              active={selectedType === option.label}
-              imageSrc={option.imageSrc}
-              key={option.label}
-              label={option.label}
-              onClick={() => requestServiceTypeChange(option.label)}
-              variant={option.variant}
-            />
-          ))}
+        <div className="-mx-4 overflow-x-auto px-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-max gap-4">
+            {serviceTypeOptions.map((option) => (
+              <ServiceTypeCard
+                active={selectedType === option.label}
+                imageSrc={option.imageSrc}
+                key={option.label}
+                label={option.label}
+                onClick={() => requestServiceTypeChange(option.label)}
+                variant={option.variant}
+              />
+            ))}
+          </div>
         </div>
 
         <BookingSectionTitle>Type of nails</BookingSectionTitle>

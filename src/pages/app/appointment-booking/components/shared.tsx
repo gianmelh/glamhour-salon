@@ -166,7 +166,7 @@ export function ServiceTypeCard({ active, label, onClick, imageSrc, variant = 'd
     <button
       className={selectionCardShell(
         active,
-        'flex min-h-[48px] min-w-0 items-center justify-center gap-[6px] rounded-[10px] px-[8px] py-2',
+        'flex h-[48px] w-[150px] shrink-0 items-center justify-center gap-[6px] rounded-[10px] px-[10px]',
       )}
       onClick={onClick}
       type="button"
@@ -231,25 +231,24 @@ export function MaterialCard({ active, label, onClick, imageSrc, imageFrame, ima
   )
 }
 
-const nailTypeImageRotation = '-rotate-90'
-const nailTypeImageSlot = 'flex h-[38px] w-[42px] items-center justify-center'
+const nailTypeImageSlot = 'flex h-[58px] w-[86px] shrink-0 items-center justify-center overflow-visible'
 
 /** Per-variant image fit inside the shared slot — rotation applied uniformly. */
 const nailTypeImageSpec: Record<NailTypeImageVariant, string> = {
-  stiletto: 'h-[38px] w-[42px] object-contain object-center',
-  coffin: 'h-[38px] w-[42px] object-contain object-center',
-  almond: 'h-[38px] w-[42px] object-contain object-center',
-  oval: 'h-[38px] w-[42px] object-contain object-center',
-  squoval: 'h-[38px] w-[42px] object-contain object-center',
-  square: 'h-[38px] w-[42px] object-contain object-center',
-  round: 'h-[32px] w-[42px] object-contain object-center',
-  custom: 'h-[38px] w-[42px] object-contain object-center',
+  stiletto: 'h-[58px] w-[86px] object-contain object-center',
+  coffin: 'h-[58px] w-[86px] object-contain object-center',
+  almond: 'h-[58px] w-[86px] object-contain object-center',
+  oval: 'h-[58px] w-[86px] object-contain object-center',
+  squoval: 'h-[58px] w-[86px] object-contain object-center',
+  square: 'h-[58px] w-[86px] object-contain object-center',
+  round: 'h-[58px] w-[72px] object-contain object-center',
+  custom: 'h-[58px] w-[58px] object-contain object-center',
 }
 
 function NailTypeCardImage({ imageSrc, variant }: { imageSrc: string; variant: NailTypeImageVariant }) {
   return (
     <div className={nailTypeImageSlot}>
-      <img alt="" className={cn(nailTypeImageRotation, nailTypeImageSpec[variant])} src={imageSrc} />
+      <img alt="" className={nailTypeImageSpec[variant]} src={imageSrc} />
     </div>
   )
 }
@@ -268,8 +267,8 @@ export function NailTypeCard({ active, label, onClick, imageSrc, variant, classN
       className={selectionCardShell(
         active,
         cn(
-          'grid w-full min-w-0 flex-1 grid-cols-[minmax(0,1fr)_58px] items-center gap-[8px] rounded-[16px] px-[8px] text-left',
-          'grid-cols-[minmax(0,1fr)_42px] gap-[4px] rounded-[10px] px-[8px]',
+          'grid w-full min-w-0 flex-1 grid-cols-[minmax(0,1fr)_86px] items-center gap-[8px] rounded-[16px] px-[12px] text-left',
+          'rounded-[10px]',
           className,
         ),
       )}
