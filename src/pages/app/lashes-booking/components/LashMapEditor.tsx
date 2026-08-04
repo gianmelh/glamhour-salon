@@ -167,15 +167,19 @@ export function LashMapEditor({ details, onChange }: {
             <button
               aria-label={`Lash map position ${position}${assigned ? `, length ${assigned.length}` : ''}`}
               className={cn(
-                'absolute flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[16px] font-normal leading-none',
-                assigned ? 'font-semibold text-[#7444cf]' : 'text-transparent',
+                'absolute flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full',
+                assigned ? 'text-[#7444cf]' : 'text-transparent',
               )}
               key={position}
               onClick={() => assign(position)}
               style={{ left, top }}
               type="button"
             >
-              {assigned ? assigned.length : null}
+              {assigned ? (
+                <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 text-[16px] font-semibold leading-none text-[#7444cf]">
+                  {assigned.length}
+                </span>
+              ) : null}
             </button>
           )
         })}
