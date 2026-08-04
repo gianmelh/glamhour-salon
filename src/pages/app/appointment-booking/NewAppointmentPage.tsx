@@ -540,9 +540,24 @@ export function NewAppointmentPage() {
           error={confirmError ?? mutation.error}
           loading={confirmLoading || mutation.loading}
           notes={draft.notes}
+          onDateChange={(date) => setDraft((current) => ({
+            ...current,
+            date: clampToToday(date),
+            startsAt: '',
+            endsAt: '',
+          }))}
           onDetailsChange={(details) => setDraft((current) => ({
             ...current,
             details: sanitizeDetailsForCategory(current.categoryCode, details),
+          }))}
+          onTimeChange={(time) => setDraft((current) => ({
+            ...current,
+            startsAt: '',
+            endsAt: '',
+            details: sanitizeDetailsForCategory(current.categoryCode, {
+              ...current.details,
+              consentTime: time,
+            }),
           }))}
           onEdit={() => {
             setDraft((current) => ({

@@ -5,29 +5,9 @@ import { cn } from '../../../../lib/cn'
 import type { Client, Service, ServiceCategory } from '../../../../types/api'
 import { healthQuestionnaires } from '../health-questionnaires'
 
-function formatAppointmentDate(date: string) {
-  if (!date) return ''
-  const [year, month, day] = date.split('-').map(Number)
-  if (!year || !month || !day) return date
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(year, month - 1, day))
-}
-
 function formatAmount(minor: number) {
   const amount = minor / 100
   return Number.isInteger(amount) ? String(amount) : amount.toFixed(2)
-}
-
-function formatAppointmentTime(time: string) {
-  const [hour, minute] = time.split(':').map(Number)
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return time
-  return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(2026, 0, 1, hour, minute))
 }
 
 function formatMaterialLabels(details: Record<string, unknown>) {
@@ -163,7 +143,7 @@ function HighlightChip({ children, tone = 'warning' }: { children: string; tone?
   )
 }
 
-export function AppointmentDetailsStep({ category, service, client, date, time, details, notes, loading, error, onDetailsChange, onEdit, onNext }: {
+export function AppointmentDetailsStep({ category, service, client, date, time, details, notes, loading, error, onDateChange, onTimeChange, onDetailsChange, onEdit, onNext }: {
   category: ServiceCategory
   service: Service
   client: Client
@@ -173,6 +153,8 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
   notes: string
   loading?: boolean
   error?: Error | null
+  onDateChange?: (date: string) => void
+  onTimeChange?: (time: string) => void
   onDetailsChange?: (details: Record<string, unknown>) => void
   onEdit: () => void
   onNext: () => void
@@ -232,8 +214,10 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
               <Calendar className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#7f3ff2]" />
               <input
                 className="min-h-[50px] w-full rounded-[7px] border border-[#d0d5dd] bg-white pl-12 pr-3 text-[15px] text-[#344054] outline-none shadow-sm"
-                readOnly
-                value={formatAppointmentDate(date)}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(event) => onDateChange?.(event.target.value)}
+                type="date"
+                value={date}
               />
             </span>
           </label>
@@ -243,8 +227,9 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
               <Clock className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#7f3ff2]" />
               <input
                 className="min-h-[50px] w-full rounded-[7px] border border-[#d0d5dd] bg-white pl-12 pr-3 text-[15px] text-[#344054] outline-none shadow-sm"
-                readOnly
-                value={formatAppointmentTime(time)}
+                onChange={(event) => onTimeChange?.(event.target.value)}
+                type="time"
+                value={time}
               />
             </span>
           </label>
