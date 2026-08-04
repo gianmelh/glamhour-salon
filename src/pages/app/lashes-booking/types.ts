@@ -16,6 +16,7 @@ export type LashesDetails = {
   lashMapLength?: number
   activeLashEye?: LashEyeName
   lashMap?: Partial<Record<LashEyeName, LashMapEntry[]>>
+  photoLocalPreviewUrl?: string
   photoPreviewUrl?: string
   photoStorageKey?: string
   photoConsent?: boolean
@@ -48,6 +49,7 @@ export const LASHES_DETAIL_KEYS = [
   'lashMapLength',
   'activeLashEye',
   'lashMap',
+  'photoLocalPreviewUrl',
   'photoPreviewUrl',
   'photoStorageKey',
   'photoConsent',

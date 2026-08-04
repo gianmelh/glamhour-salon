@@ -4,7 +4,7 @@ import { lashMapZoneNumbers } from './lashesDetailsSpec'
 
 const eyeOrder: LashEyeName[] = ['rightEye', 'leftEye']
 
-const PAYLOAD_EXCLUDED_LASHES_DETAIL_KEYS = new Set(['registrationStep', 'photoCapturePending'])
+const PAYLOAD_EXCLUDED_LASHES_DETAIL_KEYS = new Set(['registrationStep', 'photoCapturePending', 'photoLocalPreviewUrl'])
 
 export function sanitizeLashesDetails(details: Record<string, unknown>): Record<string, unknown> {
   const allowed = new Set<string>(LASHES_DETAIL_KEYS)

@@ -27,6 +27,16 @@ import {
 } from './LashesFlowScreens'
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(new Error('Could not read the selected photo.'))
+    reader.readAsDataURL(file)
+  })
+}
+
 export function LashesRegistrationFlow({
   category,
   categorySource,
@@ -159,11 +169,13 @@ export function LashesRegistrationFlow({
   }
 
   const handleUploadPhoto = async (file: File) => {
+    const localPreviewUrl = await readFileAsDataUrl(file).catch(() => '')
     const saved = await upload(file)
     if (!saved) return
     const mediaItems = (details.mediaItems as TreatmentMediaItem[] | undefined) ?? []
     setDetails((current) => ({
       ...current,
+      photoLocalPreviewUrl: localPreviewUrl || saved.url,
       photoPreviewUrl: saved.url,
       photoStorageKey: saved.storageKey,
       photoCapturePending: false,
@@ -174,6 +186,18 @@ export function LashesRegistrationFlow({
 
   const handleCapturePhoto = () => {
     setShowPermissionAlert(true)
+  }
+
+  const replacePhoto = () => {
+    const mediaItems = (details.mediaItems as TreatmentMediaItem[] | undefined) ?? []
+    setDetails((current) => ({
+      ...current,
+      photoLocalPreviewUrl: '',
+      photoPreviewUrl: '',
+      photoStorageKey: '',
+      mediaItems: mediaItems.filter((item) => item.mediaType !== 'reference'),
+    }))
+    setStep('photo-method')
   }
 
   const handleAllowCamera = () => {
@@ -250,7 +274,7 @@ export function LashesRegistrationFlow({
             details={details}
             onBack={goBack}
             onConfirm={() => setStep('photo-preview')}
-            onReplace={() => setStep('photo-method')}
+            onReplace={replacePhoto}
           />
         )}
 
@@ -260,7 +284,7 @@ export function LashesRegistrationFlow({
             onBack={goBack}
             onChange={updateDetails}
             onContinue={() => setStep('lash-map')}
-            onRetake={() => setStep('photo-method')}
+            onRetake={replacePhoto}
           />
         )}
 

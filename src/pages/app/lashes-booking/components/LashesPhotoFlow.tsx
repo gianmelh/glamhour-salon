@@ -54,7 +54,7 @@ export function LashesPhotoFlow({ details, onChange }: {
       {previewUrl && (
         <Button
           className="mt-2"
-          onClick={() => onChange({ ...details, photoPreviewUrl: '', photoStorageKey: '', mediaItems: mediaItems.filter((item) => item.mediaType !== 'reference') })}
+          onClick={() => onChange({ ...details, photoLocalPreviewUrl: '', photoPreviewUrl: '', photoStorageKey: '', mediaItems: mediaItems.filter((item) => item.mediaType !== 'reference') })}
           type="button"
           variant="outline"
         >

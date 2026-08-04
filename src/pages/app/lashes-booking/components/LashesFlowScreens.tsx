@@ -576,7 +576,7 @@ export function LashesPhotoConfirmScreen({
   onReplace: () => void;
 }) {
   const previewUrl = String(
-    details.photoPreviewUrl ?? lashesBookingAssets.photoPlaceholder
+    details.photoLocalPreviewUrl ?? details.photoPreviewUrl ?? lashesBookingAssets.photoPlaceholder
   );
   const canUse = Boolean(details.photoPreviewUrl && details.photoStorageKey);
 
@@ -624,7 +624,7 @@ export function LashesPhotoPreviewScreen({
   onRetake: () => void;
 }) {
   const previewUrl = String(
-    details.photoPreviewUrl ?? lashesBookingAssets.photoPlaceholder
+    details.photoLocalPreviewUrl ?? details.photoPreviewUrl ?? lashesBookingAssets.photoPlaceholder
   );
   const style = String(details.style ?? "");
   const variant = String(details.variant ?? "");
