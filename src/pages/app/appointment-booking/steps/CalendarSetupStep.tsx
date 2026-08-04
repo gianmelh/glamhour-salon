@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button, Card, LoadingState } from '../../../../components'
+import { useNavigate } from 'react-router-dom'
+import { BottomNavigation, Button, Card, LoadingState } from '../../../../components'
 import { cn } from '../../../../lib/cn'
 import { clampToToday, localDateString } from '../../../../lib/date'
 import type { AvailabilitySlot, EligibleProvider } from '../../../../types/api'
@@ -69,6 +70,7 @@ export function CalendarSetupStep({ providers, selectedProviderId, date, selecte
   onExit: () => void
   onNext: () => void
 }) {
+  const navigate = useNavigate()
   const blocked = !providerLoading && providers.length === 0
   const today = localDateString()
   const selectedDate = clampToToday(date)
@@ -84,7 +86,7 @@ export function CalendarSetupStep({ providers, selectedProviderId, date, selecte
   }, [onSelectProvider, providers, selectedProviderId])
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-[393px] flex-col overflow-hidden pb-8">
+    <div className="relative mx-auto flex min-h-full w-full max-w-[393px] flex-col overflow-hidden pb-[calc(6rem+env(safe-area-inset-bottom))]">
       <header>
         <h1 className="text-[30px] font-extrabold leading-tight text-[#0c111d]">My Services</h1>
         <p className="mt-4 whitespace-nowrap text-[16px] leading-6 text-[#667085]">Track your ongoing and upcoming appointments</p>
@@ -216,6 +218,12 @@ export function CalendarSetupStep({ providers, selectedProviderId, date, selecte
           Review appointment
         </Button>
       )}
+      <div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-[393px]">
+        <BottomNavigation
+          activeItem="calendar"
+          onChange={(item) => navigate(`/app/${item}`)}
+        />
+      </div>
     </div>
   )
 }
