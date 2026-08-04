@@ -1,6 +1,6 @@
-const lashesBase = '/Glamhour - Assets/Registration flow/Home/Lashes'
-const iconsBase = `${lashesBase}/icons`
-const cosmetologyBase = '/Glamhour - Assets/Registration flow'
+const lashesBase = "/Glamhour - Assets/Registration flow/Home/Lashes";
+const iconsBase = `${lashesBase}/icons`;
+const cosmetologyBase = "/Glamhour - Assets/Registration flow";
 
 export const lashesBookingAssets = {
   categories: {
@@ -11,7 +11,7 @@ export const lashesBookingAssets = {
   },
   lashMap: {
     catEye: `${lashesBase}/lash-map-cat-eye.png`,
-    clean: `${lashesBase}/lash-map-clean.svg`,
+    clean: `${lashesBase}/lashmap.png`,
     diagram: `${lashesBase}/lash-map-diagram.svg`,
   },
   variants: {
@@ -22,4 +22,4 @@ export const lashesBookingAssets = {
   swap: `${iconsBase}/swap.svg`,
   help: `${lashesBase}/QuestionMark.png`,
   photoPlaceholder: `${cosmetologyBase}/Image (Vista previa de la foto).png`,
-} as const
+} as const;
