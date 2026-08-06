@@ -38,7 +38,7 @@ export const lashesBookingAssets = {
 } as const
 
 export const cosmetologyBookingAssets = {
-  faceDiagram: `${healthBase}/image 1.png`,
+  faceDiagram: `${cosmetologyBase}/facial mapping 1.png`,
   phototypes: {
     'Type I': `${healthBase}/Phototype/type 1.png`,
     'Type II': `${healthBase}/Phototype/type 2.png`,

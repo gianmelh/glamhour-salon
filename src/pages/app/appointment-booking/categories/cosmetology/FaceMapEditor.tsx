@@ -31,7 +31,6 @@ export function FaceMapEditor({
     ? annotations.filter((annotation) => annotation.type === type)
     : annotations
   const notes = String(details.skinAlterationNotes ?? '')
-  const canSave = annotations.length > 0 || notes.trim().length > 0
 
   const add = (event: PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -50,7 +49,15 @@ export function FaceMapEditor({
       </p>
 
       <div className="space-y-2">
-        <p className="text-[12px] tracking-[0.24px] text-black">Alteration type</p>
+        <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-[#475467]">
+          <input
+            checked={showOnlyCurrentType}
+            className="size-4 accent-[#7344cd]"
+            onChange={(event) => setShowOnlyCurrentType(event.target.checked)}
+            type="checkbox"
+          />
+          Show only this alteration
+        </label>
         <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {cosmetologyAnnotationTypes.map((option) => (
             <button
@@ -70,15 +77,6 @@ export function FaceMapEditor({
             </button>
           ))}
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-[#475467]">
-          <input
-            checked={showOnlyCurrentType}
-            className="size-4 accent-[#7344cd]"
-            onChange={(event) => setShowOnlyCurrentType(event.target.checked)}
-            type="checkbox"
-          />
-          Show only this alteration
-        </label>
       </div>
 
       <div
@@ -132,20 +130,14 @@ export function FaceMapEditor({
       </div>
 
       <button
-        className={cn(
-          'min-h-[60px] w-full rounded-[16px] p-4 text-[18px] font-medium leading-7',
-          canSave
-            ? 'bg-gradient-to-b from-[#7a48db] to-[#412675] text-[#f2f4f7] drop-shadow-[0px_16px_8px_rgba(0,0,0,0.09),0px_4px_4.5px_rgba(0,0,0,0.1)]'
-            : 'cursor-not-allowed bg-[#dcdcdc] text-[#475467]',
-        )}
-        disabled={!canSave}
+        className="min-h-[60px] w-full rounded-[16px] bg-gradient-to-b from-[#7a48db] to-[#412675] p-4 text-[18px] font-medium leading-7 text-[#f2f4f7] drop-shadow-[0px_16px_8px_rgba(0,0,0,0.09),0px_4px_4.5px_rgba(0,0,0,0.1)]"
         onClick={() => {
           onChange({ ...details, faceMapSavedAt: new Date().toISOString() })
           onSave?.()
         }}
         type="button"
       >
-        Save annotations
+        Edit annotations
       </button>
     </div>
   )

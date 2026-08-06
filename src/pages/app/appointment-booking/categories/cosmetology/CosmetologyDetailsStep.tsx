@@ -239,7 +239,7 @@ function FaceMapPreview({ count, onClick }: { count: number; onClick: () => void
         <span className="flex min-w-0 items-center gap-2.5">
           <img
             alt=""
-            className="size-10 shrink-0 rounded-full object-cover"
+            className="h-12 w-10 shrink-0 object-contain"
             src={cosmetologyBookingAssets.faceDiagram}
           />
           <span className="min-w-0">
@@ -307,7 +307,6 @@ export function CosmetologyDetailsStep({
   onNext,
 }: CategoryStepProps & { category: ServiceCategory }) {
   const [stage, setStage] = useState<'form' | 'face-map' | 'treatment'>('form')
-  const [faceMapReturn, setFaceMapReturn] = useState<'form' | 'treatment'>('form')
   const [serviceError, setServiceError] = useState('')
   const set = (key: string, value: unknown) => onChange({ details: { ...details, [key]: value } })
   const missingItems = getCosmetologyDetailsMissingItems(details)
@@ -365,7 +364,7 @@ export function CosmetologyDetailsStep({
           <FaceMapEditor
             details={details}
             onChange={(next) => onChange({ details: next })}
-            onSave={() => setStage(faceMapReturn === 'treatment' ? 'treatment' : 'form')}
+            onSave={() => setStage('treatment')}
           />
         </div>
       </RegistrationFlowShell>
@@ -689,7 +688,7 @@ export function CosmetologyDetailsStep({
             label="Date of birth"
             onChange={(value) => set('generalDateOfBirth', value)}
             placeholder="e.g. 01/01/2000"
-            type="date"
+            type="text"
             value={String(details.generalDateOfBirth ?? '')}
           />
           <TextField
@@ -813,10 +812,7 @@ export function CosmetologyDetailsStep({
           ))}
           <FaceMapPreview
             count={faceAnnotationCount}
-            onClick={() => {
-              setFaceMapReturn('form')
-              setStage('face-map')
-            }}
+            onClick={() => setStage('face-map')}
           />
           <TextAreaField
             label="Treatment notes"
@@ -870,7 +866,6 @@ export function CosmetologyDetailsStep({
               })
             }
             setServiceError('')
-            setFaceMapReturn('treatment')
             setStage('face-map')
           }}
         />
