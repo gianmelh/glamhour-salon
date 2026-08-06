@@ -25,6 +25,7 @@ import {
   cosmetologyRecommendationBlocks,
   cosmetologyServiceDisplayName,
   cosmetologyServiceMatchError,
+  cosmetologyServiceSlug,
   cosmetologyServiceTypes,
   cosmetologySkinTypes,
   cosmetologyUltrasonicModes,
@@ -352,9 +353,10 @@ export function CosmetologyDetailsStep({
 
     setServiceCreating(true)
     try {
-      const service = await glamhourApi.createService({
+      const service = await glamhourApi.ensureService({
         categoryId: category.id,
         categoryCode: 'cosmetology',
+        slug: cosmetologyServiceSlug(serviceType),
         name: cosmetologyServiceDisplayName(serviceType),
         description: `${serviceType} cosmetology service created from booking flow.`,
         durationMinutes: 60,

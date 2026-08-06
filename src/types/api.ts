@@ -76,6 +76,7 @@ export interface Service extends Timestamped {
   category_id: string
   form_template_id: string | null
   name: string
+  slug?: string | null
   description: string | null
   duration_minutes: number
   price_minor: number
@@ -447,12 +448,17 @@ export interface CreateServiceInput {
   categoryId?: string
   categoryCode?: string
   name: string
+  slug?: string
   description?: string
   durationMinutes: number
   priceMinor: number
   currencyCode?: string
   isPubliclyBookable?: boolean
   assignToActiveProviders?: boolean
+}
+
+export interface EnsureServiceInput extends CreateServiceInput {
+  slug: string
 }
 
 export interface UpdateSettingsInput {

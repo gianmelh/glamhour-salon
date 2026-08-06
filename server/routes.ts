@@ -17,6 +17,7 @@ import {
   createAppointmentSchema,
   createClientSchema,
   createServiceSchema,
+  ensureServiceSchema,
   confirmPasswordResetSchema,
   dashboardQuerySchema,
   eligibleProvidersQuerySchema,
@@ -274,6 +275,12 @@ router.post('/salons/:salonId/services', asyncHandler(async (request, response) 
   const { salonId } = validate(salonParamsSchema, request.params)
   const body = validate(createServiceSchema, request.body)
   response.status(201).json({ data: await dataService.createService(salonId, body) })
+}))
+
+router.post('/salons/:salonId/services/ensure', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(ensureServiceSchema, request.body)
+  response.status(200).json({ data: await dataService.ensureService(salonId, body) })
 }))
 
 router.get('/salons/:salonId/appointments', asyncHandler(async (request, response) => {

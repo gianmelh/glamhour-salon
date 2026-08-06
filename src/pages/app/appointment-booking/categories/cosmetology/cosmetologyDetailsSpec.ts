@@ -183,6 +183,7 @@ function serviceNameMatchesType(serviceName: string, serviceType: string) {
 type CosmetologyMatchableService = {
   id: string
   name: string
+  slug?: string | null
   is_active?: boolean
 }
 
@@ -215,6 +216,14 @@ export function resolveCosmetologyServiceId(
 export function cosmetologyServiceDisplayName(serviceType: string) {
   const normalized = normalizeCosmetologyHistoryLabel(serviceType)
   return `Cosmetology - ${normalized}`
+}
+
+export function cosmetologyServiceSlug(serviceType: string) {
+  const normalized = normalizeCosmetologyHistoryLabel(serviceType)
+  return `cosmetology-${normalized
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')}`
 }
 
 export function cosmetologyServiceMatchError(serviceType: string) {

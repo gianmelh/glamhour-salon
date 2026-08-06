@@ -200,16 +200,25 @@ export const createClientSchema = z.object({
   notes: z.string().max(5000).optional(),
 })
 
-export const createServiceSchema = z.object({
+const serviceWriteBaseSchema = z.object({
   categoryId: uuidSchema.optional(),
   categoryCode: z.string().trim().min(1).max(60).optional(),
   name: z.string().trim().min(1).max(160),
+  slug: z.string().trim().min(1).max(160).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
   description: z.string().max(5000).optional(),
   durationMinutes: z.number().int().positive(),
   priceMinor: z.number().int().min(0),
   currencyCode: z.string().trim().length(3).default('USD'),
   isPubliclyBookable: z.boolean().default(true),
   assignToActiveProviders: z.boolean().default(false),
+})
+
+export const createServiceSchema = serviceWriteBaseSchema.refine((value) => Boolean(value.categoryId || value.categoryCode), {
+  message: 'categoryId or categoryCode is required',
+})
+
+export const ensureServiceSchema = serviceWriteBaseSchema.extend({
+  slug: z.string().trim().min(1).max(160).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
 }).refine((value) => Boolean(value.categoryId || value.categoryCode), {
   message: 'categoryId or categoryCode is required',
 })

@@ -8,6 +8,18 @@ interface ApiErrorBody {
   }
 }
 
+function validationDetailsMessage(details: unknown) {
+  if (!details || typeof details !== 'object') return ''
+  const fieldErrors = 'fieldErrors' in details
+    ? (details as { fieldErrors?: Record<string, unknown> }).fieldErrors
+    : undefined
+  if (!fieldErrors || typeof fieldErrors !== 'object') return ''
+
+  const messages = Object.entries(fieldErrors)
+    .flatMap(([field, value]) => Array.isArray(value) ? value.map((message) => `${field}: ${message}`) : [])
+  return messages.length ? messages.join('; ') : ''
+}
+
 export class ApiClientError extends Error {
   readonly status: number
   readonly code: string
@@ -38,10 +50,13 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   const body = await response.json() as { data: T } & ApiErrorBody
 
   if (!response.ok) {
+    const detailsMessage = validationDetailsMessage(body.error?.details)
     throw new ApiClientError(
       response.status,
       body.error?.code ?? 'API_ERROR',
-      body.error?.message ?? 'API request failed',
+      detailsMessage
+        ? `${body.error?.message ?? 'API request failed'}: ${detailsMessage}`
+        : body.error?.message ?? 'API request failed',
       body.error?.details,
     )
   }

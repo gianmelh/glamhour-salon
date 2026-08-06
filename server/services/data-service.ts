@@ -110,12 +110,17 @@ interface CreateServiceInput {
   categoryId?: string
   categoryCode?: string
   name: string
+  slug?: string
   description?: string
   durationMinutes: number
   priceMinor: number
   currencyCode: string
   isPubliclyBookable: boolean
   assignToActiveProviders: boolean
+}
+
+interface EnsureServiceInput extends CreateServiceInput {
+  slug: string
 }
 
 interface UpdateSettingsInput {
@@ -2769,16 +2774,23 @@ export const dataService = {
       [salonId, categoryId],
     )
 
+    const slug = (input.slug
+      ?? input.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')) || 'service'
+
     const service = await oneOrNotFound<Service>(
       `INSERT INTO services (
-         salon_id, category_id, name, description, duration_minutes, price_minor,
+         salon_id, category_id, name, slug, description, duration_minutes, price_minor,
          currency_code, is_publicly_bookable
-       ) VALUES ($1, $2, $3, $4, $5, $6, upper($7::text), $8)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, upper($8::text), $9)
        RETURNING *`,
       [
         salonId,
         categoryId,
         input.name,
+        slug,
         input.description ?? null,
         input.durationMinutes,
         input.priceMinor,
@@ -2800,6 +2812,77 @@ export const dataService = {
         [salonId, service.id, input.durationMinutes],
       )
     }
+    return service
+  },
+
+  /**
+   * Idempotent service upsert by (salon_id, slug). Safe under concurrent booking retries.
+   */
+  async ensureService(salonId: string, input: EnsureServiceInput): Promise<Service> {
+    let categoryId = input.categoryId
+    if (!categoryId && input.categoryCode) {
+      const categories = await query<{ id: string }>(
+        'SELECT id FROM service_categories WHERE code = $1 AND is_active LIMIT 1',
+        [input.categoryCode],
+      )
+      categoryId = categories[0]?.id
+    }
+    if (!categoryId) {
+      throw Object.assign(new Error('Service category not found'), { statusCode: 404 })
+    }
+
+    const slug = input.slug.trim().toLowerCase()
+    const name = input.name.trim().replace(/\s+/g, ' ')
+
+    await query(
+      `INSERT INTO salon_service_categories (salon_id, category_id, is_active)
+       VALUES ($1, $2, true)
+       ON CONFLICT (salon_id, category_id)
+       DO UPDATE SET is_active = true, updated_at = now()`,
+      [salonId, categoryId],
+    )
+
+    const service = await oneOrNotFound<Service>(
+      `INSERT INTO services (
+         salon_id, category_id, name, slug, description, duration_minutes, price_minor,
+         currency_code, is_publicly_bookable, is_active
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, upper($8::text), $9, true)
+       ON CONFLICT (salon_id, slug) DO UPDATE SET
+         name = EXCLUDED.name,
+         description = COALESCE(EXCLUDED.description, services.description),
+         duration_minutes = EXCLUDED.duration_minutes,
+         price_minor = EXCLUDED.price_minor,
+         is_active = true,
+         updated_at = now()
+       RETURNING *`,
+      [
+        salonId,
+        categoryId,
+        name,
+        slug,
+        input.description ?? null,
+        input.durationMinutes,
+        input.priceMinor,
+        input.currencyCode,
+        input.isPubliclyBookable,
+      ],
+      'Service could not be ensured',
+    )
+
+    if (input.assignToActiveProviders) {
+      await query(
+        `INSERT INTO professional_services (
+           salon_id, professional_id, service_id, is_active, duration_override_minutes
+         )
+         SELECT $1, p.id, $2, true, $3
+         FROM professionals p
+         WHERE p.salon_id = $1 AND p.status = 'active' AND p.deleted_at IS NULL
+         ON CONFLICT (professional_id, service_id)
+         DO UPDATE SET is_active = true, duration_override_minutes = EXCLUDED.duration_override_minutes, updated_at = now()`,
+        [salonId, service.id, input.durationMinutes],
+      )
+    }
+
     return service
   },
 
