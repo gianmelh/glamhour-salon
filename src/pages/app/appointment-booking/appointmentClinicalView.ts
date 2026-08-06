@@ -192,17 +192,32 @@ function buildCosmetologyTreatmentRows(details: Record<string, unknown>) {
 
 function buildMicropigmentationTreatmentRows(details: Record<string, unknown>) {
   const rows: Array<{ label: string; value: string }> = []
+  if (details.generalFullName) rows.push({ label: 'Full name', value: String(details.generalFullName) })
   if (details.area) rows.push({ label: 'Area', value: String(details.area) })
   if (details.procedure) rows.push({ label: 'Procedure', value: String(details.procedure) })
+  if (details.phototype) rows.push({ label: 'Phototype', value: String(details.phototype) })
+  if (details.herpesSimplex) rows.push({ label: 'Herpes Simplex', value: String(details.herpesSimplex) })
   if (details.brow_width_mm) rows.push({ label: 'Brow width', value: `${details.brow_width_mm} mm` })
   if (details.brow_height_mm) rows.push({ label: 'Brow height', value: `${details.brow_height_mm} mm` })
   if (details.lip_width_mm) rows.push({ label: 'Lip width', value: `${details.lip_width_mm} mm` })
   if (details.undertone) rows.push({ label: 'Undertone', value: String(details.undertone) })
-  if (details.pigment_brand) rows.push({ label: 'Pigment brand', value: String(details.pigment_brand) })
-  if (details.color_mix) rows.push({ label: 'Color mix', value: String(details.color_mix) })
-  if (details.needle) rows.push({ label: 'Needle', value: String(details.needle) })
-  if (details.touch_up_date) rows.push({ label: 'Touch-up date', value: String(details.touch_up_date) })
+  if (details.anesthesiaBrand) rows.push({ label: 'Anesthesia brand', value: String(details.anesthesiaBrand) })
+  if (details.pigment_brand || details.pigmentBrand) {
+    rows.push({ label: 'Pigment brand', value: String(details.pigment_brand ?? details.pigmentBrand) })
+  }
+  if (details.color_mix || details.colorMix) {
+    rows.push({ label: 'Color mix', value: String(details.color_mix ?? details.colorMix) })
+  }
+  if (details.needle || details.needleType) {
+    rows.push({ label: 'Needle', value: String(details.needle ?? details.needleType) })
+  }
+  if (details.touch_up_date || details.touchUpAppointment) {
+    rows.push({ label: 'Touch-up date', value: String(details.touch_up_date ?? details.touchUpAppointment) })
+  }
   if (details.procedure_notes) rows.push({ label: 'Procedure notes', value: String(details.procedure_notes) })
+  if (Array.isArray(details.healthHistory) && details.healthHistory.length) {
+    rows.push({ label: 'Health history', value: (details.healthHistory as string[]).join(', ') })
+  }
   if (details.products) rows.push({ label: 'Products', value: String(details.products) })
   if (details.aftercare) rows.push({ label: 'Aftercare', value: String(details.aftercare) })
   return rows

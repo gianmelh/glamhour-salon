@@ -10,6 +10,9 @@ This directory contains the PostgreSQL database architecture and mockup-derived 
 4. `migrations/004_treatments_finance_engagement.sql` - treatment records, consent, payments, invoices, sales snapshots, notifications, reviews, subscriptions
 5. `migrations/005_reporting_views.sql` - sales-history and public-booking catalog views
 6. `migrations/006_password_reset_codes.sql` - password reset verification codes
+7. `migrations/007_service_materials.sql` - service materials catalog
+8. `migrations/008_appointment_clinical_architecture.sql` - clinical questionnaires, signatures, category details
+9. `migrations/009_service_slug_uniqueness.sql` - stable `services.slug` unique per salon for idempotent booking upserts
 
 ## Local Application
 
@@ -29,10 +32,13 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/003_scheduling.sq
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/004_treatments_finance_engagement.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/005_reporting_views.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/006_password_reset_codes.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/007_service_materials.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/008_appointment_clinical_architecture.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/009_service_slug_uniqueness.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/seeds/001_mockup_seed_data.sql
 ```
 
-The seed expects a clean database after all six migrations. It creates the Glow Salon scenario shown in the design, including three professionals, eight clients, nine services, upcoming calendar appointments, four completed sales records, treatment records, payments, invoices, receipts, notifications, and two future client-app review samples.
+The seed expects a clean database after all migrations. It creates the Glow Salon scenario shown in the design, including three professionals, eight clients, thirteen services (six micropigmentation), upcoming calendar appointments, four completed sales records, treatment records, payments, invoices, receipts, notifications, and two future client-app review samples.
 
 Verify the main mockup data:
 

@@ -14,6 +14,7 @@ import { CategoryServiceStep, usesCategoryStepLayout } from './CategoryServiceSt
 import { buildAppointmentCategories } from './constants'
 import { APPOINTMENT_DRAFT_KEY, emptyDraft, initialBookingStep, readDraft, todayString } from './draft'
 import { ClientStep } from './steps/ClientHealthSteps'
+import { MicropigmentationClientStep } from './steps/MicropigmentationClientStep'
 import { AppointmentDetailsStep } from './steps/AppointmentDetailsStep'
 import { CalendarSetupStep } from './steps/CalendarSetupStep'
 import { ReviewStep, SuccessStep } from './steps/SchedulingSteps'
@@ -21,8 +22,14 @@ import { buildTreatmentPayload } from './buildTreatmentPayload'
 import { mergeDetailsPatchForCategory, sanitizeDetailsForCategory } from './categoryDetails'
 import {
   cosmetologyServiceDisplayName,
+  cosmetologyServiceSlug,
   resolveCosmetologyServiceId,
 } from './categories/cosmetology/cosmetologyDetailsSpec'
+import {
+  micropigmentationServiceDefaults,
+  micropigmentationServiceDisplayName,
+  resolveMicropigmentationServiceId,
+} from './categories/micropigmentation/micropigmentationDetailsSpec'
 import type { AppointmentDraft, BookingStep, DraftPatch } from './types'
 import type { Service } from '../../../types/api'
 
@@ -42,6 +49,13 @@ function resolveCategoryServiceId(
     // Active services only — never fall back to another type or an inactive catalog row.
     if (serviceType) {
       return resolveCosmetologyServiceId(categoryServices, serviceType, draft.serviceId)
+    }
+  }
+
+  if (draft.categoryCode === 'micropigmentation') {
+    const procedure = typeof draft.details.procedure === 'string' ? draft.details.procedure : undefined
+    if (procedure) {
+      return resolveMicropigmentationServiceId(categoryServices, procedure, draft.serviceId)
     }
   }
 
@@ -85,7 +99,10 @@ function readInitialDraft() {
 }
 
 function shouldReviewAppointmentDetailsAfterService(categoryCode: string) {
-  return categoryCode === 'nails' || categoryCode === 'lashes' || categoryCode === 'cosmetology'
+  return categoryCode === 'nails'
+    || categoryCode === 'lashes'
+    || categoryCode === 'cosmetology'
+    || categoryCode === 'micropigmentation'
 }
 
 export function NewAppointmentPage() {
@@ -223,11 +240,12 @@ export function NewAppointmentPage() {
     }
 
     const resolvedServiceId = resolveCategoryServiceId(draft, categoryServices, allServices)
-    // Cosmetology: also clear a stale serviceId when serviceType has no active match.
-    if (resolvedServiceId !== draft.serviceId && (resolvedServiceId || draft.categoryCode === 'cosmetology')) {
+    // Cosmetology/Micropigmentation: also clear a stale serviceId when type has no active match.
+    const clearsStaleService = draft.categoryCode === 'cosmetology' || draft.categoryCode === 'micropigmentation'
+    if (resolvedServiceId !== draft.serviceId && (resolvedServiceId || clearsStaleService)) {
       setDraft((current) => ({ ...current, serviceId: resolvedServiceId }))
     }
-  }, [allServices, categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, draft.details.serviceType, step])
+  }, [allServices, categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, draft.details.serviceType, draft.details.procedure, step])
 
   const clientVisitByClientId = useMemo(() => {
     const canceledStatuses = new Set(['canceled', 'cancelled', 'no_show'])
@@ -354,33 +372,56 @@ export function NewAppointmentPage() {
   }
 
   const resolveBookableAssignment = async () => {
-    // Cosmetology must book the active service matched to serviceType — never swap to another type.
+    // Cosmetology/Micropigmentation must book the active service matched to the selected type.
     const serviceType = typeof draft.details.serviceType === 'string' ? draft.details.serviceType : ''
-    let createdCosmetologyService: Service | undefined
-    let cosmetologyServiceId = draft.categoryCode === 'cosmetology'
+    const procedure = typeof draft.details.procedure === 'string' ? draft.details.procedure : ''
+    let createdTypedService: Service | undefined
+    let typedServiceId = (
+      draft.categoryCode === 'cosmetology' || draft.categoryCode === 'micropigmentation'
+    )
       ? resolveCategoryServiceId(draft, categoryServices, allServices)
       : ''
-    if (draft.categoryCode === 'cosmetology' && !cosmetologyServiceId && serviceType && selectedCategory) {
-      createdCosmetologyService = await glamhourApi.createService({
+
+    if (draft.categoryCode === 'cosmetology' && !typedServiceId && serviceType && selectedCategory) {
+      createdTypedService = await glamhourApi.ensureService({
         categoryId: selectedCategory.id,
         categoryCode: 'cosmetology',
+        slug: cosmetologyServiceSlug(serviceType),
         name: cosmetologyServiceDisplayName(serviceType),
         description: `${serviceType} cosmetology service created from booking flow.`,
         durationMinutes: selectedService?.duration_minutes ?? 60,
         priceMinor: 0,
         assignToActiveProviders: true,
       })
-      const createdService = createdCosmetologyService
-      cosmetologyServiceId = createdService.id
-      setLocalServices((current) => [createdService, ...current.filter((item) => item.id !== createdService.id)])
-      services.setData((current) => [createdService, ...(current ?? []).filter((item) => item.id !== createdService.id)])
-      setDraft((current) => ({ ...current, serviceId: createdService.id }))
+      typedServiceId = createdTypedService.id
+      setLocalServices((current) => [createdTypedService!, ...current.filter((item) => item.id !== createdTypedService!.id)])
+      services.setData((current) => [createdTypedService!, ...(current ?? []).filter((item) => item.id !== createdTypedService!.id)])
+      setDraft((current) => ({ ...current, serviceId: createdTypedService!.id }))
     }
+
+    if (draft.categoryCode === 'micropigmentation' && !typedServiceId && procedure && selectedCategory) {
+      const defaults = micropigmentationServiceDefaults(procedure)
+      createdTypedService = await glamhourApi.ensureService({
+        categoryId: selectedCategory.id,
+        categoryCode: 'micropigmentation',
+        slug: defaults.slug,
+        name: defaults.name,
+        description: `${defaults.name} created from micropigmentation booking flow.`,
+        durationMinutes: defaults.durationMinutes,
+        priceMinor: defaults.priceMinor,
+        assignToActiveProviders: true,
+      })
+      typedServiceId = createdTypedService.id
+      setLocalServices((current) => [createdTypedService!, ...current.filter((item) => item.id !== createdTypedService!.id)])
+      services.setData((current) => [createdTypedService!, ...(current ?? []).filter((item) => item.id !== createdTypedService!.id)])
+      setDraft((current) => ({ ...current, serviceId: createdTypedService!.id }))
+    }
+
     const uniqueCandidates = (
-      draft.categoryCode === 'cosmetology'
+      draft.categoryCode === 'cosmetology' || draft.categoryCode === 'micropigmentation'
         ? [
-          createdCosmetologyService,
-          ...categoryServices.filter((service) => service.id === cosmetologyServiceId && service.is_active),
+          createdTypedService,
+          ...categoryServices.filter((service) => service.id === typedServiceId && service.is_active),
         ]
         : [
           selectedService,
@@ -403,11 +444,20 @@ export function NewAppointmentPage() {
     }
 
     if (draft.categoryCode === 'cosmetology') {
-      const serviceType = typeof draft.details.serviceType === 'string' ? draft.details.serviceType : 'selected'
+      const label = serviceType || 'selected'
       throw new Error(
-        cosmetologyServiceId
-          ? `Assign “${serviceType}” to a provider in Staff settings before scheduling.`
-          : `No active Cosmetology service matches “${serviceType}”. Activate or create it in Services before booking.`,
+        typedServiceId
+          ? `Assign “${label}” to a provider in Staff settings before scheduling.`
+          : `No active Cosmetology service matches “${label}”. Activate or create it in Services before booking.`,
+      )
+    }
+
+    if (draft.categoryCode === 'micropigmentation') {
+      const label = procedure ? micropigmentationServiceDisplayName(procedure) : 'selected'
+      throw new Error(
+        typedServiceId
+          ? `Assign “${label}” to a provider in Staff settings before scheduling.`
+          : `No active Micropigmentation service matches “${label}”. Activate or create it in Services before booking.`,
       )
     }
 
@@ -549,7 +599,33 @@ export function NewAppointmentPage() {
         />
       )}
 
-      {step === 'client' && (
+      {step === 'client' && draft.categoryCode === 'micropigmentation' && (
+        <MicropigmentationClientStep
+          clients={clients.data}
+          clientVisitByClientId={clientVisitByClientId}
+          selectedClientId={draft.clientId}
+          onCreate={(client) => clients.setData((current) => [client, ...(current ?? []).filter((item) => item.id !== client.id)])}
+          onSelect={(clientId) => setDraft((current) => ({
+            ...current,
+            clientId,
+            details: clientId === current.clientId ? current.details : {
+              ...current.details,
+              usedExistingHealthProfile: false,
+              existingQuestionnaireId: null,
+            },
+          }))}
+          onContinueWithProfile={(details) => setDraft((current) => ({
+            ...current,
+            details: sanitizeDetailsForCategory('micropigmentation', {
+              ...current.details,
+              ...details,
+            }),
+          }))}
+          onNext={() => setStep('service')}
+        />
+      )}
+
+      {step === 'client' && draft.categoryCode !== 'micropigmentation' && (
         <ClientStep
           clients={clients.data}
           clientVisitByClientId={clientVisitByClientId}

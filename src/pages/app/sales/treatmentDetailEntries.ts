@@ -79,11 +79,17 @@ const KEYS_BY_CATEGORY: Record<string, string[]> = {
     'session_number',
     'related_treatment_id',
     'undertone',
+    'phototype',
+    'herpesSimplex',
+    'anesthesiaBrand',
     'pigment_brand',
     'color_mix',
     'needle',
+    'needleSize',
     'touch_up_date',
     'procedure_notes',
+    'healthHistory',
+    'currentMedications',
   ],
 }
 

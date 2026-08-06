@@ -1,225 +1,714 @@
-import { Check } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { cn } from '../../../../../lib/cn'
-import { clampToToday, localDateString } from '../../../../../lib/date'
-import { formatMoney } from '../../../../../lib/format'
-import type { Service } from '../../../../../types/api'
-import { micropigmentationBookingAssets } from '../../assets'
+import { localDateString } from '../../../../../lib/date'
+import type { ServiceCategory } from '../../../../../types/api'
+import { glamhourApi } from '../../../../../services/glamhour-api'
+import { cosmetologyBookingAssets } from '../../assets'
 import {
   BookingSectionTitle,
   RegistrationContinueSection,
   RegistrationFlowShell,
 } from '../../components/RegistrationFlowShell'
-import { ChipGroup } from '../../components/shared'
 import { mergeSignature } from '../../components/signatureHelpers'
 import { SignatureBox } from '../../components/SignatureBox'
-import { TreatmentPhotoFlow } from '../../components/TreatmentPhotoFlow'
 import type { CategoryStepProps } from '../../types'
 import {
   getMicropigmentationDetailsMissingItems,
+  getMicropigmentationFieldErrors,
+  matchMicropigmentationService,
+  micropigmentationAlcoholOptions,
+  micropigmentationAllergyOptions,
+  micropigmentationHealthHistoryGroups,
+  micropigmentationPhototypes,
   micropigmentationProcedureGroups,
-  micropigmentationSessionTypes,
-  micropigmentationUndertones,
+  micropigmentationRecommendationBlocks,
+  micropigmentationServiceDefaults,
+  micropigmentationServiceDisplayName,
+  micropigmentationServiceMatchError,
+  normalizeMicropigmentationHistoryLabel,
+  procedureAreaFor,
+  resolveMicropigmentationServiceId,
+  yesNoOptions,
 } from './micropigmentationDetailsSpec'
 
-function RegistrationServiceCard({
-  active,
-  onClick,
-  service,
-}: {
-  active: boolean
-  onClick: () => void
-  service: Service
-}) {
+function FormCard({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <button className="w-full text-left" onClick={onClick} type="button">
-      <div className={cn(
-        'flex items-center justify-between gap-3 rounded-[16px] border px-4 py-4',
-        active ? 'border-[#7344cd] bg-[#ebe7ff]' : 'border-[#d0d5dd] bg-[#fcfcfd]',
-      )}>
-        <div className="min-w-0">
-          <p className="truncate text-[16px] font-normal leading-[1.44] tracking-[-0.32px] text-black">{service.name}</p>
-          <p className="mt-1 text-[12px] leading-[1.44] text-[#475467]">
-            {service.duration_minutes} min · {formatMoney(service.price_minor, service.currency_code)}
-          </p>
-        </div>
-        {active && <Check className="size-5 shrink-0 text-[#7344cd]" />}
-      </div>
-    </button>
+    <section className="flex w-full flex-col gap-4 rounded-[20px] border border-[#d0d5dd] bg-[#fcfcfd] px-5 py-6">
+      {title && <BookingSectionTitle>{title}</BookingSectionTitle>}
+      {children}
+    </section>
   )
 }
 
-const areaImages = {
-  Eyebrows: micropigmentationBookingAssets.eyebrowDiagram,
-  Lips: micropigmentationBookingAssets.lipDiagram,
-} as const
+function FormSubtitle({ children }: { children: ReactNode }) {
+  return <p className="text-[16px] font-normal leading-6 text-black">{children}</p>
+}
 
-export function MicropigmentationDetailsStep({ services, selectedServiceId, details, onChange, onBack, onNext }: CategoryStepProps) {
+function SectionHeading({ children }: { children: ReactNode }) {
+  return <p className="text-[21px] font-bold leading-[31.5px] tracking-[-0.42px] text-[#0a0a0a]">{children}</p>
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null
+  return <p className="text-[12px] leading-[1.44] text-[#b42318]">{message}</p>
+}
+
+function TextField({
+  label,
+  onChange,
+  placeholder,
+  suffix,
+  type = 'text',
+  value,
+  error,
+}: {
+  label: string
+  onChange: (value: string) => void
+  placeholder?: string
+  suffix?: string
+  type?: string
+  value: string
+  error?: string
+}) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1">
+      <span className="text-[16px] leading-[1.4] text-black">{label}</span>
+      <span className={cn(
+        'flex min-h-12 items-center gap-2 rounded-[16px] border bg-white px-3',
+        error ? 'border-[#f04438]' : 'border-[#d0d5dd]',
+      )}>
+        <input
+          className="min-w-0 flex-1 bg-transparent text-[16px] leading-[1.4] text-[#101828] outline-none placeholder:text-[#667085]"
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          type={type}
+          value={value}
+        />
+        {suffix && <span className="shrink-0 text-[16px] text-black">{suffix}</span>}
+      </span>
+      <FieldError message={error} />
+    </label>
+  )
+}
+
+function TextAreaField({
+  label,
+  onChange,
+  placeholder,
+  value,
+  minHeightClass = 'min-h-[139px]',
+  error,
+}: {
+  label: string
+  onChange: (value: string) => void
+  placeholder?: string
+  value: string
+  minHeightClass?: string
+  error?: string
+}) {
+  return (
+    <label className="flex flex-col gap-2">
+      <span className="text-[14px] font-medium leading-[21px] tracking-[-0.28px] text-[#666]">{label}</span>
+      <textarea
+        className={cn(
+          'rounded-[12px] border bg-[#fcfcfd] p-[14px] text-[15px] leading-[22.5px] tracking-[-0.3px] text-[#101828] outline-none placeholder:text-[#999]',
+          minHeightClass,
+          error ? 'border-[#f04438]' : 'border-[#d0d5dd]',
+        )}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        value={value}
+      />
+      <FieldError message={error} />
+    </label>
+  )
+}
+
+function RadioRow({
+  label,
+  onChange,
+  options,
+  value,
+  vertical,
+  error,
+}: {
+  label: string
+  onChange: (value: string) => void
+  options: readonly string[]
+  value: string
+  vertical?: boolean
+  error?: string
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[14px] font-medium leading-[21px] text-[#666]">{label}</span>
+      <div className={cn(vertical ? 'flex flex-col gap-4' : 'flex flex-wrap gap-4')}>
+        {options.map((option) => (
+          <button
+            className="inline-flex items-center gap-2 text-left"
+            key={option}
+            onClick={() => onChange(option)}
+            type="button"
+          >
+            <span
+              className={cn(
+                'grid size-5 shrink-0 place-items-center rounded-full border border-[#7a48db]',
+                value === option ? 'bg-[#7a48db]/10' : 'bg-transparent',
+              )}
+            >
+              {value === option && <span className="size-2 rounded-full bg-[#7a48db]" />}
+            </span>
+            <span className="text-[16px] font-medium leading-6 text-[#0a0a0a]">{option}</span>
+          </button>
+        ))}
+      </div>
+      <FieldError message={error} />
+    </div>
+  )
+}
+
+function CheckboxGroup({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label?: string
+  options: readonly string[]
+  value?: string[]
+  onChange: (value: string[]) => void
+}) {
+  const selected = new Set((value ?? []).map(normalizeMicropigmentationHistoryLabel))
+  return (
+    <div className="space-y-2">
+      {label && <FormSubtitle>{label}</FormSubtitle>}
+      <div className="flex flex-col gap-2">
+        {options.map((option) => {
+          const checked = selected.has(option)
+          return (
+            <label className="flex min-h-[28px] cursor-pointer items-center gap-2" key={option}>
+              <input
+                checked={checked}
+                className="size-4 shrink-0 rounded border-[#d0d5dd] accent-[#7344cd]"
+                onChange={() => {
+                  const next = new Set(selected)
+                  if (next.has(option)) next.delete(option)
+                  else next.add(option)
+                  onChange([...next])
+                }}
+                type="checkbox"
+              />
+              <span className="text-[12px] leading-[1.4] tracking-[0.24px] text-[#0a0a0a]">{option}</span>
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function PhototypeRow({
+  value,
+  onChange,
+  error,
+}: {
+  value: string
+  onChange: (value: string) => void
+  error?: string
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[14px] font-medium leading-[21px] text-[#666]">Skin phototype</span>
+      <div className="flex items-start justify-between gap-1">
+        {micropigmentationPhototypes.map((option) => {
+          const image = cosmetologyBookingAssets.phototypeSwatches[option.value]
+          const active = value === option.value
+          return (
+            <button
+              className="flex min-w-0 flex-1 flex-col items-center gap-2"
+              key={option.value}
+              onClick={() => onChange(option.value)}
+              type="button"
+            >
+              <span
+                className={cn(
+                  'grid size-5 place-items-center rounded-full border border-[#7a48db]',
+                  active ? 'bg-[#7a48db]/10' : 'bg-transparent',
+                )}
+              >
+                {active && <span className="size-2 rounded-full bg-[#7a48db]" />}
+              </span>
+              <img alt="" className="size-6 object-contain" src={image} />
+              <span className="text-center text-[12px] leading-[1.4] tracking-[0.24px] text-[#0c111d]">
+                {option.label}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      <FieldError message={error} />
+    </div>
+  )
+}
+
+function ServiceTypeGroups({
+  area,
+  procedure,
+  onSelect,
+  error,
+}: {
+  area: string
+  procedure: string
+  onSelect: (area: string, procedure: string) => void
+  error?: string
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-[28px] font-bold leading-[1.2] text-black">Service type</p>
+      {Object.entries(micropigmentationProcedureGroups).map(([groupArea, procedures]) => (
+        <div className="flex flex-col gap-3" key={groupArea}>
+          <p className="text-[21px] font-bold leading-[1.2] text-black">{groupArea}</p>
+          <div className="flex flex-wrap gap-2">
+            {procedures.map((option) => {
+              const active = procedure === option && area === groupArea
+              return (
+                <button
+                  className={cn(
+                    'rounded-[16px] border px-4 py-3 text-[16px] leading-[1.44] tracking-[-0.32px] text-black',
+                    active ? 'border-[#7344cd] bg-[#ebe7ff]' : 'border-[#d0d5dd] bg-[#fcfcfd]',
+                  )}
+                  key={option}
+                  onClick={() => onSelect(groupArea, option)}
+                  type="button"
+                >
+                  {option}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+      <FieldError message={error} />
+    </div>
+  )
+}
+
+export function MicropigmentationDetailsStep({
+  services,
+  selectedServiceId,
+  details,
+  onChange,
+  onBack,
+  onNext,
+  onServiceCreated,
+  category,
+}: CategoryStepProps & { category: ServiceCategory }) {
+  const [serviceError, setServiceError] = useState('')
+  const [serviceCreating, setServiceCreating] = useState(false)
+  const [showErrors, setShowErrors] = useState(false)
   const set = (key: string, value: unknown) => onChange({ details: { ...details, [key]: value } })
+  const skipHealth = details.usedExistingHealthProfile === true
+  const fieldErrors = getMicropigmentationFieldErrors(details)
   const missingItems = getMicropigmentationDetailsMissingItems(details)
-  const canContinue = Boolean(selectedServiceId) && missingItems.length === 0
+  const procedure = normalizeMicropigmentationHistoryLabel(String(details.procedure ?? ''))
+  const area = String(details.area ?? procedureAreaFor(procedure))
+  const selectedHealthHistory = ((details.healthHistory as string[] | undefined) ?? [])
+    .map(normalizeMicropigmentationHistoryLabel)
+  const selectedAllergies = ((details.allergies as string[] | undefined) ?? [])
+    .map(normalizeMicropigmentationHistoryLabel)
+  const canContinue = Boolean(procedure) && !serviceCreating
+
+  const selectProcedure = (nextArea: string, nextProcedure: string) => {
+    const normalized = normalizeMicropigmentationHistoryLabel(nextProcedure)
+    const matched = matchMicropigmentationService(services, normalized)
+    const bookableId = matched && matched.is_active !== false ? matched.id : ''
+    setServiceError('')
+    onChange({
+      serviceId: bookableId,
+      details: { ...details, area: nextArea, procedure: normalized },
+    })
+  }
+
+  const resolveOrCreateServiceId = async () => {
+    if (!procedure) return ''
+    const serviceId = resolveMicropigmentationServiceId(services, procedure, selectedServiceId)
+    if (serviceId) return serviceId
+
+    setServiceCreating(true)
+    try {
+      const defaults = micropigmentationServiceDefaults(procedure)
+      const service = await glamhourApi.ensureService({
+        categoryId: category.id,
+        categoryCode: 'micropigmentation',
+        slug: defaults.slug,
+        name: defaults.name,
+        description: `${defaults.name} created from micropigmentation booking flow.`,
+        durationMinutes: defaults.durationMinutes,
+        priceMinor: defaults.priceMinor,
+        assignToActiveProviders: true,
+      })
+      onServiceCreated?.(service)
+      setServiceError('')
+      return service.id
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : micropigmentationServiceMatchError(procedure)
+      setServiceError(message)
+      return ''
+    } finally {
+      setServiceCreating(false)
+    }
+  }
+
+  const submit = async () => {
+    setShowErrors(true)
+    if (missingItems.length || !procedure) return
+    const serviceId = await resolveOrCreateServiceId()
+    if (!serviceId) {
+      setServiceError(micropigmentationServiceMatchError(procedure))
+      return
+    }
+    setServiceError('')
+    onNext({
+      serviceId,
+      details: {
+        ...details,
+        area: area || procedureAreaFor(procedure),
+        procedure,
+        pigment_brand: details.pigment_brand ?? details.pigmentBrand,
+        needle: details.needle ?? details.needleType,
+        color_mix: details.color_mix ?? details.colorMix,
+        aftercare: micropigmentationRecommendationBlocks[0].intro,
+      },
+    })
+  }
 
   return (
-    <RegistrationFlowShell activeCategory="micropigmentation" onBack={onBack}>
-      <img alt="" className="h-32 w-full rounded-[16px] object-cover" src={micropigmentationBookingAssets.hero} />
-
-      <section className="flex flex-col gap-4">
-        <BookingSectionTitle>Service</BookingSectionTitle>
-        <div className="flex flex-col gap-2">
-          {services.map((service) => (
-            <RegistrationServiceCard
-              active={selectedServiceId === service.id}
-              key={service.id}
-              onClick={() => onChange({ serviceId: service.id, details })}
-              service={service}
+    <RegistrationFlowShell
+      activeCategory="micropigmentation"
+      maxWidth={393}
+      onBack={onBack}
+      title="Aesthetic treatment clinical form"
+    >
+      <div className="mx-auto flex w-full max-w-[393px] flex-col gap-5">
+        {!skipHealth && (
+          <FormCard title="General Information">
+            <TextField
+              error={showErrors ? fieldErrors.generalFullName : undefined}
+              label="Full name"
+              onChange={(value) => set('generalFullName', value)}
+              placeholder="e.g. John Doe"
+              value={String(details.generalFullName ?? '')}
             />
-          ))}
-        </div>
-      </section>
+            <TextField
+              error={showErrors ? fieldErrors.generalPhone : undefined}
+              label="Phone number"
+              onChange={(value) => set('generalPhone', value)}
+              placeholder="e.g. +1 (555) 000"
+              type="tel"
+              value={String(details.generalPhone ?? '')}
+            />
+            <TextField
+              error={showErrors ? fieldErrors.generalDateOfBirth : undefined}
+              label="Date of birth"
+              onChange={(value) => set('generalDateOfBirth', value)}
+              type="date"
+              value={String(details.generalDateOfBirth ?? '')}
+            />
+            <TextField
+              error={showErrors ? fieldErrors.generalEmail : undefined}
+              label="Email"
+              onChange={(value) => set('generalEmail', value)}
+              placeholder="e.g. j.doe@example.com"
+              type="email"
+              value={String(details.generalEmail ?? '')}
+            />
+            <RadioRow
+              error={showErrors ? fieldErrors.isFirstTime : undefined}
+              label="Is this your first time?"
+              onChange={(value) => set('isFirstTime', value)}
+              options={yesNoOptions}
+              value={String(details.isFirstTime ?? '')}
+            />
+          </FormCard>
+        )}
 
-      {Object.entries(micropigmentationProcedureGroups).map(([area, procedures]) => (
-        <section className="rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4" key={area}>
-          <BookingSectionTitle>{area}</BookingSectionTitle>
-          {area in areaImages && (
-            <img alt="" className="mb-3 h-24 w-full rounded-[12px] object-cover" src={areaImages[area as keyof typeof areaImages]} />
-          )}
-          <div className="flex flex-wrap gap-2">
-            {procedures.map((procedure) => (
-              <button
-                className={cn(
-                  'rounded-full border px-3 py-2 text-[12px] font-semibold leading-[1.44]',
-                  details.procedure === procedure && details.area === area
-                    ? 'border-[#7344cd] bg-[#ebe7ff] text-[#7344cd]'
-                    : 'border-[#d0d5dd] bg-white text-[#475467]',
-                )}
-                key={procedure}
-                onClick={() => onChange({ details: { ...details, area, procedure } })}
-                type="button"
-              >
-                {procedure}
-              </button>
+        <ServiceTypeGroups
+          area={area}
+          error={showErrors ? fieldErrors.procedure : undefined}
+          onSelect={selectProcedure}
+          procedure={procedure}
+        />
+        {serviceError && (
+          <p className="text-[12px] leading-[1.44] text-[#b42318]">{serviceError}</p>
+        )}
+
+        {!skipHealth && (
+          <FormCard title="Health history">
+            <FormSubtitle>
+              Do you currently have or have you ever had any of the following conditions?
+            </FormSubtitle>
+            {micropigmentationHealthHistoryGroups.map((group) => (
+              <CheckboxGroup
+                key={group.key}
+                label={group.title}
+                onChange={(value) => {
+                  const groupOptions = group.options as readonly string[]
+                  const otherOptions = selectedHealthHistory.filter((item) => !groupOptions.includes(item))
+                  set('healthHistory', [...otherOptions, ...value])
+                }}
+                options={group.options}
+                value={selectedHealthHistory.filter((item) => (group.options as readonly string[]).includes(item))}
+              />
             ))}
-          </div>
-        </section>
-      ))}
 
-      <section className="flex flex-col gap-4 rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
-        <BookingSectionTitle>Clinical measurements</BookingSectionTitle>
-        <label className="flex flex-col gap-2">
-          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Brow width (mm)</span>
-          <input
-            className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none"
-            onChange={(event) => set('brow_width_mm', event.target.value)}
-            value={String(details.brow_width_mm ?? '')}
-          />
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Brow height (mm)</span>
-          <input
-            className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none"
-            onChange={(event) => set('brow_height_mm', event.target.value)}
-            value={String(details.brow_height_mm ?? '')}
-          />
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Lip width (mm)</span>
-          <input
-            className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none"
-            onChange={(event) => set('lip_width_mm', event.target.value)}
-            value={String(details.lip_width_mm ?? '')}
-          />
-        </label>
-        <ChipGroup
-          label="Skin undertone"
-          onChange={(value) => set('undertone', value)}
-          options={[...micropigmentationUndertones]}
-          value={String(details.undertone ?? '')}
-        />
-        <ChipGroup
-          label="Session type"
-          onChange={(value) => set('session_type', value)}
-          options={[...micropigmentationSessionTypes]}
-          value={String(details.session_type ?? '')}
-        />
-        <label className="flex flex-col gap-2">
-          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Session number</span>
-          <input
-            className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none"
-            inputMode="numeric"
-            onChange={(event) => set('session_number', event.target.value)}
-            placeholder="1"
-            value={String(details.session_number ?? '')}
-          />
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Related treatment ID (optional)</span>
-          <input
-            className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none"
-            onChange={(event) => set('related_treatment_id', event.target.value)}
-            placeholder="Links touch-ups to the initial session"
-            value={String(details.related_treatment_id ?? '')}
-          />
-        </label>
-      </section>
+            <SectionHeading>Allergies and adverse reactions</SectionHeading>
+            <CheckboxGroup
+              onChange={(value) => set('allergies', value)}
+              options={[...micropigmentationAllergyOptions]}
+              value={selectedAllergies}
+            />
+            <TextAreaField
+              label="Allergy and reaction details"
+              onChange={(value) => set('allergyReactionNotes', value)}
+              placeholder="Specify your allergy, and reaction"
+              value={String(details.allergyReactionNotes ?? '')}
+            />
 
-      <section className="flex flex-col gap-4 rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
-        <BookingSectionTitle>Pigment & tools</BookingSectionTitle>
-        <label className="flex flex-col gap-2">
-          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Pigment brand</span>
-          <input className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none" onChange={(event) => set('pigment_brand', event.target.value)} value={String(details.pigment_brand ?? '')} />
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Color mix</span>
-          <input className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none" onChange={(event) => set('color_mix', event.target.value)} value={String(details.color_mix ?? '')} />
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Needle type / size</span>
-          <input className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none" onChange={(event) => set('needle', event.target.value)} value={String(details.needle ?? '')} />
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Touch-up date</span>
-          <input className="min-h-[48px] rounded-[16px] border border-[#d0d5dd] bg-white px-3 text-[16px] text-black outline-none" min={localDateString()} onChange={(event) => set('touch_up_date', clampToToday(event.target.value))} type="date" value={String(details.touch_up_date ?? '')} />
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-[12px] uppercase tracking-[0.08em] text-[#475467]">Procedure notes</span>
-          <textarea
-            className="min-h-[96px] rounded-[12px] border border-[#d0d5dd] bg-white p-[14px] text-[15px] leading-[22.5px] text-black outline-none placeholder:text-[#999]"
-            onChange={(event) => set('procedure_notes', event.target.value)}
+            <SectionHeading>Patient safety</SectionHeading>
+            <RadioRow
+              label="Have you ever had a previous negative or unusual reaction?"
+              onChange={(value) => set('negativeExperience', value)}
+              options={yesNoOptions}
+              value={String(details.negativeExperience ?? '')}
+            />
+            {details.negativeExperience === 'Yes' && (
+              <TextAreaField
+                error={showErrors ? fieldErrors.negativeExperienceDetails : undefined}
+                label="Ask the client about the reaction: what the treatment consisted of, what product was applied (if known), and how long it lasted."
+                onChange={(value) => set('negativeExperienceDetails', value)}
+                placeholder="e.g., laser removal, product X, lasted 2 days"
+                value={String(details.negativeExperienceDetails ?? '')}
+              />
+            )}
+
+            <SectionHeading>Lifestyle and medication</SectionHeading>
+            <TextAreaField
+              label="Current medications"
+              onChange={(value) => set('currentMedications', value)}
+              placeholder="List any medications you're currently taking (e.g., ibuprofen, metformin)"
+              value={String(details.currentMedications ?? '')}
+            />
+            <RadioRow
+              label="Smoking"
+              onChange={(value) => set('smoking', value)}
+              options={yesNoOptions}
+              value={String(details.smoking ?? '')}
+            />
+            <TextAreaField
+              label="Frequency"
+              minHeightClass="min-h-[71px]"
+              onChange={(value) => set('smokingFrequency', value)}
+              placeholder="e.g. 2–3 cigarettes a day"
+              value={String(details.smokingFrequency ?? '')}
+            />
+            <RadioRow
+              label="Alcohol"
+              onChange={(value) => set('alcohol', value)}
+              options={micropigmentationAlcoholOptions}
+              value={String(details.alcohol ?? '')}
+              vertical
+            />
+            <RadioRow
+              label="Previous negative experience with aesthetic treatments?"
+              onChange={(value) => set('previousNegativeAestheticExperience', value)}
+              options={yesNoOptions}
+              value={String(details.previousNegativeAestheticExperience ?? '')}
+            />
+          </FormCard>
+        )}
+
+        <FormCard title="Procedure Notes">
+          <PhototypeRow
+            error={showErrors ? fieldErrors.phototype : undefined}
+            onChange={(value) => set('phototype', value)}
+            value={String(details.phototype ?? '')}
+          />
+          <RadioRow
+            error={showErrors ? fieldErrors.herpesSimplex : undefined}
+            label="Do you suffer from Herpes Simplex?"
+            onChange={(value) => set('herpesSimplex', value)}
+            options={yesNoOptions}
+            value={String(details.herpesSimplex ?? '')}
+          />
+          <TextAreaField
+            label="Previous treatments / Removal?"
+            onChange={(value) => set('previousTreatmentsRemoval', value)}
+            placeholder="e.g., laser removal 6 months ago, 3 sessions of saline removal"
+            value={String(details.previousTreatmentsRemoval ?? '')}
+          />
+        </FormCard>
+
+        <FormCard title="Procedure details">
+          <FormSubtitle>Anesthesia</FormSubtitle>
+          <TextField
+            label="Brand"
+            onChange={(value) => set('anesthesiaBrand', value)}
+            placeholder="e.g. Zensa, TKTX"
+            value={String(details.anesthesiaBrand ?? '')}
+          />
+          <TextField
+            label="Exposure time"
+            onChange={(value) => set('anesthesiaExposureTime', value)}
+            placeholder="e.g. 15"
+            suffix="min"
+            value={String(details.anesthesiaExposureTime ?? '')}
+          />
+
+          <FormSubtitle>Tools</FormSubtitle>
+          <TextField
+            error={showErrors ? fieldErrors.needleType : undefined}
+            label="Needle type"
+            onChange={(value) => {
+              onChange({ details: { ...details, needleType: value, needle: value } })
+            }}
+            placeholder="e.g. Nano, Micro, 1-RL"
+            value={String(details.needleType ?? details.needle ?? '')}
+          />
+          <TextField
+            label="Size/number"
+            onChange={(value) => set('needleSize', value)}
+            placeholder="e.g. 0.25 mm / 18U"
+            value={String(details.needleSize ?? '')}
+          />
+
+          <FormSubtitle>Pigmentology</FormSubtitle>
+          <TextField
+            error={showErrors ? fieldErrors.pigment_brand : undefined}
+            label="Brand"
+            onChange={(value) => {
+              onChange({ details: { ...details, pigment_brand: value, pigmentBrand: value } })
+            }}
+            placeholder="e.g. Perma Blend"
+            value={String(details.pigment_brand ?? details.pigmentBrand ?? '')}
+          />
+          <TextField
+            label="Color/mix"
+            onChange={(value) => {
+              onChange({ details: { ...details, color_mix: value, colorMix: value } })
+            }}
+            placeholder="e.g. Dark Brown + Espresso (70/30)"
+            value={String(details.color_mix ?? details.colorMix ?? '')}
+          />
+        </FormCard>
+
+        <FormCard title="Control">
+          <TextField
+            label="First session date"
+            onChange={(value) => set('firstSessionDate', value)}
+            type="date"
+            value={String(details.firstSessionDate ?? '')}
+          />
+          <TextField
+            label="Touch-up appointment"
+            onChange={(value) => {
+              onChange({
+                details: {
+                  ...details,
+                  touchUpAppointment: value,
+                  touch_up_date: value,
+                },
+              })
+            }}
+            type="date"
+            value={String(details.touchUpAppointment ?? details.touch_up_date ?? '')}
+          />
+          <SignatureBox
+            label="Client design approval/signature"
+            onChange={(value) => onChange({
+              details: {
+                ...details,
+                clientDesignSignature: value,
+                signatures: mergeSignature(
+                  details.signatures as Parameters<typeof mergeSignature>[0],
+                  { type: 'design_approval', signerName: String(details.generalFullName ?? details.healthFullName ?? 'Client'), data: value },
+                ),
+              },
+            })}
+            value={String(details.clientDesignSignature ?? '')}
+          />
+          {showErrors && fieldErrors.clientDesignSignature && (
+            <FieldError message={fieldErrors.clientDesignSignature} />
+          )}
+          <TextAreaField
+            label="Observations/notes"
+            onChange={(value) => set('procedure_notes', value)}
             placeholder="Add pigment, technique, or session notes"
             value={String(details.procedure_notes ?? '')}
           />
-        </label>
-      </section>
+        </FormCard>
 
-      <section className="rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
-        <BookingSectionTitle>Design approval</BookingSectionTitle>
-        <SignatureBox
-          label="Client design approval"
-          onChange={(value) => onChange({
-            details: {
-              ...details,
-              clientDesignSignature: value,
-              signatures: mergeSignature(
-                details.signatures as Parameters<typeof mergeSignature>[0],
-                { type: 'design_approval', signerName: String(details.healthFullName ?? 'Client'), data: value },
-              ),
-            },
-          })}
-          value={String(details.clientDesignSignature ?? '')}
+        {micropigmentationRecommendationBlocks.map((block) => (
+          <FormCard key={block.title} title={block.title}>
+            {block.subtitle && (
+              <p className="text-[16px] font-bold leading-6 text-black">{block.subtitle}</p>
+            )}
+            {block.intro && (
+              <p className="text-[14px] leading-5 text-[#475467]">{block.intro}</p>
+            )}
+            <ul className="flex flex-col gap-3">
+              {block.items.map((item) => (
+                <li className="text-[14px] leading-[1.45] text-[#101828]" key={item.label}>
+                  <span className="font-bold tracking-[0.24px]">{item.label}</span>{' '}
+                  <span>{item.text}</span>
+                </li>
+              ))}
+            </ul>
+          </FormCard>
+        ))}
+
+        <FormCard>
+          <div className="rounded-[12px] bg-[#f2f5ff] p-4">
+            <TextField
+              error={showErrors ? fieldErrors.professionalSignature : undefined}
+              label="Professional signature"
+              onChange={(value) => set('professionalSignature', value)}
+              placeholder="e.g. John Doe"
+              value={String(details.professionalSignature ?? '')}
+            />
+            <div className="mt-4">
+              <TextField
+                error={showErrors ? fieldErrors.consentDate : undefined}
+                label="Date"
+                onChange={(value) => set('consentDate', value)}
+                type="date"
+                value={String(details.consentDate ?? localDateString())}
+              />
+            </div>
+          </div>
+        </FormCard>
+
+        <RegistrationContinueSection
+          canContinue={canContinue}
+          disabledMessage={
+            !procedure
+              ? 'Select a service type to continue'
+              : showErrors && missingItems.length
+                ? `To continue, complete: ${missingItems.slice(0, 3).join(' · ')}`
+                : serviceCreating
+                  ? `Creating ${micropigmentationServiceDisplayName(procedure)}...`
+                  : undefined
+          }
+          label={serviceCreating ? 'Creating service...' : 'Confirm and Submit'}
+          onContinue={() => void submit()}
         />
-      </section>
-
-      <TreatmentPhotoFlow
-        category="micropigmentation"
-        details={details}
-        onChange={(next) => onChange({ details: next })}
-        title="Reference / before photo"
-      />
-
-      <RegistrationContinueSection
-        canContinue={canContinue}
-        disabledMessage={missingItems.length ? `To continue, complete: ${missingItems.join(' · ')}` : undefined}
-        onContinue={onNext}
-      />
+        <button
+          className="pb-4 text-center text-[16px] font-medium text-[#475467]"
+          onClick={onBack}
+          type="button"
+        >
+          Go back
+        </button>
+      </div>
     </RegistrationFlowShell>
   )
 }
