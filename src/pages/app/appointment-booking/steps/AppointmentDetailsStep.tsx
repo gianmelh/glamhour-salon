@@ -41,11 +41,23 @@ function formatMaterialLabels(details: Record<string, unknown>) {
   ))
 }
 
-function buildServiceDisplayName(service: Service, details: Record<string, unknown>) {
+function buildServiceDisplayName(
+  categoryCode: string,
+  service: Service,
+  details: Record<string, unknown>,
+) {
   const lashStyle = details.style
   const lashVariant = details.variant
   if (typeof lashStyle === 'string' && lashStyle) {
     return typeof lashVariant === 'string' && lashVariant ? `${lashStyle} - ${lashVariant}` : lashStyle
+  }
+
+  if (
+    categoryCode === 'cosmetology'
+    && typeof details.serviceType === 'string'
+    && details.serviceType
+  ) {
+    return `Cosmetology - ${details.serviceType}`
   }
 
   const serviceType = String(details.nailServiceType ?? service.name)
@@ -179,7 +191,7 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
   onNext: () => void
 }) {
   const [showUpdateModal, setShowUpdateModal] = useState(false)
-  const displayName = buildServiceDisplayName(service, details)
+  const displayName = buildServiceDisplayName(category.code, service, details)
   const highlights = healthHighlights(category, details)
   const priceIsEditable = service.price_minor <= 0
   const manualPriceMinor = typeof details.appointmentPriceMinor === 'number' ? details.appointmentPriceMinor : service.price_minor

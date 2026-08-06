@@ -29,17 +29,19 @@ export function RegistrationFlowShell({
   footer,
   onBack,
   title = 'Details of service',
+  maxWidth = registrationFlowLayout.pageMaxWidth,
 }: {
   activeCategory: BookingCategoryCode
   children: ReactNode
   footer?: ReactNode
   onBack: () => void
   title?: string
+  maxWidth?: number
 }) {
   return (
     <div
       className="mx-auto w-full bg-[#f2f5ff]"
-      style={{ maxWidth: registrationFlowLayout.pageMaxWidth }}
+      style={{ maxWidth }}
     >
       <div
         className="flex flex-col pb-28"

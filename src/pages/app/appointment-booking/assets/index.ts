@@ -47,6 +47,15 @@ export const cosmetologyBookingAssets = {
     'Type V': `${healthBase}/Phototype/type 5.png`,
     'Type VI': `${healthBase}/Phototype/type 6.png`,
   },
+  /** Compact Fitzpatrick swatches used on the cosmetology clinical form (Figma). */
+  phototypeSwatches: {
+    'Type I': `${healthBase}/Phototype/type 1.svg`,
+    'Type II': `${healthBase}/Phototype/type 2.svg`,
+    'Type III': `${healthBase}/Phototype/type 3.svg`,
+    'Type IV': `${healthBase}/Phototype/type 4.svg`,
+    'Type V': `${healthBase}/Phototype/type 5.svg`,
+    'Type VI': `${healthBase}/Phototype/type 6.svg`,
+  },
 } as const
 
 export const micropigmentationBookingAssets = {

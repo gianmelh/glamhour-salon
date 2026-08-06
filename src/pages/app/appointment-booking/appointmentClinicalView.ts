@@ -163,9 +163,17 @@ function buildNailsTreatmentRows(details: Record<string, unknown>) {
 
 function buildCosmetologyTreatmentRows(details: Record<string, unknown>) {
   const rows: Array<{ label: string; value: string }> = []
+  if (details.generalFullName) rows.push({ label: 'Full name', value: String(details.generalFullName) })
+  if (details.generalPhone) rows.push({ label: 'Phone number', value: String(details.generalPhone) })
+  if (details.generalDateOfBirth) rows.push({ label: 'Date of birth', value: String(details.generalDateOfBirth) })
+  if (details.generalEmail) rows.push({ label: 'Email', value: String(details.generalEmail) })
+  if (details.isFirstTime) rows.push({ label: 'First time', value: String(details.isFirstTime) })
   if (details.serviceType) rows.push({ label: 'Service type', value: String(details.serviceType) })
   if (details.phototype) rows.push({ label: 'Phototype', value: String(details.phototype) })
   if (details.skin_type) rows.push({ label: 'Skin type', value: String(details.skin_type) })
+  if (details.currentMedications) rows.push({ label: 'Current medications', value: String(details.currentMedications) })
+  if (details.smoking) rows.push({ label: 'Smoking', value: String(details.smoking) })
+  if (details.alcohol) rows.push({ label: 'Alcohol', value: String(details.alcohol) })
   if (Array.isArray(details.healthHistory) && details.healthHistory.length) {
     rows.push({ label: 'Health history', value: (details.healthHistory as string[]).join(', ') })
   }

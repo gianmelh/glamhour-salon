@@ -19,6 +19,7 @@ import { CalendarSetupStep } from './steps/CalendarSetupStep'
 import { ReviewStep, SuccessStep } from './steps/SchedulingSteps'
 import { buildTreatmentPayload } from './buildTreatmentPayload'
 import { mergeDetailsPatchForCategory, sanitizeDetailsForCategory } from './categoryDetails'
+import { resolveCosmetologyServiceId } from './categories/cosmetology/cosmetologyDetailsSpec'
 import type { AppointmentDraft, BookingStep, DraftPatch } from './types'
 import type { Service } from '../../../types/api'
 
@@ -33,6 +34,14 @@ function resolveCategoryServiceId(
   categoryServices: Service[],
   services: Service[],
 ) {
+  if (draft.categoryCode === 'cosmetology') {
+    const serviceType = typeof draft.details.serviceType === 'string' ? draft.details.serviceType : undefined
+    // Active services only — never fall back to another type or an inactive catalog row.
+    if (serviceType) {
+      return resolveCosmetologyServiceId(categoryServices, serviceType, draft.serviceId)
+    }
+  }
+
   return services.find((service) => service.id === draft.serviceId)?.id
     ?? categoryServices.find((service) => service.is_active)?.id
     ?? categoryServices[0]?.id
@@ -73,7 +82,7 @@ function readInitialDraft() {
 }
 
 function shouldReviewAppointmentDetailsAfterService(categoryCode: string) {
-  return categoryCode === 'nails' || categoryCode === 'lashes'
+  return categoryCode === 'nails' || categoryCode === 'lashes' || categoryCode === 'cosmetology'
 }
 
 export function NewAppointmentPage() {
@@ -211,10 +220,11 @@ export function NewAppointmentPage() {
     }
 
     const resolvedServiceId = resolveCategoryServiceId(draft, categoryServices, allServices)
-    if (resolvedServiceId && resolvedServiceId !== draft.serviceId) {
+    // Cosmetology: also clear a stale serviceId when serviceType has no active match.
+    if (resolvedServiceId !== draft.serviceId && (resolvedServiceId || draft.categoryCode === 'cosmetology')) {
       setDraft((current) => ({ ...current, serviceId: resolvedServiceId }))
     }
-  }, [allServices, categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, step])
+  }, [allServices, categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, draft.details.serviceType, step])
 
   const clientVisitByClientId = useMemo(() => {
     const canceledStatuses = new Set(['canceled', 'cancelled', 'no_show'])
@@ -341,10 +351,18 @@ export function NewAppointmentPage() {
   }
 
   const resolveBookableAssignment = async () => {
-    const uniqueCandidates = [
-      selectedService,
-      ...categoryServices.filter((service) => service.is_active),
-    ].filter((service, index, list): service is Service => (
+    // Cosmetology must book the active service matched to serviceType — never swap to another type.
+    const cosmetologyServiceId = draft.categoryCode === 'cosmetology'
+      ? resolveCategoryServiceId(draft, categoryServices, allServices)
+      : ''
+    const uniqueCandidates = (
+      draft.categoryCode === 'cosmetology'
+        ? categoryServices.filter((service) => service.id === cosmetologyServiceId && service.is_active)
+        : [
+          selectedService,
+          ...categoryServices.filter((service) => service.is_active),
+        ]
+    ).filter((service, index, list): service is Service => (
       Boolean(service) && list.findIndex((item) => item?.id === service?.id) === index
     ))
 
@@ -358,6 +376,15 @@ export function NewAppointmentPage() {
         }).catch(() => [])
       const provider = providers.find((item) => item.id === draft.providerId) ?? providers[0]
       if (provider) return { service, provider }
+    }
+
+    if (draft.categoryCode === 'cosmetology') {
+      const serviceType = typeof draft.details.serviceType === 'string' ? draft.details.serviceType : 'selected'
+      throw new Error(
+        cosmetologyServiceId
+          ? `Assign “${serviceType}” to a provider in Staff settings before scheduling.`
+          : `No active Cosmetology service matches “${serviceType}”. Activate or create it in Services before booking.`,
+      )
     }
 
     const fallbackService = selectedService ?? categoryServices.find((service) => service.is_active)
