@@ -19,7 +19,10 @@ import { CalendarSetupStep } from './steps/CalendarSetupStep'
 import { ReviewStep, SuccessStep } from './steps/SchedulingSteps'
 import { buildTreatmentPayload } from './buildTreatmentPayload'
 import { mergeDetailsPatchForCategory, sanitizeDetailsForCategory } from './categoryDetails'
-import { resolveCosmetologyServiceId } from './categories/cosmetology/cosmetologyDetailsSpec'
+import {
+  cosmetologyServiceDisplayName,
+  resolveCosmetologyServiceId,
+} from './categories/cosmetology/cosmetologyDetailsSpec'
 import type { AppointmentDraft, BookingStep, DraftPatch } from './types'
 import type { Service } from '../../../types/api'
 
@@ -352,12 +355,33 @@ export function NewAppointmentPage() {
 
   const resolveBookableAssignment = async () => {
     // Cosmetology must book the active service matched to serviceType — never swap to another type.
-    const cosmetologyServiceId = draft.categoryCode === 'cosmetology'
+    const serviceType = typeof draft.details.serviceType === 'string' ? draft.details.serviceType : ''
+    let createdCosmetologyService: Service | undefined
+    let cosmetologyServiceId = draft.categoryCode === 'cosmetology'
       ? resolveCategoryServiceId(draft, categoryServices, allServices)
       : ''
+    if (draft.categoryCode === 'cosmetology' && !cosmetologyServiceId && serviceType && selectedCategory) {
+      createdCosmetologyService = await glamhourApi.createService({
+        categoryId: selectedCategory.id,
+        categoryCode: 'cosmetology',
+        name: cosmetologyServiceDisplayName(serviceType),
+        description: `${serviceType} cosmetology service created from booking flow.`,
+        durationMinutes: selectedService?.duration_minutes ?? 60,
+        priceMinor: 0,
+        assignToActiveProviders: true,
+      })
+      const createdService = createdCosmetologyService
+      cosmetologyServiceId = createdService.id
+      setLocalServices((current) => [createdService, ...current.filter((item) => item.id !== createdService.id)])
+      services.setData((current) => [createdService, ...(current ?? []).filter((item) => item.id !== createdService.id)])
+      setDraft((current) => ({ ...current, serviceId: createdService.id }))
+    }
     const uniqueCandidates = (
       draft.categoryCode === 'cosmetology'
-        ? categoryServices.filter((service) => service.id === cosmetologyServiceId && service.is_active)
+        ? [
+          createdCosmetologyService,
+          ...categoryServices.filter((service) => service.id === cosmetologyServiceId && service.is_active),
+        ]
         : [
           selectedService,
           ...categoryServices.filter((service) => service.is_active),

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '../../../../../lib/cn'
 import type { ServiceCategory } from '../../../../../types/api'
+import { glamhourApi } from '../../../../../services/glamhour-api'
 import { cosmetologyBookingAssets } from '../../assets'
 import {
   BookingSectionTitle,
@@ -22,6 +23,7 @@ import {
   cosmetologyRadiofrequencyModes,
   cosmetologyReactionOptions,
   cosmetologyRecommendationBlocks,
+  cosmetologyServiceDisplayName,
   cosmetologyServiceMatchError,
   cosmetologyServiceTypes,
   cosmetologySkinTypes,
@@ -305,9 +307,12 @@ export function CosmetologyDetailsStep({
   onChange,
   onBack,
   onNext,
+  onServiceCreated,
+  category,
 }: CategoryStepProps & { category: ServiceCategory }) {
   const [stage, setStage] = useState<'form' | 'face-map' | 'treatment'>('form')
   const [serviceError, setServiceError] = useState('')
+  const [serviceCreating, setServiceCreating] = useState(false)
   const set = (key: string, value: unknown) => onChange({ details: { ...details, [key]: value } })
   const missingItems = getCosmetologyDetailsMissingItems(details)
   const selectedHealthHistory = ((details.healthHistory as string[] | undefined) ?? [])
@@ -316,15 +321,14 @@ export function CosmetologyDetailsStep({
     .map(normalizeCosmetologyHistoryLabel)
   const faceAnnotationCount = ((details.faceAnnotations as unknown[] | undefined) ?? []).length
   const serviceType = normalizeCosmetologyHistoryLabel(String(details.serviceType ?? ''))
-  const resolvedServiceId = resolveCosmetologyServiceId(services, serviceType, selectedServiceId)
-  const canContinue = Boolean(serviceType && resolvedServiceId) && missingItems.length === 0
+  const canContinue = Boolean(serviceType) && missingItems.length === 0 && !serviceCreating
 
   const selectServiceType = (nextType: string) => {
     const normalizedType = normalizeCosmetologyHistoryLabel(nextType)
     const matched = matchCosmetologyService(services, normalizedType)
     const bookableId = matched && matched.is_active !== false ? matched.id : ''
 
-    // Exact type→active service only. Never keep a previous type's serviceId or create duplicates.
+    // Exact type→active service only. Missing matches are created when the form is submitted.
     if (bookableId) {
       setServiceError('')
       onChange({
@@ -334,20 +338,45 @@ export function CosmetologyDetailsStep({
       return
     }
 
-    setServiceError(cosmetologyServiceMatchError(normalizedType))
+    setServiceError('')
     onChange({
       serviceId: '',
       details: { ...details, serviceType: normalizedType },
     })
   }
 
-  const finishWithResolvedService = () => {
-    if (!serviceType) return
+  const resolveOrCreateServiceId = async () => {
+    if (!serviceType) return ''
     const serviceId = resolveCosmetologyServiceId(services, serviceType, selectedServiceId)
-    if (!serviceId) {
-      setServiceError(cosmetologyServiceMatchError(serviceType))
-      return
+    if (serviceId) return serviceId
+
+    setServiceCreating(true)
+    try {
+      const service = await glamhourApi.createService({
+        categoryId: category.id,
+        categoryCode: 'cosmetology',
+        name: cosmetologyServiceDisplayName(serviceType),
+        description: `${serviceType} cosmetology service created from booking flow.`,
+        durationMinutes: 60,
+        priceMinor: 0,
+        assignToActiveProviders: true,
+      })
+      onServiceCreated?.(service)
+      setServiceError('')
+      return service.id
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : cosmetologyServiceMatchError(serviceType)
+      setServiceError(message)
+      return ''
+    } finally {
+      setServiceCreating(false)
     }
+  }
+
+  const finishWithResolvedService = async () => {
+    if (!serviceType) return
+    const serviceId = await resolveOrCreateServiceId()
+    if (!serviceId) return
     setServiceError('')
     onNext({ serviceId, details: { ...details, serviceType } })
   }
@@ -641,14 +670,14 @@ export function CosmetologyDetailsStep({
             disabledMessage={
               !serviceType
                 ? 'Select a service type to continue'
-                : !resolvedServiceId
-                  ? cosmetologyServiceMatchError(serviceType)
-                  : missingItems.length
+                : missingItems.length
                     ? `To continue, complete: ${missingItems.join(' · ')}`
+                    : serviceCreating
+                      ? `Creating ${cosmetologyServiceDisplayName(serviceType)}...`
                     : undefined
             }
-            label="Mark service as complete"
-            onContinue={finishWithResolvedService}
+            label={serviceCreating ? 'Creating service...' : 'Mark service as complete'}
+            onContinue={() => void finishWithResolvedService()}
           />
           <button
             className="pb-4 text-center text-[16px] font-medium text-[#475467]"
@@ -846,27 +875,29 @@ export function CosmetologyDetailsStep({
           disabledMessage={
             !serviceType
               ? 'Select a service type to continue'
-              : !resolvedServiceId
-                ? cosmetologyServiceMatchError(serviceType)
-                : missingItems.length
+              : missingItems.length
                   ? `To continue, complete: ${missingItems.join(' · ')}`
+                  : serviceCreating
+                    ? `Creating ${cosmetologyServiceDisplayName(serviceType)}...`
                   : undefined
           }
-          label="Confirm and Submit"
+          label={serviceCreating ? 'Creating service...' : 'Confirm and Submit'}
           onContinue={() => {
-            const nextServiceId = resolveCosmetologyServiceId(services, serviceType, selectedServiceId)
-            if (!nextServiceId) {
-              setServiceError(cosmetologyServiceMatchError(serviceType))
-              return
-            }
-            if (nextServiceId !== selectedServiceId) {
-              onChange({
-                serviceId: nextServiceId,
-                details: { ...details, serviceType },
-              })
-            }
-            setServiceError('')
-            setStage('face-map')
+            void (async () => {
+              const nextServiceId = await resolveOrCreateServiceId()
+              if (!nextServiceId) {
+                setServiceError(cosmetologyServiceMatchError(serviceType))
+                return
+              }
+              if (nextServiceId !== selectedServiceId) {
+                onChange({
+                  serviceId: nextServiceId,
+                  details: { ...details, serviceType },
+                })
+              }
+              setServiceError('')
+              setStage('face-map')
+            })()
           }}
         />
         <button
