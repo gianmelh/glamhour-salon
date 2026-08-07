@@ -453,6 +453,13 @@ export function NewAppointmentPage() {
     }
 
     if (draft.categoryCode === 'micropigmentation') {
+      const fallbackService = uniqueCandidates[0] ?? selectedService ?? categoryServices.find((service) => service.is_active)
+      const fallbackProvider = scheduleProviders.find((provider) => provider.id === draft.providerId)
+        ?? scheduleProviders[0]
+      if (fallbackService && fallbackProvider) {
+        return { service: fallbackService, provider: fallbackProvider }
+      }
+
       const label = procedure ? micropigmentationServiceDisplayName(procedure) : 'selected'
       throw new Error(
         typedServiceId
