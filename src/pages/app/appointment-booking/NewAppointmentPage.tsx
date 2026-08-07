@@ -384,7 +384,7 @@ export function NewAppointmentPage() {
 
     if (draft.categoryCode === 'cosmetology' && !typedServiceId && serviceType && selectedCategory) {
       createdTypedService = await glamhourApi.ensureService({
-        categoryId: selectedCategory.id,
+        categoryId: optionalUuid(selectedCategory.id),
         categoryCode: 'cosmetology',
         slug: cosmetologyServiceSlug(serviceType),
         name: cosmetologyServiceDisplayName(serviceType),
@@ -402,7 +402,7 @@ export function NewAppointmentPage() {
     if (draft.categoryCode === 'micropigmentation' && !typedServiceId && procedure && selectedCategory) {
       const defaults = micropigmentationServiceDefaults(procedure)
       createdTypedService = await glamhourApi.ensureService({
-        categoryId: selectedCategory.id,
+        categoryId: optionalUuid(selectedCategory.id),
         categoryCode: 'micropigmentation',
         slug: defaults.slug,
         name: defaults.name,

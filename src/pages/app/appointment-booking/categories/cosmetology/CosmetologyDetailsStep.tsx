@@ -37,6 +37,12 @@ import {
 } from './cosmetologyDetailsSpec'
 import { FaceMapEditor } from './FaceMapEditor'
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function optionalUuid(value: string) {
+  return uuidPattern.test(value) ? value : undefined
+}
+
 function FormCard({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <section className="flex w-full flex-col gap-4 rounded-[20px] border border-[#d0d5dd] bg-[#fcfcfd] px-5 py-6">
@@ -354,7 +360,7 @@ export function CosmetologyDetailsStep({
     setServiceCreating(true)
     try {
       const service = await glamhourApi.ensureService({
-        categoryId: category.id,
+        categoryId: optionalUuid(category.id),
         categoryCode: 'cosmetology',
         slug: cosmetologyServiceSlug(serviceType),
         name: cosmetologyServiceDisplayName(serviceType),
