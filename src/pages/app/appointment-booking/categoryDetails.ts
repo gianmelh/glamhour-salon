@@ -121,6 +121,7 @@ const MICROPIGMENTATION_DETAIL_KEYS = [
   'touchUpAppointment',
   'firstSessionDate',
   'procedure_notes',
+  'appointmentNotes',
   'clientDesignSignature',
   'generalFullName',
   'generalPhone',
