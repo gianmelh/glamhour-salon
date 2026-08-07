@@ -271,29 +271,31 @@ function ServiceTypeGroups({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[28px] font-bold leading-[1.2] text-black">Service type</p>
-      {Object.entries(micropigmentationProcedureGroups).map(([groupArea, procedures]) => (
-        <div className="flex flex-col gap-3" key={groupArea}>
-          <p className="text-[21px] font-bold leading-[1.2] text-black">{groupArea}</p>
-          <div className="flex flex-wrap gap-2">
-            {procedures.map((option) => {
-              const active = procedure === option && area === groupArea
-              return (
-                <button
-                  className={cn(
-                    'rounded-[16px] border px-4 py-3 text-[16px] leading-[1.44] tracking-[-0.32px] text-black',
-                    active ? 'border-[#7344cd] bg-[#ebe7ff]' : 'border-[#d0d5dd] bg-[#fcfcfd]',
-                  )}
-                  key={option}
-                  onClick={() => onSelect(groupArea, option)}
-                  type="button"
-                >
-                  {option}
-                </button>
-              )
-            })}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+        {Object.entries(micropigmentationProcedureGroups).map(([groupArea, procedures]) => (
+          <div className="flex flex-col gap-3" key={groupArea}>
+            <p className="text-[21px] font-bold leading-[1.2] text-black">{groupArea}</p>
+            <div className="flex flex-col gap-2">
+              {procedures.map((option) => {
+                const active = procedure === option && area === groupArea
+                return (
+                  <button
+                    className={cn(
+                      'min-h-12 rounded-[16px] border px-3 py-2 text-left text-[15px] leading-[1.35] tracking-[-0.3px] text-black',
+                      active ? 'border-[#7344cd] bg-[#ebe7ff]' : 'border-[#d0d5dd] bg-[#fcfcfd]',
+                    )}
+                    key={option}
+                    onClick={() => onSelect(groupArea, option)}
+                    type="button"
+                  >
+                    {option}
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
       <FieldError message={error} />
     </div>
   )
@@ -467,22 +469,22 @@ export function MicropigmentationDetailsStep({
               />
             ))}
 
-            <SectionHeading>Allergies and adverse reactions</SectionHeading>
+            <FormSubtitle>Allergies and adverse reactions</FormSubtitle>
             <CheckboxGroup
               onChange={(value) => set('allergies', value)}
               options={[...micropigmentationAllergyOptions]}
               value={selectedAllergies}
             />
             <TextAreaField
-              label="Allergy and reaction details"
+              label="Specify your allergy, and reaction"
               onChange={(value) => set('allergyReactionNotes', value)}
-              placeholder="Specify your allergy, and reaction"
+              placeholder="Swelling or itching"
               value={String(details.allergyReactionNotes ?? '')}
             />
 
             <SectionHeading>Patient safety</SectionHeading>
             <RadioRow
-              label="Have you ever had a previous negative or unusual reaction?"
+              label="Have you ever had a negative experience or unusual reaction after a facial or body treatment in the past?"
               onChange={(value) => set('negativeExperience', value)}
               options={yesNoOptions}
               value={String(details.negativeExperience ?? '')}
@@ -492,7 +494,7 @@ export function MicropigmentationDetailsStep({
                 error={showErrors ? fieldErrors.negativeExperienceDetails : undefined}
                 label="Ask the client about the reaction: what the treatment consisted of, what product was applied (if known), and how long it lasted."
                 onChange={(value) => set('negativeExperienceDetails', value)}
-                placeholder="e.g., laser removal, product X, lasted 2 days"
+                placeholder="e.g., chemical peel with glycolic acid, lasted 2 days"
                 value={String(details.negativeExperienceDetails ?? '')}
               />
             )}
@@ -504,6 +506,7 @@ export function MicropigmentationDetailsStep({
               placeholder="List any medications you're currently taking (e.g., ibuprofen, metformin)"
               value={String(details.currentMedications ?? '')}
             />
+            <FormSubtitle>Consumption habits:</FormSubtitle>
             <RadioRow
               label="Smoking"
               onChange={(value) => set('smoking', value)}
@@ -559,13 +562,13 @@ export function MicropigmentationDetailsStep({
           <TextField
             label="Brand"
             onChange={(value) => set('anesthesiaBrand', value)}
-            placeholder="e.g. Zensa, TKTX"
+            placeholder="e.g., EMLA, BLT"
             value={String(details.anesthesiaBrand ?? '')}
           />
           <TextField
             label="Exposure time"
             onChange={(value) => set('anesthesiaExposureTime', value)}
-            placeholder="e.g. 15"
+            placeholder="e.g. 45"
             suffix="min"
             value={String(details.anesthesiaExposureTime ?? '')}
           />
@@ -577,13 +580,13 @@ export function MicropigmentationDetailsStep({
             onChange={(value) => {
               onChange({ details: { ...details, needleType: value, needle: value } })
             }}
-            placeholder="e.g. Nano, Micro, 1-RL"
+            placeholder="e.g., nano Blade, round shader"
             value={String(details.needleType ?? details.needle ?? '')}
           />
           <TextField
             label="Size/number"
             onChange={(value) => set('needleSize', value)}
-            placeholder="e.g. 0.25 mm / 18U"
+            placeholder="e.g. 0.25mm / 18U"
             value={String(details.needleSize ?? '')}
           />
 
@@ -594,7 +597,7 @@ export function MicropigmentationDetailsStep({
             onChange={(value) => {
               onChange({ details: { ...details, pigment_brand: value, pigmentBrand: value } })
             }}
-            placeholder="e.g. Perma Blend"
+            placeholder="e.g., Perma Blend, Tina Davies"
             value={String(details.pigment_brand ?? details.pigmentBrand ?? '')}
           />
           <TextField
@@ -602,7 +605,7 @@ export function MicropigmentationDetailsStep({
             onChange={(value) => {
               onChange({ details: { ...details, color_mix: value, colorMix: value } })
             }}
-            placeholder="e.g. Dark Brown + Espresso (70/30)"
+            placeholder="e.g., cool ash Brown, 80% espresso + 2..."
             value={String(details.color_mix ?? details.colorMix ?? '')}
           />
         </FormCard>
@@ -629,7 +632,7 @@ export function MicropigmentationDetailsStep({
             value={String(details.touchUpAppointment ?? details.touch_up_date ?? '')}
           />
           <SignatureBox
-            label="Client design approval/signature"
+            label="Design approved by the client, signature"
             onChange={(value) => onChange({
               details: {
                 ...details,
@@ -648,7 +651,7 @@ export function MicropigmentationDetailsStep({
           <TextAreaField
             label="Observations/notes"
             onChange={(value) => set('procedure_notes', value)}
-            placeholder="Add pigment, technique, or session notes"
+            placeholder="e.g., redness concentrated on cheeks, dry patches near the jawline, no open lesions observed"
             value={String(details.procedure_notes ?? '')}
           />
         </FormCard>

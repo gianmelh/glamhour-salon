@@ -45,7 +45,7 @@ export const micropigmentationHealthHistoryGroups = [
   {
     title: 'Implants',
     key: 'implants',
-    options: ['Dental Implants', 'Hearing Implants', 'Contact Lenses'],
+    options: ['Dental', 'Hearing', 'Contact Lenses'],
   },
 ] as const
 
