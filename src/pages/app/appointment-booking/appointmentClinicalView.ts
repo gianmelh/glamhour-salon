@@ -194,7 +194,11 @@ function buildMicropigmentationTreatmentRows(details: Record<string, unknown>) {
   const rows: Array<{ label: string; value: string }> = []
   if (details.generalFullName) rows.push({ label: 'Full name', value: String(details.generalFullName) })
   if (details.area) rows.push({ label: 'Area', value: String(details.area) })
-  if (details.procedure) rows.push({ label: 'Procedure', value: String(details.procedure) })
+  if (Array.isArray(details.procedures) && details.procedures.length) {
+    rows.push({ label: 'Procedures', value: (details.procedures as string[]).join(', ') })
+  } else if (details.procedure) {
+    rows.push({ label: 'Procedure', value: String(details.procedure) })
+  }
   if (details.phototype) rows.push({ label: 'Phototype', value: String(details.phototype) })
   if (details.herpesSimplex) rows.push({ label: 'Herpes Simplex', value: String(details.herpesSimplex) })
   if (details.brow_width_mm) rows.push({ label: 'Brow width', value: `${details.brow_width_mm} mm` })

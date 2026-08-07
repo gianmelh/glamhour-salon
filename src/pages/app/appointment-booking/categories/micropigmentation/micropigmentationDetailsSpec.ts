@@ -171,8 +171,10 @@ export function normalizeMicropigmentationHistoryLabel(value: string) {
     'Oncological history': 'Oncological History',
     'Facial fractures': 'Facial Fractures',
     'Contact lenses': 'Contact Lenses',
-    Dental: 'Dental Implants',
-    Hearing: 'Hearing Implants',
+    'Dental Implants': 'Dental',
+    'Hearing Implants': 'Hearing',
+    Dental: 'Dental',
+    Hearing: 'Hearing',
     'Lip liner': 'Lip Liner',
     microblading: 'Microblading',
     Microblading: 'Microblading',
@@ -281,7 +283,8 @@ export function getMicropigmentationFieldErrors(details: Record<string, unknown>
     if (!details.isFirstTime) errors.isFirstTime = 'Select Yes or No'
   }
 
-  if (!details.procedure) errors.procedure = 'Select a service type'
+  const selectedProcedures = Array.isArray(details.procedures) ? details.procedures : []
+  if (!details.procedure && !selectedProcedures.length) errors.procedure = 'Select a service type'
   if (!details.phototype) errors.phototype = 'Select a skin phototype'
   if (!details.herpesSimplex) errors.herpesSimplex = 'Select Yes or No'
   if (!String(details.pigment_brand ?? '').trim()) errors.pigment_brand = 'Pigment brand is required'

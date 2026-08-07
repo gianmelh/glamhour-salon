@@ -531,10 +531,16 @@ export function NewAppointmentPage() {
 
       const assignment = await resolveBookableAssignment()
       const appointmentTimes = await resolveAppointmentTimes(assignment.service.id, assignment.provider.id)
+      const micropigmentationServiceIds = Array.isArray(draft.details.micropigmentationServiceIds)
+        ? draft.details.micropigmentationServiceIds.filter((item): item is string => typeof item === 'string' && Boolean(item))
+        : []
+      const serviceIds = draft.categoryCode === 'micropigmentation' && micropigmentationServiceIds.length
+        ? [assignment.service.id, ...micropigmentationServiceIds].filter((item, index, list) => list.indexOf(item) === index)
+        : [assignment.service.id]
       const appointment = await mutation.mutate({
         clientId: draft.clientId,
         professionalId: assignment.provider.id,
-        serviceIds: [assignment.service.id],
+        serviceIds,
         startsAt: appointmentTimes.startsAt,
         endsAt: appointmentTimes.endsAt,
         customerNotes: appointmentNotes,
@@ -549,7 +555,7 @@ export function NewAppointmentPage() {
       window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
       appointments.setData((current) => [comingUpAppointment, ...(current ?? [])])
       setCreatedAppointmentId(comingUpAppointment.id)
-      setStep('success')
+      navigate(`/app/appointments/${comingUpAppointment.id}`)
     } catch (reason) {
       setConfirmError(reason instanceof Error ? reason : new Error('Appointment could not be scheduled.'))
     } finally {

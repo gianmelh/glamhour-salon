@@ -100,6 +100,9 @@ const COSMETOLOGY_DETAIL_KEYS = [
 const MICROPIGMENTATION_DETAIL_KEYS = [
   'area',
   'procedure',
+  'procedures',
+  'procedureAreas',
+  'micropigmentationServiceIds',
   'brow_width_mm',
   'brow_height_mm',
   'lip_width_mm',

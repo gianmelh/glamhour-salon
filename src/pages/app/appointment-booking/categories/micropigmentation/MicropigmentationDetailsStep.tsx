@@ -258,44 +258,42 @@ function PhototypeRow({
 }
 
 function ServiceTypeGroups({
-  area,
-  procedure,
+  selectedProcedures,
   onSelect,
   error,
 }: {
-  area: string
-  procedure: string
+  selectedProcedures: string[]
   onSelect: (area: string, procedure: string) => void
   error?: string
 }) {
+  const selected = new Set(selectedProcedures)
+
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[28px] font-bold leading-[1.2] text-black">Service type</p>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-        {Object.entries(micropigmentationProcedureGroups).map(([groupArea, procedures]) => (
-          <div className="flex flex-col gap-3" key={groupArea}>
-            <p className="text-[21px] font-bold leading-[1.2] text-black">{groupArea}</p>
-            <div className="flex flex-col gap-2">
-              {procedures.map((option) => {
-                const active = procedure === option && area === groupArea
-                return (
-                  <button
-                    className={cn(
-                      'min-h-12 rounded-[16px] border px-3 py-2 text-left text-[15px] leading-[1.35] tracking-[-0.3px] text-black',
-                      active ? 'border-[#7344cd] bg-[#ebe7ff]' : 'border-[#d0d5dd] bg-[#fcfcfd]',
-                    )}
-                    key={option}
-                    onClick={() => onSelect(groupArea, option)}
-                    type="button"
-                  >
-                    {option}
-                  </button>
-                )
-              })}
-            </div>
+      {Object.entries(micropigmentationProcedureGroups).map(([groupArea, procedures]) => (
+        <div className="flex flex-col gap-3" key={groupArea}>
+          <p className="text-[21px] font-bold leading-[1.2] text-black">{groupArea}</p>
+          <div className="flex gap-5 overflow-x-auto pb-1">
+            {procedures.map((option) => {
+              const active = selected.has(option)
+              return (
+                <button
+                  className={cn(
+                    'min-h-20 min-w-[134px] rounded-[16px] border px-4 py-3 text-center text-[16px] leading-[1.35] tracking-[-0.32px] text-black',
+                    active ? 'border-[#7344cd] bg-[#ebe7ff]' : 'border-[#d0d5dd] bg-[#fcfcfd]',
+                  )}
+                  key={option}
+                  onClick={() => onSelect(groupArea, option)}
+                  type="button"
+                >
+                  {option}
+                </button>
+              )
+            })}
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
       <FieldError message={error} />
     </div>
   )
@@ -320,48 +318,83 @@ export function MicropigmentationDetailsStep({
   const missingItems = getMicropigmentationDetailsMissingItems(details)
   const procedure = normalizeMicropigmentationHistoryLabel(String(details.procedure ?? ''))
   const area = String(details.area ?? procedureAreaFor(procedure))
+  const selectedProcedures = (
+    Array.isArray(details.procedures) && details.procedures.length
+      ? details.procedures
+      : procedure
+        ? [procedure]
+        : []
+  ).map((item) => normalizeMicropigmentationHistoryLabel(String(item)))
+    .filter((item, index, list) => item && list.indexOf(item) === index)
   const selectedHealthHistory = ((details.healthHistory as string[] | undefined) ?? [])
     .map(normalizeMicropigmentationHistoryLabel)
   const selectedAllergies = ((details.allergies as string[] | undefined) ?? [])
     .map(normalizeMicropigmentationHistoryLabel)
-  const canContinue = Boolean(procedure) && !serviceCreating
+  const canContinue = selectedProcedures.length > 0 && !serviceCreating
 
   const selectProcedure = (nextArea: string, nextProcedure: string) => {
     const normalized = normalizeMicropigmentationHistoryLabel(nextProcedure)
-    const matched = matchMicropigmentationService(services, normalized)
+    const exists = selectedProcedures.includes(normalized)
+    const nextProcedures = exists
+      ? selectedProcedures.filter((item) => item !== normalized)
+      : [...selectedProcedures, normalized]
+    const primaryProcedure = nextProcedures[0] ?? ''
+    const matched = primaryProcedure ? matchMicropigmentationService(services, primaryProcedure) : undefined
     const bookableId = matched && matched.is_active !== false ? matched.id : ''
+    const procedureAreas = {
+      ...(typeof details.procedureAreas === 'object' && details.procedureAreas ? details.procedureAreas : {}),
+      [normalized]: nextArea,
+    }
     setServiceError('')
     onChange({
       serviceId: bookableId,
-      details: { ...details, area: nextArea, procedure: normalized },
+      details: {
+        ...details,
+        area: primaryProcedure ? procedureAreaFor(primaryProcedure) : '',
+        procedure: primaryProcedure,
+        procedures: nextProcedures,
+        procedureAreas,
+      },
     })
   }
 
-  const resolveOrCreateServiceId = async () => {
-    if (!procedure) return ''
-    const serviceId = resolveMicropigmentationServiceId(services, procedure, selectedServiceId)
-    if (serviceId) return serviceId
+  const resolveOrCreateServiceIds = async () => {
+    if (!selectedProcedures.length) return []
+    const serviceIds: string[] = []
 
     setServiceCreating(true)
     try {
-      const defaults = micropigmentationServiceDefaults(procedure)
-      const service = await glamhourApi.ensureService({
-        categoryId: optionalUuid(category.id),
-        categoryCode: 'micropigmentation',
-        slug: defaults.slug,
-        name: defaults.name,
-        description: `${defaults.name} created from micropigmentation booking flow.`,
-        durationMinutes: defaults.durationMinutes,
-        priceMinor: defaults.priceMinor,
-        assignToActiveProviders: true,
-      })
-      onServiceCreated?.(service)
+      for (const selectedProcedure of selectedProcedures) {
+        const matchedId = resolveMicropigmentationServiceId(
+          services,
+          selectedProcedure,
+          selectedProcedure === procedure ? selectedServiceId : undefined,
+        )
+        if (matchedId) {
+          serviceIds.push(matchedId)
+          continue
+        }
+
+        const defaults = micropigmentationServiceDefaults(selectedProcedure)
+        const service = await glamhourApi.ensureService({
+          categoryId: optionalUuid(category.id),
+          categoryCode: 'micropigmentation',
+          slug: defaults.slug,
+          name: defaults.name,
+          description: `${defaults.name} created from micropigmentation booking flow.`,
+          durationMinutes: defaults.durationMinutes,
+          priceMinor: defaults.priceMinor,
+          assignToActiveProviders: true,
+        })
+        onServiceCreated?.(service)
+        serviceIds.push(service.id)
+      }
       setServiceError('')
-      return service.id
+      return serviceIds.filter((item, index, list) => list.indexOf(item) === index)
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : micropigmentationServiceMatchError(procedure)
+      const message = reason instanceof Error ? reason.message : micropigmentationServiceMatchError(selectedProcedures[0] ?? '')
       setServiceError(message)
-      return ''
+      return []
     } finally {
       setServiceCreating(false)
     }
@@ -369,19 +402,22 @@ export function MicropigmentationDetailsStep({
 
   const submit = async () => {
     setShowErrors(true)
-    if (missingItems.length || !procedure) return
-    const serviceId = await resolveOrCreateServiceId()
-    if (!serviceId) {
-      setServiceError(micropigmentationServiceMatchError(procedure))
+    if (missingItems.length || !selectedProcedures.length) return
+    const serviceIds = await resolveOrCreateServiceIds()
+    if (!serviceIds.length) {
+      setServiceError(micropigmentationServiceMatchError(selectedProcedures[0] ?? 'selected'))
       return
     }
+    const primaryProcedure = selectedProcedures[0]
     setServiceError('')
     onNext({
-      serviceId,
+      serviceId: serviceIds[0],
       details: {
         ...details,
-        area: area || procedureAreaFor(procedure),
-        procedure,
+        area: area || procedureAreaFor(primaryProcedure),
+        procedure: primaryProcedure,
+        procedures: selectedProcedures,
+        micropigmentationServiceIds: serviceIds,
         pigment_brand: details.pigment_brand ?? details.pigmentBrand,
         needle: details.needle ?? details.needleType,
         color_mix: details.color_mix ?? details.colorMix,
@@ -441,10 +477,9 @@ export function MicropigmentationDetailsStep({
         )}
 
         <ServiceTypeGroups
-          area={area}
           error={showErrors ? fieldErrors.procedure : undefined}
           onSelect={selectProcedure}
-          procedure={procedure}
+          selectedProcedures={selectedProcedures}
         />
         {serviceError && (
           <p className="text-[12px] leading-[1.44] text-[#b42318]">{serviceError}</p>
@@ -489,15 +524,13 @@ export function MicropigmentationDetailsStep({
               options={yesNoOptions}
               value={String(details.negativeExperience ?? '')}
             />
-            {details.negativeExperience === 'Yes' && (
-              <TextAreaField
-                error={showErrors ? fieldErrors.negativeExperienceDetails : undefined}
-                label="Ask the client about the reaction: what the treatment consisted of, what product was applied (if known), and how long it lasted."
-                onChange={(value) => set('negativeExperienceDetails', value)}
-                placeholder="e.g., chemical peel with glycolic acid, lasted 2 days"
-                value={String(details.negativeExperienceDetails ?? '')}
-              />
-            )}
+            <TextAreaField
+              error={showErrors ? fieldErrors.negativeExperienceDetails : undefined}
+              label="Ask the client about the reaction: what the treatment consisted of, what product was applied (if known), and how long it lasted."
+              onChange={(value) => set('negativeExperienceDetails', value)}
+              placeholder="e.g., chemical peel with glycolic acid, lasted 2 days"
+              value={String(details.negativeExperienceDetails ?? '')}
+            />
 
             <SectionHeading>Lifestyle and medication</SectionHeading>
             <TextAreaField
@@ -586,7 +619,7 @@ export function MicropigmentationDetailsStep({
           <TextField
             label="Size/number"
             onChange={(value) => set('needleSize', value)}
-            placeholder="e.g. 0.25mm / 18U"
+            placeholder="e.g., 0.18mm, 7-pin"
             value={String(details.needleSize ?? '')}
           />
 
@@ -699,12 +732,12 @@ export function MicropigmentationDetailsStep({
         <RegistrationContinueSection
           canContinue={canContinue}
           disabledMessage={
-            !procedure
+            !selectedProcedures.length
               ? 'Select a service type to continue'
               : showErrors && missingItems.length
                 ? `To continue, complete: ${missingItems.slice(0, 3).join(' · ')}`
                 : serviceCreating
-                  ? `Creating ${micropigmentationServiceDisplayName(procedure)}...`
+                  ? `Creating ${micropigmentationServiceDisplayName(selectedProcedures[0] ?? procedure)}...`
                   : undefined
           }
           label={serviceCreating ? 'Creating service...' : 'Confirm and Submit'}
