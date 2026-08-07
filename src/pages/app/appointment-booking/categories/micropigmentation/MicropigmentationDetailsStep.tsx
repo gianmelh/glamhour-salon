@@ -280,7 +280,7 @@ function ServiceTypeGroups({
               return (
                 <button
                   className={cn(
-                    'min-h-20 min-w-[134px] rounded-[16px] border px-4 py-3 text-center text-[16px] leading-[1.35] tracking-[-0.32px] text-black',
+                    'min-h-20 min-w-[150px] max-w-[150px] whitespace-normal break-words rounded-[16px] border px-3 py-3 text-center text-[15px] leading-[1.25] tracking-[-0.3px] text-black',
                     active ? 'border-[#7344cd] bg-[#ebe7ff]' : 'border-[#d0d5dd] bg-[#fcfcfd]',
                   )}
                   key={option}
