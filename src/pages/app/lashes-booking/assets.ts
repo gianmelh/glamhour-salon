@@ -22,4 +22,6 @@ export const lashesBookingAssets = {
   swap: `${iconsBase}/swap.svg`,
   help: `${lashesBase}/QuestionMark.png`,
   photoPlaceholder: `${cosmetologyBase}/Image (Vista previa de la foto).png`,
+  /** Try-on stickers from Figma 629:1770 — see `lashPreviewStickers.ts`. */
+  previewStickers: `${lashesBase}/preview-stickers`,
 } as const;

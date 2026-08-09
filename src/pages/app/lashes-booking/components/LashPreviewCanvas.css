@@ -1,0 +1,29 @@
+/* Local to Lashes preview stickers — do not import outside this screen. */
+
+.lash-preview-sticker,
+.lash-preview-sticker:hover,
+.lash-preview-sticker:focus,
+.lash-preview-sticker:focus-visible,
+.lash-preview-sticker:active,
+.lash-preview-sticker:focus-within {
+  background: transparent !important;
+  background-color: transparent !important;
+  -webkit-appearance: none;
+  appearance: none;
+  box-shadow: none;
+}
+
+.lash-preview-sticker::before,
+.lash-preview-sticker::after {
+  content: none !important;
+  display: none !important;
+  background: transparent !important;
+}
+
+.lash-preview-sticker img {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  filter: none;
+  mix-blend-mode: normal;
+}

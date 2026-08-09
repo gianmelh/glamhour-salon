@@ -12,6 +12,7 @@ import {
   LashVolumePicker,
 } from "./LashOptionPickers";
 import { LashMapEditor } from "./LashMapEditor";
+import { LashPreviewCanvas } from "./LashPreviewCanvas";
 import {
   LashesPrimaryButton,
   LashesSecondaryButton,
@@ -23,6 +24,19 @@ import {
   LashesStepHeader,
   lashesSelectionShell,
 } from "./lashesUi";
+import {
+  availableVariantsForStyle,
+  isLashPreviewComboAvailable,
+  LASH_PREVIEW_STYLE_OPTIONS,
+  LASH_PREVIEW_VARIANT_OPTIONS,
+  type LashPreviewStyleKey,
+  type LashPreviewVariantKey,
+} from "../lashPreviewStickers";
+import {
+  previewSelectionPatch,
+  resolvePreviewSelectionFromDetails,
+} from "../lashPreviewDetailsBridge";
+import type { LashPreviewStickersState } from "../types";
 
 export function LashesWizardShell({
   children,
@@ -626,32 +640,89 @@ export function LashesPhotoPreviewScreen({
   const previewUrl = String(
     details.photoLocalPreviewUrl ?? details.photoPreviewUrl ?? lashesBookingAssets.photoPlaceholder
   );
-  const style = String(details.style ?? "");
-  const variant = String(details.variant ?? "");
-  const styleOptions = [
-    { label: "Cat eye", value: "Cat eye" },
-    { label: "Fox eye", value: "Fox" },
-  ];
+  const resolved = resolvePreviewSelectionFromDetails(details);
+  const style = resolved.previewStyle;
+  const variant = resolved.previewVariant;
+  const enabledVariants = availableVariantsForStyle(style);
+  const comboAvailable = Boolean(
+    variant && isLashPreviewComboAvailable(style, variant),
+  );
+  const [swapNonce, setSwapNonce] = useState(0);
+  const [deselectNonce, setDeselectNonce] = useState(0);
+  const storedStickers = details.lashPreviewStickers as
+    | LashPreviewStickersState
+    | undefined;
+
+  const clearPreviewSelection = () => {
+    setDeselectNonce((value) => value + 1);
+  };
+
+  const commitPreviewSelection = (
+    nextStyle: LashPreviewStyleKey,
+    nextVariant: LashPreviewVariantKey,
+  ) => {
+    onChange(previewSelectionPatch(nextStyle, nextVariant));
+  };
+
+  // Canonicalize Preview → Details keys when entering the screen (e.g. Clasica→Classica, Base→Classic).
+  useEffect(() => {
+    if (!variant || !comboAvailable) return;
+    const patch = previewSelectionPatch(style, variant);
+    const styleMismatch = details.style !== patch.style;
+    const variantMismatch = String(details.variant ?? "") !== variant;
+    const volumeMismatch =
+      patch.volume !== undefined && details.volume !== patch.volume;
+    if (styleMismatch || variantMismatch || volumeMismatch) {
+      onChange(patch);
+    }
+    // Intentionally once on mount for the resolved combo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectStyle = (nextStyle: LashPreviewStyleKey) => {
+    clearPreviewSelection();
+    const available = availableVariantsForStyle(nextStyle);
+    const nextVariant =
+      variant && available.includes(variant)
+        ? variant
+        : (available[0] ?? null);
+    if (!nextVariant) {
+      onChange({ style: previewSelectionPatch(nextStyle, "Classic").style });
+      return;
+    }
+    commitPreviewSelection(nextStyle, nextVariant);
+  };
+
+  const selectVariant = (nextVariant: LashPreviewVariantKey) => {
+    clearPreviewSelection();
+    commitPreviewSelection(style, nextVariant);
+  };
+
+  const swapSides = () => {
+    clearPreviewSelection();
+    setSwapNonce((value) => value + 1);
+  };
 
   return (
-    <LashesWizardShell>
+    <LashesWizardShell gap={24}>
       <WizardHeader
         onBack={onBack}
         subtitle="Drag and drop styles onto your photo to instantly preview your look."
         title="Preview"
       />
-      <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="mb-2 text-[12px] font-normal text-[#0c111d]">
+      <div className="flex w-full min-w-0 flex-col gap-4">
+        <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
+          <div className="min-w-0 flex-1">
+            <p className="mb-2 text-[12px] font-normal leading-[1.4] tracking-[0.24px] text-black">
               Styles
             </p>
             <div className="flex flex-wrap gap-2">
-              {styleOptions.map((option) => (
+              {LASH_PREVIEW_STYLE_OPTIONS.map((option) => (
                 <button
+                  aria-pressed={style === option.value}
                   className={previewChipClass(style === option.value)}
                   key={option.value}
-                  onClick={() => onChange({ style: option.value })}
+                  onClick={() => selectStyle(option.value)}
                   type="button"
                 >
                   {option.label}
@@ -659,39 +730,56 @@ export function LashesPhotoPreviewScreen({
               ))}
             </div>
           </div>
-          <div>
-            <p className="mb-2 text-[12px] font-normal text-[#0c111d]">
+          <div className="min-w-0 sm:max-w-[220px]">
+            <p className="mb-2 text-[12px] font-normal leading-[1.4] tracking-[0.24px] text-black">
               Variant
             </p>
             <div className="flex flex-wrap gap-2">
-              {lashVariantOptions.map((option) => (
-                <button
-                  className={previewChipClass(variant === option.key)}
-                  key={option.key}
-                  onClick={() => onChange({ variant: option.key })}
-                  type="button"
-                >
-                  {option.title}
-                </button>
-              ))}
+              {LASH_PREVIEW_VARIANT_OPTIONS.map((option) => {
+                const enabled = enabledVariants.includes(option.value);
+                return (
+                  <button
+                    aria-disabled={!enabled}
+                    aria-pressed={variant === option.value}
+                    className={previewChipClass(
+                      variant === option.value,
+                      !enabled,
+                    )}
+                    disabled={!enabled}
+                    key={option.value}
+                    onClick={() => {
+                      if (enabled) selectVariant(option.value);
+                    }}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
         <button
-          className="inline-flex items-center gap-2 self-start rounded-full bg-[#ebe7ff] px-4 py-2 text-[12px] font-medium text-[#0c111d]"
+          className="inline-flex items-center justify-center gap-2.5 self-start rounded-full bg-[#ebe7ff] px-3 py-1.5 text-[12px] font-normal leading-[1.4] tracking-[0.24px] text-[#0c111d] disabled:opacity-40"
+          disabled={!comboAvailable}
+          onClick={swapSides}
           type="button"
         >
-          <img alt="" className="size-6" src={lashesBookingAssets.swap} />
+          <img alt="" className="size-6 shrink-0" src={lashesBookingAssets.swap} />
           Swap sides
         </button>
       </div>
-      <img
-        alt="Lash style preview"
-        className="h-[431px] w-full rounded-[16px] object-cover"
-        src={previewUrl}
+      <LashPreviewCanvas
+        deselectNonce={deselectNonce}
+        initialStickers={storedStickers ?? null}
+        onStickersChange={(next) => onChange({ lashPreviewStickers: next })}
+        photoUrl={previewUrl}
+        style={style}
+        swapNonce={swapNonce}
+        variant={variant ?? ""}
       />
-      <div className="flex flex-col gap-3 py-4">
-        <LashesPrimaryButton onClick={onContinue}>
+      <div className="flex flex-col gap-2 py-4">
+        <LashesPrimaryButton disabled={!comboAvailable} onClick={onContinue}>
           Use this combination
         </LashesPrimaryButton>
         <LashesSecondaryButton onClick={onRetake}>
@@ -702,10 +790,14 @@ export function LashesPhotoPreviewScreen({
   );
 }
 
-const previewChipClass = (active: boolean) =>
+const previewChipClass = (active: boolean, disabled = false) =>
   cn(
-    "rounded-full px-3 py-2 text-[12px] font-normal leading-none transition",
-    active ? "bg-[#ebe7ff] text-[#0c111d]" : "bg-white text-[#475467]"
+    "rounded-full px-3 py-1.5 text-[12px] font-normal leading-[1.4] tracking-[0.24px] transition",
+    disabled
+      ? "cursor-not-allowed bg-[#f2f5ff] text-[#98a2b3] line-through decoration-[#98a2b3]/80"
+      : active
+        ? "bg-[#ebe7ff] text-[#101828]"
+        : "bg-[#f2f5ff] text-[#0c111d]",
   );
 
 export function LashesLashMapScreen({

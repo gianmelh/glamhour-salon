@@ -17,6 +17,7 @@ export function LashSelectionCard({
 }) {
   return (
     <button
+      aria-pressed={Boolean(active)}
       className={cn(
         lashesSelectionShell(
           Boolean(active),

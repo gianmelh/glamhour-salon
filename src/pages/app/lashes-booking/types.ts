@@ -5,6 +5,20 @@ export type LashMapEntry = {
   length: number
 }
 
+export type LashPreviewStickerTransform = {
+  assetSide: 'left' | 'right'
+  xPct: number
+  yPct: number
+  scale: number
+  rotationDeg: number
+}
+
+/** Persisted Preview try-on transforms (shared Lashes details state). */
+export type LashPreviewStickersState = {
+  a: LashPreviewStickerTransform
+  b: LashPreviewStickerTransform
+}
+
 export type LashesDetails = {
   style?: string
   variant?: string
@@ -16,6 +30,8 @@ export type LashesDetails = {
   lashMapLength?: number
   activeLashEye?: LashEyeName
   lashMap?: Partial<Record<LashEyeName, LashMapEntry[]>>
+  /** Preview overlay transforms — survives navigation within the Lashes flow. */
+  lashPreviewStickers?: LashPreviewStickersState
   photoLocalPreviewUrl?: string
   photoPreviewUrl?: string
   photoStorageKey?: string
@@ -49,6 +65,7 @@ export const LASHES_DETAIL_KEYS = [
   'lashMapLength',
   'activeLashEye',
   'lashMap',
+  'lashPreviewStickers',
   'photoLocalPreviewUrl',
   'photoPreviewUrl',
   'photoStorageKey',

@@ -23,11 +23,12 @@ export const lashesDetailsLayout = {
 } as const
 
 export const lashStyleOptions = [
+  { label: 'Anime', key: 'Anime' },
   { label: 'Cat eye', key: 'Cat eye' },
-  { label: 'Fox', key: 'Fox' },
   { label: 'Classica', key: 'Classica' },
-  { label: 'Eyeliner', key: 'Eyeliner' },
   { label: 'Doll', key: 'Doll' },
+  { label: 'Eyeliner', key: 'Eyeliner' },
+  { label: 'Fox', key: 'Fox' },
   { label: 'Wispy', key: 'Wispy' },
 ] as const
 
