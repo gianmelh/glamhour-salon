@@ -23,6 +23,8 @@ const LASHES_ONLY_KEYS = new Set([
 const COSMETOLOGY_DETAIL_KEYS = [
   'skin_type',
   'serviceType',
+  'appointmentNotes',
+  'appointmentPriceMinor',
   'generalFullName',
   'generalPhone',
   'generalDateOfBirth',
