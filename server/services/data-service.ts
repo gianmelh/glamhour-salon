@@ -67,7 +67,7 @@ interface EligibleProviderFilters {
 interface CreateAppointmentInput {
   salonId: string
   clientId: string
-  professionalId: string
+  professionalId?: string | null
   serviceIds: string[]
   startsAt: string
   endsAt: string
@@ -100,7 +100,7 @@ interface RescheduleAppointmentInput {
 interface CreateClientInput {
   fullName: string
   email?: string
-  phone?: string
+  phone: string
   dateOfBirth?: string
   preferredLanguage?: string
   notes?: string
@@ -159,6 +159,7 @@ interface OnboardingProviderInput {
   salonPercent: string
   professionalPercent: string
   serviceIds: string[]
+  serviceDurations?: Record<string, string>
   schedule: Record<string, OnboardingDayInput>
   useSalonSchedule?: boolean
 }
@@ -496,6 +497,17 @@ function slugifySalonName(name: string) {
     .replace(/^-+|-+$/g, '')
 
   return slug || 'salon'
+}
+
+function slugifyServiceName(name: string) {
+  const slug = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return slug || 'service'
 }
 
 function safeStorageFilename(filename: string) {
@@ -1510,7 +1522,7 @@ export const dataService = {
          FROM appointments a
          JOIN salons s ON s.id = a.salon_id
          JOIN clients c ON c.salon_id = a.salon_id AND c.id = a.client_id
-         JOIN professionals p ON p.salon_id = a.salon_id AND p.id = a.professional_id
+         LEFT JOIN professionals p ON p.salon_id = a.salon_id AND p.id = a.professional_id
          WHERE a.salon_id = $1
            AND (a.starts_at AT TIME ZONE s.timezone)::date = $2::date
            AND a.status_code <> 'canceled'
@@ -1751,13 +1763,14 @@ export const dataService = {
       for (const [index, service] of selectedServices.entries()) {
         const durationMinutes = parseOnboardingInteger(service.duration, 'Service durations must be positive whole minutes.')
         const priceMinor = parseOnboardingMoney(service.price)
+        const slug = slugifyServiceName(service.name.trim())
         const existing = await clientRows<{ id: string }>(
           client,
           `SELECT id FROM services
-           WHERE salon_id = $1 AND category_id = $2 AND lower(name) = lower($3)
+           WHERE salon_id = $1 AND category_id = $2 AND (slug = $3 OR lower(name) = lower($4))
            ORDER BY created_at
            LIMIT 1`,
-          [salonId, service.categoryId, service.name.trim()],
+          [salonId, service.categoryId, slug, service.name.trim()],
         )
 
         const rows = existing[0]
@@ -1765,24 +1778,33 @@ export const dataService = {
               client,
               `UPDATE services
                SET name = $3,
-                   duration_minutes = $4,
-                   price_minor = $5,
+                   slug = $4,
+                   duration_minutes = $5,
+                   price_minor = $6,
                    currency_code = 'USD',
                    is_active = true,
                    is_publicly_bookable = true,
-                   sort_order = $6
+                   sort_order = $7
                WHERE salon_id = $1 AND id = $2
                RETURNING id`,
-              [salonId, existing[0].id, service.name.trim(), durationMinutes, priceMinor, index * 10],
+              [salonId, existing[0].id, service.name.trim(), slug, durationMinutes, priceMinor, index * 10],
             )
           : await clientRows<{ id: string }>(
               client,
               `INSERT INTO services (
-                 salon_id, category_id, name, duration_minutes, price_minor,
+                 salon_id, category_id, name, slug, duration_minutes, price_minor,
                  currency_code, is_active, is_publicly_bookable, sort_order
-               ) VALUES ($1, $2, $3, $4, $5, 'USD', true, true, $6)
+               ) VALUES ($1, $2, $3, $4, $5, $6, 'USD', true, true, $7)
+               ON CONFLICT (salon_id, slug) DO UPDATE SET
+                 name = EXCLUDED.name,
+                 duration_minutes = EXCLUDED.duration_minutes,
+                 price_minor = EXCLUDED.price_minor,
+                 is_active = true,
+                 is_publicly_bookable = true,
+                 sort_order = EXCLUDED.sort_order,
+                 updated_at = now()
                RETURNING id`,
-              [salonId, service.categoryId, service.name.trim(), durationMinutes, priceMinor, index * 10],
+              [salonId, service.categoryId, service.name.trim(), slug, durationMinutes, priceMinor, index * 10],
             )
         if (rows[0]) serviceIdByDraftId.set(service.id, rows[0].id)
       }
@@ -1910,15 +1932,29 @@ export const dataService = {
         for (const draftServiceId of provider.serviceIds) {
           const serviceId = serviceIdByDraftId.get(draftServiceId)
           if (!serviceId) continue
+          const durationValue = provider.serviceDurations?.[draftServiceId]
+          const durationOverrideMinutes = durationValue?.trim()
+            ? parseOnboardingInteger(durationValue, 'Provider service durations must be positive whole minutes.')
+            : null
           await client.query(
-            `INSERT INTO professional_services (salon_id, professional_id, service_id, is_active)
-             VALUES ($1, $2, $3, true)
-             ON CONFLICT (professional_id, service_id) DO UPDATE SET is_active = true`,
-            [salonId, professionalId, serviceId],
+            `INSERT INTO professional_services (salon_id, professional_id, service_id, is_active, duration_override_minutes)
+             VALUES ($1, $2, $3, true, $4)
+             ON CONFLICT (professional_id, service_id) DO UPDATE SET
+               is_active = true,
+               duration_override_minutes = EXCLUDED.duration_override_minutes,
+               updated_at = now()`,
+            [salonId, professionalId, serviceId, durationOverrideMinutes],
           )
         }
 
-        await upsertProfessionalWorkingHours(client, salonId, professionalId, provider.schedule)
+        if (provider.useSalonSchedule === false) {
+          await upsertProfessionalWorkingHours(client, salonId, professionalId, provider.schedule)
+        } else {
+          await client.query(
+            'DELETE FROM professional_working_hours WHERE salon_id = $1 AND professional_id = $2',
+            [salonId, professionalId],
+          )
+        }
       }
 
       const rows = await clientRows<Salon>(
@@ -2423,6 +2459,32 @@ export const dataService = {
     )
   },
 
+  updateClient(salonId: string, id: string, input: CreateClientInput): Promise<Client> {
+    return oneOrNotFound<Client>(
+      `UPDATE clients
+       SET full_name = $3,
+           email = $4,
+           phone = $5,
+           date_of_birth = $6,
+           preferred_language = $7,
+           notes = $8,
+           updated_at = now()
+       WHERE salon_id = $1 AND id = $2 AND deleted_at IS NULL
+       RETURNING *`,
+      [
+        salonId,
+        id,
+        input.fullName,
+        input.email ?? null,
+        input.phone,
+        input.dateOfBirth ?? null,
+        input.preferredLanguage ?? null,
+        input.notes ?? null,
+      ],
+      'Client not found',
+    )
+  },
+
   listServiceCategories(salonId?: string): Promise<ServiceCategory[]> {
     if (!salonId) {
       return query<ServiceCategory>(
@@ -2901,7 +2963,7 @@ export const dataService = {
          ) AS treatment_details_by_category
        FROM appointments a
        JOIN clients c ON c.salon_id = a.salon_id AND c.id = a.client_id
-       JOIN professionals p ON p.salon_id = a.salon_id AND p.id = a.professional_id
+       LEFT JOIN professionals p ON p.salon_id = a.salon_id AND p.id = a.professional_id
        WHERE a.salon_id = $1
          AND ($2::timestamptz IS NULL OR a.starts_at >= $2)
          AND ($3::timestamptz IS NULL OR a.starts_at < $3)
@@ -2999,7 +3061,7 @@ export const dataService = {
          ) AS health_questionnaire_answers
        FROM appointments a
        JOIN clients c ON c.salon_id = a.salon_id AND c.id = a.client_id
-       JOIN professionals p ON p.salon_id = a.salon_id AND p.id = a.professional_id
+       LEFT JOIN professionals p ON p.salon_id = a.salon_id AND p.id = a.professional_id
        LEFT JOIN appointment_services aps ON aps.salon_id = a.salon_id AND aps.appointment_id = a.id
        WHERE a.salon_id = $1 AND a.id = $2
        GROUP BY a.id, c.full_name, p.full_name`,
@@ -3055,44 +3117,46 @@ export const dataService = {
         throw new ApiError(400, 'One or more services are unavailable for this professional.')
       }
 
-      const providerRows = await clientRows<QueryResultRow>(
-        client,
-        `SELECT 1
-         FROM professionals
-         WHERE salon_id = $1 AND id = $2 AND status = 'active' AND deleted_at IS NULL
-         LIMIT 1`,
-        [input.salonId, input.professionalId],
-      )
-      if (!providerRows[0]) {
-        throw new ApiError(400, 'Professional is unavailable.')
-      }
+      if (input.professionalId) {
+        const providerRows = await clientRows<QueryResultRow>(
+          client,
+          `SELECT 1
+           FROM professionals
+           WHERE salon_id = $1 AND id = $2 AND status = 'active' AND deleted_at IS NULL
+           LIMIT 1`,
+          [input.salonId, input.professionalId],
+        )
+        if (!providerRows[0]) {
+          throw new ApiError(400, 'Professional is unavailable.')
+        }
 
-      await client.query(
-        `INSERT INTO professional_services (
-           salon_id, professional_id, service_id, is_active, duration_override_minutes
-         )
-         SELECT $1, $2, s.id, true, s.duration_minutes
-         FROM services s
-         WHERE s.salon_id = $1 AND s.id = ANY($3::uuid[]) AND s.is_active
-         ON CONFLICT (professional_id, service_id)
-         DO UPDATE SET is_active = true, duration_override_minutes = EXCLUDED.duration_override_minutes, updated_at = now()`,
-        [input.salonId, input.professionalId, input.serviceIds],
-      )
+        await client.query(
+          `INSERT INTO professional_services (
+             salon_id, professional_id, service_id, is_active, duration_override_minutes
+           )
+           SELECT $1, $2, s.id, true, s.duration_minutes
+           FROM services s
+           WHERE s.salon_id = $1 AND s.id = ANY($3::uuid[]) AND s.is_active
+           ON CONFLICT (professional_id, service_id)
+           DO UPDATE SET is_active = true, duration_override_minutes = EXCLUDED.duration_override_minutes, updated_at = now()`,
+          [input.salonId, input.professionalId, input.serviceIds],
+        )
 
-      const conflicts = await clientRows<QueryResultRow>(
-        client,
-        `SELECT 1
-         FROM appointments
-         WHERE salon_id = $1
-           AND professional_id = $2
-           AND status_code NOT IN ('completed', 'canceled', 'no_show')
-           AND starts_at < $4::timestamptz
-           AND ends_at > $3::timestamptz
-         LIMIT 1`,
-        [input.salonId, input.professionalId, input.startsAt, input.endsAt],
-      )
-      if (conflicts[0]) {
-        throw new ApiError(409, 'The professional is unavailable for that time.')
+        const conflicts = await clientRows<QueryResultRow>(
+          client,
+          `SELECT 1
+           FROM appointments
+           WHERE salon_id = $1
+             AND professional_id = $2
+             AND status_code NOT IN ('completed', 'canceled', 'no_show')
+             AND starts_at < $4::timestamptz
+             AND ends_at > $3::timestamptz
+           LIMIT 1`,
+          [input.salonId, input.professionalId, input.startsAt, input.endsAt],
+        )
+        if (conflicts[0]) {
+          throw new ApiError(409, 'The professional is unavailable for that time.')
+        }
       }
 
       const appointments = await clientRows<Appointment>(
@@ -3105,7 +3169,7 @@ export const dataService = {
         [
           input.salonId,
           input.clientId,
-          input.professionalId,
+          input.professionalId ?? null,
           input.source,
           input.startsAt,
           input.endsAt,
@@ -4094,7 +4158,7 @@ export const dataService = {
           ON aps.salon_id = a.salon_id AND aps.appointment_id = a.id
         JOIN clients c
           ON c.salon_id = a.salon_id AND c.id = a.client_id
-        JOIN professionals p
+        LEFT JOIN professionals p
           ON p.salon_id = a.salon_id AND p.id = a.professional_id
         LEFT JOIN services s
           ON s.salon_id = a.salon_id AND s.id = aps.service_id
@@ -4252,7 +4316,7 @@ export const dataService = {
         JOIN appointment_financials af ON af.salon_id = a.salon_id AND af.appointment_id = a.id
         JOIN appointment_services aps ON aps.salon_id = a.salon_id AND aps.appointment_id = a.id
         JOIN clients c ON c.salon_id = a.salon_id AND c.id = a.client_id
-        JOIN professionals p ON p.salon_id = a.salon_id AND p.id = a.professional_id
+        LEFT JOIN professionals p ON p.salon_id = a.salon_id AND p.id = a.professional_id
         LEFT JOIN services s ON s.salon_id = a.salon_id AND s.id = aps.service_id
         LEFT JOIN service_categories sc ON sc.id = s.category_id OR sc.code = aps.category_code_snapshot
         LEFT JOIN treatment_records tr ON tr.salon_id = a.salon_id AND tr.appointment_service_id = aps.id

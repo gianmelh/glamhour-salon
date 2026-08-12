@@ -13,6 +13,7 @@ export type NailsHandMap = Partial<Record<FingerName, NailFingerMeasurement>>
 export type NailsDetails = {
   nailServiceType?: string
   nailType?: string
+  customNailTypeName?: string
   materialIds?: string[]
   materialLabels?: string[]
   materials?: string[]
@@ -48,6 +49,7 @@ export type NailsDetails = {
 export const NAILS_DETAIL_KEYS = [
   'nailServiceType',
   'nailType',
+  'customNailTypeName',
   'materialIds',
   'materialLabels',
   'materials',

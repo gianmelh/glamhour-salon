@@ -52,6 +52,7 @@ type DraftProvider = {
   professionalPercent: string
   categoryIds?: string[]
   serviceIds: string[]
+  serviceDurations?: Record<string, string>
   schedule: Record<string, DraftDay>
   useSalonSchedule?: boolean
 }
@@ -308,6 +309,7 @@ function createDraft(categories: ServiceCategory[], services: Service[], profess
       professionalPercent: professional.professional_earnings_percent.split('.')[0] ?? '40',
       categoryIds: [],
       serviceIds: serviceDrafts.filter((service) => service.selected).map((service) => service.id),
+      serviceDurations: {},
       schedule: defaultSchedule,
       useSalonSchedule: false,
     })),
@@ -325,6 +327,7 @@ function createBlankProvider(schedule: Record<string, DraftDay>): DraftProvider 
     professionalPercent: '60',
     categoryIds: [],
     serviceIds: [],
+    serviceDurations: {},
     schedule,
     useSalonSchedule: true,
   }
@@ -810,11 +813,11 @@ function ScheduleTimeInput({ value, onCommit }: { value: string; onCommit: (valu
   )
 }
 
-function ProviderWeeklySchedule({ schedule, updateDay }: { schedule: Record<string, DraftDay>; updateDay: (day: string, patch: Partial<DraftDay>) => void }) {
+function ProviderWeeklySchedule({ schedule, updateDay, readOnly = false }: { schedule: Record<string, DraftDay>; updateDay: (day: string, patch: Partial<DraftDay>) => void; readOnly?: boolean }) {
   return (
     <div className="mt-4 rounded-2xl border border-[#d7dce8] bg-white px-5 py-6 shadow-[0_3px_10px_rgb(34_42_66_/_0.03)]">
       <h3 className="text-[22px] font-bold leading-7 text-[#10172a]">Weekly Schedule</h3>
-      <p className="mt-2 text-[15px] leading-5 text-[#6f7890]">Configure opening and closing times for each day</p>
+      <p className="mt-2 text-[15px] leading-5 text-[#6f7890]">{readOnly ? 'Using the salon schedule.' : 'Configure opening and closing times for each day'}</p>
       <div className="mt-7">
         {weekDays.map((day) => {
           const daySchedule = schedule[day]
@@ -826,6 +829,7 @@ function ProviderWeeklySchedule({ schedule, updateDay }: { schedule: Record<stri
                   aria-label={daySchedule.enabled ? `Disable ${day}` : `Enable ${day}`}
                   aria-pressed={daySchedule.enabled}
                   className={cn('relative h-7 w-12 rounded-full transition', daySchedule.enabled ? 'bg-[#7a3fe0]' : 'bg-[#e1e1e1]')}
+                  disabled={readOnly}
                   onClick={() => updateDay(day, { enabled: !daySchedule.enabled })}
                   type="button"
                 >
@@ -834,9 +838,9 @@ function ProviderWeeklySchedule({ schedule, updateDay }: { schedule: Record<stri
               </div>
               {daySchedule.enabled && (
                 <div className="mt-4 grid grid-cols-[88px_auto_88px] items-center gap-3">
-                  <ScheduleTimeInput onCommit={(value) => updateDay(day, { open: value })} value={daySchedule.open} />
+                  {readOnly ? <ReadOnlyTime value={daySchedule.open} /> : <ScheduleTimeInput onCommit={(value) => updateDay(day, { open: value })} value={daySchedule.open} />}
                   <span className="text-center text-[14px] font-medium text-[#7b8498]">to</span>
-                  <ScheduleTimeInput onCommit={(value) => updateDay(day, { close: value })} value={daySchedule.close} />
+                  {readOnly ? <ReadOnlyTime value={daySchedule.close} /> : <ScheduleTimeInput onCommit={(value) => updateDay(day, { close: value })} value={daySchedule.close} />}
                 </div>
               )}
             </div>
@@ -844,6 +848,14 @@ function ProviderWeeklySchedule({ schedule, updateDay }: { schedule: Record<stri
         })}
       </div>
     </div>
+  )
+}
+
+function ReadOnlyTime({ value }: { value: string }) {
+  return (
+    <span className="grid min-h-10 w-full place-items-center rounded-lg bg-[#f4f6fb] px-2 text-center text-[13px] font-medium text-[#7b8498]">
+      {formatTimeDisplay(value)}
+    </span>
   )
 }
 
@@ -1054,15 +1066,16 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
   }
 
   function updateProviderServiceDuration(serviceId: string, duration: string) {
-    const service = draft.services.find((item) => item.id === serviceId)
-    updateService(serviceId, { duration, selected: service ? Number(service.price) > 0 : false })
-    toggleProviderService(serviceId, true)
-  }
-
-  function updateService(serviceId: string, patch: Partial<DraftService>) {
     updateDraft((current) => ({
       ...current,
-      services: current.services.map((service) => service.id === serviceId ? { ...service, ...patch } : service),
+      providers: current.providers.map((item) => item.id === provider.id ? {
+        ...item,
+        serviceDurations: {
+          ...(item.serviceDurations ?? {}),
+          [serviceId]: duration,
+        },
+        serviceIds: [...new Set([...item.serviceIds, serviceId])],
+      } : item),
     }))
   }
 
@@ -1168,6 +1181,13 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
           </div>
           {usesSalonSchedule && (
             <ProviderWeeklySchedule
+              readOnly
+              schedule={salonSchedule}
+              updateDay={() => undefined}
+            />
+          )}
+          {!usesSalonSchedule && (
+            <ProviderWeeklySchedule
               schedule={provider.schedule}
               updateDay={(day, patch) => updateProvider({
                 schedule: {
@@ -1229,9 +1249,9 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
                       aria-label={`${service.name} duration`}
                       className="[appearance:textfield] min-w-0 bg-transparent text-center text-[12px] text-[#1b2133] outline-none placeholder:text-[12px] placeholder:text-[#7b8498] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       onChange={(event) => updateProviderServiceDuration(service.id, event.target.value)}
-                      placeholder="e.g. 40"
+                      placeholder={service.duration || '60'}
                       type="number"
-                      value={service.duration === '60' ? '' : service.duration}
+                      value={provider.serviceDurations?.[service.id] ?? service.duration}
                     />
                   </label>
                   <span className="text-[15px] leading-none text-[#10172a]">min</span>

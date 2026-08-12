@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { cn } from '../../../../lib/cn'
-import { lashesSelectionShell } from './lashesUi'
+import { lashesSelectionShell } from './lashesSelectionShell'
 
 export function LashSelectionCard({
   active,

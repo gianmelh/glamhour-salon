@@ -12,6 +12,7 @@ import {
 import { mergeSignature } from '../../components/signatureHelpers'
 import { SignatureBox } from '../../components/SignatureBox'
 import type { CategoryStepProps } from '../../types'
+import { formatBirthDateInput } from '../../dateMask'
 import {
   getMicropigmentationDetailsMissingItems,
   getMicropigmentationFieldErrors,
@@ -454,8 +455,9 @@ export function MicropigmentationDetailsStep({
             <TextField
               error={showErrors ? fieldErrors.generalDateOfBirth : undefined}
               label="Date of birth"
-              onChange={(value) => set('generalDateOfBirth', value)}
-              type="date"
+              onChange={(value) => set('generalDateOfBirth', formatBirthDateInput(value))}
+              placeholder="MM/DD/YYYY"
+              type="text"
               value={String(details.generalDateOfBirth ?? '')}
             />
             <TextField

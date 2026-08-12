@@ -30,6 +30,8 @@ export type LashesDetails = {
   lashMapLength?: number
   activeLashEye?: LashEyeName
   lashMap?: Partial<Record<LashEyeName, LashMapEntry[]>>
+  rightSide?: number
+  leftSide?: number
   /** Preview overlay transforms — survives navigation within the Lashes flow. */
   lashPreviewStickers?: LashPreviewStickersState
   photoLocalPreviewUrl?: string
@@ -65,6 +67,8 @@ export const LASHES_DETAIL_KEYS = [
   'lashMapLength',
   'activeLashEye',
   'lashMap',
+  'rightSide',
+  'leftSide',
   'lashPreviewStickers',
   'photoLocalPreviewUrl',
   'photoPreviewUrl',

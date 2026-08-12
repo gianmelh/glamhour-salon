@@ -10,6 +10,7 @@ import {
   RegistrationFlowShell,
 } from '../../components/RegistrationFlowShell'
 import type { CategoryStepProps } from '../../types'
+import { formatBirthDateInput } from '../../dateMask'
 import {
   cosmetologyAlcoholOptions,
   cosmetologyAlterationGroups,
@@ -723,8 +724,8 @@ export function CosmetologyDetailsStep({
           />
           <TextField
             label="Date of birth"
-            onChange={(value) => set('generalDateOfBirth', value)}
-            placeholder="e.g. 01/01/2000"
+            onChange={(value) => set('generalDateOfBirth', formatBirthDateInput(value))}
+            placeholder="MM/DD/YYYY"
             type="text"
             value={String(details.generalDateOfBirth ?? '')}
           />

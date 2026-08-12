@@ -7,6 +7,7 @@ export const nailServiceSetupItems = [
   'Removal',
   'Manicure',
   'Gel Polish',
+  'Dip Powder',
   'Dual System',
   'Press on',
   'Pedicure',

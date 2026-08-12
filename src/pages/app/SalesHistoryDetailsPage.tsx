@@ -56,7 +56,7 @@ export function SalesHistoryDetailsPage() {
       </section>
 
       <Card className="rounded-lg border-0 bg-white shadow-[0_4px_14px_rgb(18_24_38_/_0.04)]">
-        <InfoRow icon={<UserRound className="size-4" />} label="Assigned provider" value={record.professional_name} />
+        <InfoRow icon={<UserRound className="size-4" />} label="Assigned provider" value={record.professional_name ?? 'No provider assigned'} />
         <InfoRow icon={<DollarSign className="size-4" />} label="Subtotal" value={formatMoney(record.subtotal_minor, record.currency_code)} />
       </Card>
 
@@ -83,7 +83,7 @@ export function SalesHistoryDetailsPage() {
           categoryCode: record.category_code,
           serviceId: record.service_id ?? '',
           clientId: record.client_id,
-          providerId: record.professional_id,
+          providerId: record.professional_id ?? '',
           startsAt: '',
           notes: record.notes ?? '',
           details: record.treatment_details ?? {},

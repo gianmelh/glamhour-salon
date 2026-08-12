@@ -23,7 +23,3 @@ export function CategoryServiceStep(props: CategoryStepProps & { category: Servi
       )
   }
 }
-
-export function usesCategoryStepLayout(categoryCode: string) {
-  return ['nails', 'lashes', 'cosmetology', 'micropigmentation'].includes(categoryCode)
-}

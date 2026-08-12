@@ -10,7 +10,8 @@ import { deferTask, scrollMainToTop } from '../../../lib/defer'
 import { glamhourApi } from '../../../services/glamhour-api'
 import type { AvailabilitySlot, EligibleProvider } from '../../../types/api'
 import { NailsServicesScreen } from '../nails-booking/NailsServicesScreen'
-import { CategoryServiceStep, usesCategoryStepLayout } from './CategoryServiceStep'
+import { CategoryServiceStep } from './CategoryServiceStep'
+import { usesCategoryStepLayout } from './categoryStepLayout'
 import { buildAppointmentCategories } from './constants'
 import { APPOINTMENT_DRAFT_KEY, emptyDraft, initialBookingStep, readDraft, todayString } from './draft'
 import { ClientStep } from './steps/ClientHealthSteps'
@@ -32,6 +33,7 @@ import {
 } from './categories/micropigmentation/micropigmentationDetailsSpec'
 import type { AppointmentDraft, BookingStep, DraftPatch } from './types'
 import type { Service } from '../../../types/api'
+import type { Client } from '../../../types/api'
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -105,6 +107,16 @@ function shouldReviewAppointmentDetailsAfterService(categoryCode: string) {
     || categoryCode === 'micropigmentation'
 }
 
+function detailsWithSelectedClient(categoryCode: string, details: Record<string, unknown>, client: Client | undefined) {
+  if (!client || (categoryCode !== 'cosmetology' && categoryCode !== 'micropigmentation')) return details
+  return {
+    ...details,
+    generalFullName: client.full_name,
+    generalPhone: client.phone ?? '',
+    generalEmail: client.email ?? details.generalEmail ?? '',
+  }
+}
+
 export function NewAppointmentPage() {
   const navigate = useNavigate()
   const categories = useServiceCategories()
@@ -160,16 +172,20 @@ export function NewAppointmentPage() {
     if (new URLSearchParams(window.location.search).get('dev') !== 'lashes-details') return
     if (!categories.data || !clients.data || !services.data) return
     devLashesBootstrapped.current = true
-    setDraft({
-      ...emptyDraft(),
-      categoryCode: 'lashes',
-      categoryId: '50000000-0000-0000-0000-000000000002',
-      clientId: clients.data[0]?.id ?? '40000000-0000-0000-0000-000000000002',
-      serviceId: services.data.find((service) => service.category_code === 'lashes')?.id ?? '60000000-0000-0000-0000-000000000004',
-      date: todayString(),
-      details: { style: 'Cat eye' },
+    const clientData = clients.data
+    const serviceData = services.data
+    deferTask(() => {
+      setDraft({
+        ...emptyDraft(),
+        categoryCode: 'lashes',
+        categoryId: '50000000-0000-0000-0000-000000000002',
+        clientId: clientData[0]?.id ?? '40000000-0000-0000-0000-000000000002',
+        serviceId: serviceData.find((service) => service.category_code === 'lashes')?.id ?? '60000000-0000-0000-0000-000000000004',
+        date: todayString(),
+        details: { style: 'Cat eye' },
+      })
+      setStep('service')
     })
-    setStep('service')
   }, [categories.data, clients.data, services.data])
 
   useEffect(() => {
@@ -227,15 +243,15 @@ export function NewAppointmentPage() {
     const client = clients.data.find((item) => item.id === draft.clientId)
 
     if (!category) {
-      setStep('categories')
+      deferTask(() => setStep('categories'))
       return
     }
     if (!draft.clientId || !client) {
-      setStep('client')
+      deferTask(() => setStep('client'))
       return
     }
     if (!service) {
-      setStep('service')
+      deferTask(() => setStep('service'))
       return
     }
 
@@ -243,7 +259,7 @@ export function NewAppointmentPage() {
     // Cosmetology/Micropigmentation: also clear a stale serviceId when type has no active match.
     const clearsStaleService = draft.categoryCode === 'cosmetology' || draft.categoryCode === 'micropigmentation'
     if (resolvedServiceId !== draft.serviceId && (resolvedServiceId || clearsStaleService)) {
-      setDraft((current) => ({ ...current, serviceId: resolvedServiceId }))
+      deferTask(() => setDraft((current) => ({ ...current, serviceId: resolvedServiceId })))
     }
   }, [allServices, categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, draft.details.serviceType, draft.details.procedure, step])
 
@@ -618,15 +634,19 @@ export function NewAppointmentPage() {
           clientVisitByClientId={clientVisitByClientId}
           selectedClientId={draft.clientId}
           onCreate={(client) => clients.setData((current) => [client, ...(current ?? []).filter((item) => item.id !== client.id)])}
-          onSelect={(clientId) => setDraft((current) => ({
-            ...current,
-            clientId,
-            details: clientId === current.clientId ? current.details : {
+          onSelect={(clientId) => setDraft((current) => {
+            const client = (clients.data ?? []).find((item) => item.id === clientId)
+            const resetDetails = clientId === current.clientId ? current.details : {
               ...current.details,
               usedExistingHealthProfile: false,
               existingQuestionnaireId: null,
-            },
-          }))}
+            }
+            return {
+              ...current,
+              clientId,
+              details: detailsWithSelectedClient(current.categoryCode, resetDetails, client),
+            }
+          })}
           onContinueWithProfile={(details) => setDraft((current) => ({
             ...current,
             details: sanitizeDetailsForCategory('micropigmentation', {
@@ -644,7 +664,15 @@ export function NewAppointmentPage() {
           clientVisitByClientId={clientVisitByClientId}
           selectedClientId={draft.clientId}
           onCreate={(client) => clients.setData((current) => [client, ...(current ?? []).filter((item) => item.id !== client.id)])}
-          onSelect={(clientId) => setDraft((current) => ({ ...current, clientId }))}
+          onSelect={(clientId) => setDraft((current) => ({
+            ...current,
+            clientId,
+            details: detailsWithSelectedClient(
+              current.categoryCode,
+              current.details,
+              (clients.data ?? []).find((item) => item.id === clientId),
+            ),
+          }))}
           onNext={() => setStep('service')}
         />
       )}

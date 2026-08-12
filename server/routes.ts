@@ -240,6 +240,12 @@ router.post('/salons/:salonId/clients', asyncHandler(async (request, response) =
   response.status(201).json({ data: await dataService.createClient(salonId, body) })
 }))
 
+router.patch('/salons/:salonId/clients/:id', asyncHandler(async (request, response) => {
+  const { salonId, id } = validate(salonResourceParamsSchema, request.params)
+  const body = validate(createClientSchema, request.body)
+  response.json({ data: await dataService.updateClient(salonId, id, body) })
+}))
+
 router.get('/salons/:salonId/clients/:clientId/health-profiles', asyncHandler(async (request, response) => {
   const { salonId, clientId } = validate(clientParamsSchema, request.params)
   response.json({ data: await dataService.listHealthProfiles(salonId, clientId) })

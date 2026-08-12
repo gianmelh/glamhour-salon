@@ -61,6 +61,8 @@ const KEYS_BY_CATEGORY: Record<string, string[]> = {
     'curl',
     'thickness',
     'defaultLength',
+    'rightSide',
+    'leftSide',
     'lashMap',
   ],
   cosmetology: [
@@ -102,6 +104,8 @@ const LABEL_OVERRIDES: Record<string, string> = {
   rightHand: 'Right hand',
   leftHand: 'Left hand',
   defaultLength: 'Default length',
+  rightSide: 'Right Side',
+  leftSide: 'Left Side',
   eyeShape: 'Eye shape',
   lashMap: 'Lash map',
   skin_type: 'Skin type',
@@ -121,7 +125,7 @@ export function detailEntries(details: Record<string, unknown> | null, categoryC
   const seenLabels = new Set<string>()
 
   for (const key of keys) {
-    let value: string | null = null
+    let value: string | null
     if (key === 'rightHand' || key === 'leftHand') {
       value = formatHandSummary(details[key])
     } else if (key === 'lashMap') {

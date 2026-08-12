@@ -2,14 +2,6 @@ import type { ReactNode } from 'react'
 import { cn } from '../../../../lib/cn'
 import { lashesDetailsLayout } from '../lashesDetailsSpec'
 
-export function lashesSelectionShell(active: boolean, className?: string) {
-  return cn(
-    'border border-solid',
-    active ? 'border-[#7344cd] bg-[#ebe7ff]' : 'border-[#d0d5dd] bg-[#fcfcfd]',
-    className,
-  )
-}
-
 export function LashesSectionTitle({ children }: { children: string }) {
   return (
     <h2 className="w-full text-[28px] font-extrabold leading-[1.44] tracking-[-0.56px] text-black">

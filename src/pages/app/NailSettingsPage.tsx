@@ -410,6 +410,7 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
 }) {
   const selectedIds = new Set(draft.serviceAssignments.filter((assignment) => assignment.isActive).map((assignment) => assignment.serviceId))
   const update = (patch: Partial<ProviderDraft>) => onChange({ ...draft, ...patch })
+  const selectedServices = services.filter((service) => selectedIds.has(service.id))
   const servicesByCategory = treatmentCategories.reduce<Record<string, NailSettingsResponse['services']>>((result, category) => {
     result[category.code] = services.filter((service) => service.category_code === category.code)
     return result
@@ -435,6 +436,22 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
     })
     update({
       serviceAssignments: [...existingAssignments, ...nextCategoryAssignments],
+    })
+  }
+  const updateAssignmentDuration = (serviceId: string, durationOverrideMinutes: number) => {
+    const service = services.find((item) => item.id === serviceId)
+    if (!service) return
+    const assignment = draft.serviceAssignments.find((item) => item.serviceId === serviceId)
+    const nextAssignment = {
+      serviceId,
+      isActive: true,
+      durationOverrideMinutes,
+      priceOverrideMinor: assignment?.priceOverrideMinor,
+    }
+    update({
+      serviceAssignments: assignment
+        ? draft.serviceAssignments.map((item) => item.serviceId === serviceId ? { ...item, durationOverrideMinutes } : item)
+        : [...draft.serviceAssignments, nextAssignment],
     })
   }
 
@@ -478,6 +495,7 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
             <Switch checked={draft.useSalonSchedule} onChange={(checked) => update({ useSalonSchedule: checked, schedule: checked ? salonSchedule : draft.schedule })} />
           </div>
         </Card>
+        {draft.useSalonSchedule && <WeeklySchedule readOnly schedule={salonSchedule} onChange={() => undefined} />}
         {!draft.useSalonSchedule && <WeeklySchedule schedule={draft.schedule ?? salonSchedule} onChange={(schedule) => update({ schedule })} />}
         <Card className="space-y-3">
           <p className="text-sm font-bold text-[#11172a]">Services & Treatments</p>
@@ -507,6 +525,29 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
               )
             })}
           </div>
+          {selectedServices.length > 0 && (
+            <div className="space-y-2 border-t border-border pt-3">
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#68738b]">Provider durations</p>
+              {selectedServices.map((service) => {
+                const assignment = draft.serviceAssignments.find((item) => item.serviceId === service.id)
+                return (
+                  <div className="grid grid-cols-[1fr_96px] items-end gap-2 rounded-md border border-border bg-surface p-2" key={service.id}>
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-[#11172a]">{service.name}</p>
+                      <p className="text-[11px] text-[#68738b]">Salon default: {service.duration_minutes} min</p>
+                    </div>
+                    <Input
+                      aria-label={`${service.name} provider duration`}
+                      min={1}
+                      type="number"
+                      value={assignment?.durationOverrideMinutes ?? service.duration_minutes}
+                      onChange={(event) => updateAssignmentDuration(service.id, Number(event.target.value))}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </Card>
         <MutationError error={error} />
         <div className="grid grid-cols-2 gap-3">
@@ -541,12 +582,16 @@ function PhotoPicker({ draft, onChange }: { draft: ProviderDraft; onChange: (pat
   )
 }
 
-function WeeklySchedule({ schedule, onChange }: { schedule: Record<string, { enabled: boolean; open: string; close: string }>; onChange: (schedule: Record<string, { enabled: boolean; open: string; close: string }>) => void }) {
+function WeeklySchedule({ schedule, onChange, readOnly = false }: {
+  schedule: Record<string, { enabled: boolean; open: string; close: string }>
+  onChange: (schedule: Record<string, { enabled: boolean; open: string; close: string }>) => void
+  readOnly?: boolean
+}) {
   return (
     <Card className="space-y-4">
       <div>
         <p className="text-lg font-bold text-[#11172a]">Weekly Schedule</p>
-        <p className="text-xs leading-5 text-[#68738b]">Configure opening and closing times for each day</p>
+        <p className="text-xs leading-5 text-[#68738b]">{readOnly ? 'Salon schedule is inherited by this provider' : 'Configure opening and closing times for each day'}</p>
       </div>
       {weekdays.map((day) => {
         const value = schedule[day] ?? { enabled: false, open: '09:00', close: '18:00' }
@@ -554,13 +599,13 @@ function WeeklySchedule({ schedule, onChange }: { schedule: Record<string, { ena
           <div className="border-b border-border pb-3 last:border-b-0" key={day}>
             <div className="flex items-center justify-between">
               <p className="text-sm font-bold text-[#11172a]">{day}</p>
-              <Switch checked={value.enabled} onChange={(checked) => onChange({ ...schedule, [day]: { ...value, enabled: checked } })} />
+              <Switch checked={value.enabled} disabled={readOnly} onChange={(checked) => onChange({ ...schedule, [day]: { ...value, enabled: checked } })} />
             </div>
             {value.enabled && (
               <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <Input aria-label={`${day} opening time`} type="time" value={value.open} onChange={(event) => onChange({ ...schedule, [day]: { ...value, open: event.target.value } })} />
+                <Input aria-label={`${day} opening time`} readOnly={readOnly} type="time" value={value.open} onChange={(event) => onChange({ ...schedule, [day]: { ...value, open: event.target.value } })} />
                 <span className="text-xs text-[#68738b]">to</span>
-                <Input aria-label={`${day} closing time`} type="time" value={value.close} onChange={(event) => onChange({ ...schedule, [day]: { ...value, close: event.target.value } })} />
+                <Input aria-label={`${day} closing time`} readOnly={readOnly} type="time" value={value.close} onChange={(event) => onChange({ ...schedule, [day]: { ...value, close: event.target.value } })} />
               </div>
             )}
           </div>
@@ -605,11 +650,12 @@ function ReassignPanel({ provider, providers, appointments, message, loading, er
   )
 }
 
-function Switch({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+function Switch({ checked, onChange, disabled = false }: { checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) {
   return (
     <button
       aria-pressed={checked}
-      className={cn('relative h-8 w-14 shrink-0 rounded-full transition', checked ? 'bg-[#7a3fe0]' : 'bg-[#d8d8d8]')}
+      className={cn('relative h-8 w-14 shrink-0 rounded-full transition', checked ? 'bg-[#7a3fe0]' : 'bg-[#d8d8d8]', disabled && 'cursor-not-allowed opacity-60')}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       type="button"
     >

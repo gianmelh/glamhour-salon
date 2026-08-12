@@ -150,7 +150,7 @@ export interface Appointment extends Timestamped {
   id: string
   salon_id: string
   client_id: string
-  professional_id: string
+  professional_id: string | null
   status_code: string
   source: string
   starts_at: string
@@ -175,8 +175,8 @@ export interface SalesHistoryItem {
   salon_id: string
   client_id: string
   client_name: string
-  professional_id: string
-  professional_name: string
+  professional_id: string | null
+  professional_name: string | null
   provider_avatar_url: string | null
   starts_at: string
   ends_at: string
@@ -256,7 +256,7 @@ export interface DashboardAppointment {
   ends_at: string
   status_code: string
   client_name: string
-  professional_name: string
+  professional_name: string | null
   services: Array<{
     service_name_snapshot: string
     category_code_snapshot: string
@@ -368,7 +368,7 @@ export interface ReassignProfessionalInput {
 
 export interface CreateAppointmentInput {
   clientId: string
-  professionalId: string
+  professionalId?: string | null
   serviceIds: string[]
   startsAt: string
   endsAt: string
@@ -440,7 +440,7 @@ export interface HealthProfileVersion {
 export interface CreateClientInput {
   fullName: string
   email?: string
-  phone?: string
+  phone: string
   notes?: string
 }
 
@@ -497,6 +497,7 @@ export interface OnboardingProviderInput {
   salonPercent: string
   professionalPercent: string
   serviceIds: string[]
+  serviceDurations?: Record<string, string>
   schedule: Record<string, OnboardingDayInput>
   useSalonSchedule?: boolean
 }

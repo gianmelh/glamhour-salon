@@ -1,3 +1,5 @@
+import { isValidMmDdYyyy } from '../../dateMask'
+
 export const micropigmentationProcedureGroups = {
   Eyebrows: ['Microblading', 'Microshading', 'Hybrid', 'Removal'],
   Lips: ['Lip Liner', 'Micropigmentation', 'Hydragloss'],
@@ -276,7 +278,9 @@ export function getMicropigmentationFieldErrors(details: Record<string, unknown>
   if (!skipHealth) {
     if (!String(details.generalFullName ?? '').trim()) errors.generalFullName = 'Full name is required'
     if (!String(details.generalPhone ?? '').trim()) errors.generalPhone = 'Phone number is required'
-    if (!String(details.generalDateOfBirth ?? '').trim()) errors.generalDateOfBirth = 'Date of birth is required'
+    const birthDate = String(details.generalDateOfBirth ?? '').trim()
+    if (!birthDate) errors.generalDateOfBirth = 'Date of birth is required'
+    else if (!isValidMmDdYyyy(birthDate)) errors.generalDateOfBirth = 'Use MM/DD/YYYY'
     const email = String(details.generalEmail ?? '').trim()
     if (!email) errors.generalEmail = 'Email is required'
     else if (!emailPattern.test(email)) errors.generalEmail = 'Enter a valid email'

@@ -1,11 +1,13 @@
-import { useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Button } from '../../../../components'
 import { cosmetologyBookingAssets } from '../assets'
 
 export function SignatureBox({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   const [drawing, setDrawing] = useState(false)
   const valueRef = useRef(value)
-  valueRef.current = value
+  useEffect(() => {
+    valueRef.current = value
+  }, [value])
   const points = useMemo(() => value ? value.split(' ').map((pair) => pair.split(',').map(Number)) : [], [value])
 
   const addPoint = (event: PointerEvent<HTMLDivElement>) => {

@@ -77,7 +77,7 @@ export interface Appointment extends Timestamped {
   id: string
   salon_id: string
   client_id: string
-  professional_id: string
+  professional_id: string | null
   status_code: string
   source: string
   starts_at: string
@@ -134,8 +134,8 @@ export interface SalesHistoryItem {
   salon_id: string
   client_id: string
   client_name: string
-  professional_id: string
-  professional_name: string
+  professional_id: string | null
+  professional_name: string | null
   starts_at: string
   ends_at: string
   status_code: string

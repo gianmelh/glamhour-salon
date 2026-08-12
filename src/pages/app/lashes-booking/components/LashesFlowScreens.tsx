@@ -22,8 +22,8 @@ import {
   LashSection,
   LashesCategoryTab,
   LashesStepHeader,
-  lashesSelectionShell,
 } from "./lashesUi";
+import { lashesSelectionShell } from "./lashesSelectionShell";
 import {
   availableVariantsForStyle,
   isLashPreviewComboAvailable,

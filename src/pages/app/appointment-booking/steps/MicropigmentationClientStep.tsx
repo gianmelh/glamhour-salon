@@ -114,11 +114,11 @@ export function MicropigmentationClientStep({
           <Input label="Full name" placeholder="e.g. Sarah Johnson" value={newName} onChange={(event) => setNewName(event.target.value)} />
           <Input label="Phone number" placeholder="e.g. +52 55 1234 5678" value={newPhone} onChange={(event) => setNewPhone(event.target.value)} />
           <Button
-            disabled={!newName.trim()}
+            disabled={!newName.trim() || newPhone.trim().length < 7}
             fullWidth
             loading={createClient.loading}
             onClick={async () => {
-              const client = await createClient.mutate({ fullName: newName.trim(), phone: newPhone.trim() || undefined })
+              const client = await createClient.mutate({ fullName: newName.trim(), phone: newPhone.trim() })
               onCreate(client)
               onSelect(client.id)
               setCreating(false)

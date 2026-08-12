@@ -14,7 +14,8 @@ import {
 } from '../lashesDetailsSpec'
 import { LashInlineIcon } from './LashInlineIcon'
 import { LashSelectionCard, LashTextCard } from './LashSelectionCard'
-import { LashOptionGrid, lashesSelectionShell } from './lashesUi'
+import { LashOptionGrid } from './lashesUi'
+import { lashesSelectionShell } from './lashesSelectionShell'
 
 export function LashStylePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (

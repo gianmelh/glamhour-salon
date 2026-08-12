@@ -5,33 +5,12 @@ import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { Input } from '../ui/Input'
 import { cn } from '../../lib/cn'
-import type { OnboardingDayInput, Service, UpsertProfessionalInput } from '../../types/api'
+import type { OnboardingDayInput, Service } from '../../types/api'
+import type { ProfessionalDraft } from './professionalDraft'
 import { MutationError } from './MutationError'
-
-export type ProfessionalDraft = UpsertProfessionalInput & { id?: string; photoName?: string }
 
 const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const languageOptions = ['English', 'Spanish', 'Portuguese', 'Arabic']
-
-export const defaultSalonSchedule: Record<string, OnboardingDayInput> = Object.fromEntries(
-  weekdays.map((day) => [day, { enabled: day !== 'Sunday', open: '09:00', close: '18:00' }]),
-)
-
-export function emptyProfessionalDraft(salonSchedule = defaultSalonSchedule): ProfessionalDraft {
-  return {
-    fullName: '',
-    email: '',
-    phone: '',
-    avatarUrl: null,
-    languages: ['English'],
-    status: 'active',
-    salonEarningsPercent: 40,
-    professionalEarningsPercent: 60,
-    useSalonSchedule: true,
-    schedule: salonSchedule,
-    serviceAssignments: [],
-  }
-}
 
 export function ProfessionalEditorModal({ draft, services, salonSchedule, loading, error, onChange, onSubmit, onCancel }: {
   draft: ProfessionalDraft
@@ -123,6 +102,9 @@ export function ProfessionalEditorModal({ draft, services, salonSchedule, loadin
             </div>
           </Card>
 
+          {draft.useSalonSchedule && (
+            <WeeklySchedule readOnly onChange={() => undefined} schedule={salonSchedule} />
+          )}
           {!draft.useSalonSchedule && (
             <WeeklySchedule onChange={(schedule) => update({ schedule })} schedule={draft.schedule ?? salonSchedule} />
           )}
@@ -207,12 +189,12 @@ function PhotoPicker({ draft, onChange }: { draft: ProfessionalDraft; onChange: 
   )
 }
 
-function WeeklySchedule({ schedule, onChange }: { schedule: Record<string, OnboardingDayInput>; onChange: (schedule: Record<string, OnboardingDayInput>) => void }) {
+function WeeklySchedule({ schedule, onChange, readOnly = false }: { schedule: Record<string, OnboardingDayInput>; onChange: (schedule: Record<string, OnboardingDayInput>) => void; readOnly?: boolean }) {
   return (
     <Card className="space-y-4">
       <div>
         <p className="text-lg font-bold text-[#11172a]">Weekly schedule</p>
-        <p className="text-xs leading-5 text-[#68738b]">Configure opening and closing times for each day.</p>
+        <p className="text-xs leading-5 text-[#68738b]">{readOnly ? 'Using the salon schedule.' : 'Configure opening and closing times for each day.'}</p>
       </div>
       {weekdays.map((day) => {
         const value = schedule[day] ?? { enabled: false, open: '09:00', close: '18:00' }
@@ -220,13 +202,13 @@ function WeeklySchedule({ schedule, onChange }: { schedule: Record<string, Onboa
           <div className="border-b border-border pb-3 last:border-b-0" key={day}>
             <div className="flex items-center justify-between">
               <p className="text-sm font-bold text-[#11172a]">{day}</p>
-              <Toggle checked={value.enabled} onChange={(checked) => onChange({ ...schedule, [day]: { ...value, enabled: checked } })} />
+              <Toggle checked={value.enabled} disabled={readOnly} onChange={(checked) => onChange({ ...schedule, [day]: { ...value, enabled: checked } })} />
             </div>
             {value.enabled && (
               <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <Input aria-label={`${day} opening time`} type="time" value={value.open} onChange={(event) => onChange({ ...schedule, [day]: { ...value, open: event.target.value } })} />
+                <Input aria-label={`${day} opening time`} readOnly={readOnly} type="time" value={value.open} onChange={(event) => onChange({ ...schedule, [day]: { ...value, open: event.target.value } })} />
                 <span className="text-xs text-[#68738b]">to</span>
-                <Input aria-label={`${day} closing time`} type="time" value={value.close} onChange={(event) => onChange({ ...schedule, [day]: { ...value, close: event.target.value } })} />
+                <Input aria-label={`${day} closing time`} readOnly={readOnly} type="time" value={value.close} onChange={(event) => onChange({ ...schedule, [day]: { ...value, close: event.target.value } })} />
               </div>
             )}
           </div>
@@ -236,11 +218,12 @@ function WeeklySchedule({ schedule, onChange }: { schedule: Record<string, Onboa
   )
 }
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+function Toggle({ checked, disabled = false, onChange }: { checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
   return (
     <button
       aria-pressed={checked}
       className={cn('relative h-8 w-14 shrink-0 rounded-full transition', checked ? 'bg-[#7a3fe0]' : 'bg-[#d8d8d8]')}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       type="button"
     >

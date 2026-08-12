@@ -38,6 +38,11 @@ export const serviceTypeOptions = [
     imageSrc: nailsBookingAssets.serviceTypes.dualSystem,
   },
   {
+    label: 'Dip Powder',
+    variant: 'dual-system' as const,
+    imageSrc: nailsBookingAssets.serviceTypes.dualSystem,
+  },
+  {
     label: 'Manicure',
     variant: 'press-on' as const,
     imageSrc: nailsBookingAssets.serviceTypes.pressOn,
@@ -118,15 +123,6 @@ export const defaultMaterialSpecs: MaterialSpec[] = [
     imageCrop: 'absolute h-full left-[-42.59%] max-w-none top-0 w-[181.48%]',
     col: 2,
     row: 1,
-  },
-  {
-    id: 'dip-powder',
-    label: 'Did Powder',
-    imageSrc: nailsBookingAssets.materials.dipPowder,
-    imageFrame: 'h-[49px] w-[31px]',
-    col: 1,
-    row: 2,
-    width: 'w-[162.5px]',
   },
   {
     id: 'builder-gel',

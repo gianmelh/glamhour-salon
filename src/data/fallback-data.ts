@@ -60,7 +60,7 @@ export const fallbackSales: SalesHistoryItem[] = fallbackAppointments.map((appoi
   appointment_id: appointment.id,
   appointment_service_id: appointment.services?.[0]?.id ?? `fallback-sale-${index}`,
   salon_id: FALLBACK_SALON_ID, client_id: appointment.client_id, client_name: appointment.client_name ?? 'Client',
-  professional_id: appointment.professional_id, professional_name: appointment.professional_name ?? 'Professional', starts_at: appointment.starts_at, ends_at: appointment.ends_at,
+  professional_id: appointment.professional_id ?? fallbackProfessionals[0].id, professional_name: appointment.professional_name ?? 'Professional', starts_at: appointment.starts_at, ends_at: appointment.ends_at,
   provider_avatar_url: null,
   status_code: 'completed', subtotal_minor: fallbackServices[index].price_minor, discount_minor: 0, tax_minor: 0, tip_minor: 1000,
   total_minor: fallbackServices[index].price_minor + 1000, salon_earnings_minor: Math.round(fallbackServices[index].price_minor * 0.6),

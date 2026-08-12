@@ -11,7 +11,7 @@
     "start:api": "tsx server/index.ts",
     "build": "tsc -b && vite build",
     "typecheck:api": "tsc -p tsconfig.server.json",
-    "lint": "eslint .",
+    "lint": "eslint . -f json -o .eslint-report.json",
     "preview": "vite preview"
   },
   "dependencies": {

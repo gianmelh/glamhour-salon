@@ -67,7 +67,7 @@ export const uploadTreatmentMediaSchema = z.object({
 
 export const createAppointmentSchema = z.object({
   clientId: uuidSchema,
-  professionalId: uuidSchema,
+  professionalId: uuidSchema.optional().nullable(),
   serviceIds: z.array(uuidSchema).min(1),
   startsAt: isoDateTimeSchema,
   endsAt: isoDateTimeSchema,
@@ -194,7 +194,7 @@ export const updateAppointmentTreatmentDetailsSchema = z.object({
 export const createClientSchema = z.object({
   fullName: z.string().trim().min(1).max(160),
   email: z.string().email().max(320).optional(),
-  phone: z.string().trim().max(40).optional(),
+  phone: z.string().trim().min(7, 'Phone number is required.').max(40),
   dateOfBirth: z.string().date().optional(),
   preferredLanguage: z.string().trim().max(10).optional(),
   notes: z.string().max(5000).optional(),
@@ -336,6 +336,7 @@ export const saveOnboardingSchema = z.object({
       salonPercent: z.string().trim().min(1),
       professionalPercent: z.string().trim().min(1),
       serviceIds: z.array(z.string().min(1)),
+      serviceDurations: z.record(z.string(), z.string().trim()).optional(),
       schedule: z.record(z.string(), onboardingDaySchema),
       useSalonSchedule: z.boolean().optional(),
     })),

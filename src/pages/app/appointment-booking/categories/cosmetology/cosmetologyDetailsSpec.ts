@@ -1,3 +1,5 @@
+import { isValidMmDdYyyy } from '../../dateMask'
+
 export const cosmetologyServiceTypes = ['Dermapen', 'Peeling', 'Facial Cleansing'] as const
 
 export const cosmetologySkinTypes = ['Normal', 'Combination', 'Dry', 'Sensitive', 'Oily'] as const
@@ -160,9 +162,20 @@ export function normalizeCosmetologyHistoryLabel(value: string) {
   return aliases[value] ?? value
 }
 
-export function getCosmetologyDetailsMissingItems(_details: Record<string, unknown>) {
-  void _details
+export function getCosmetologyDetailsMissingItems(details: Record<string, unknown>) {
   const missing: string[] = []
+  if (!String(details.generalFullName ?? '').trim()) missing.push('General information: full name')
+  if (!String(details.generalPhone ?? '').trim()) missing.push('General information: phone')
+  const birthDate = String(details.generalDateOfBirth ?? '').trim()
+  if (!birthDate || !isValidMmDdYyyy(birthDate)) missing.push('General information: valid date of birth')
+  if (!details.isFirstTime) missing.push('General information: first-time answer')
+  if (!details.serviceType) missing.push('Type of service')
+  if (!details.negativeExperience) missing.push('Patient safety')
+  if (!String(details.currentMedications ?? '').trim() || !details.smoking || !details.alcohol) missing.push('Lifestyle and medication')
+  if (!details.skin_type || !details.phototype) missing.push('Skin diagnosis')
+  if (!String(details.professionalSignature ?? '').trim() || !String(details.consentDate ?? '').trim()) {
+    missing.push('Professional signature and date')
+  }
   return missing
 }
 

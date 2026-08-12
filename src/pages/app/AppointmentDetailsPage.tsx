@@ -57,7 +57,7 @@ export function AppointmentDetailsPage() {
       categoryCode,
       serviceId: String(service?.service_id ?? service?.id ?? ''),
       clientId: data.client_id,
-      providerId: data.professional_id,
+      providerId: data.professional_id ?? '',
       date: appointmentDate,
       startsAt: '',
       endsAt: '',
@@ -74,7 +74,7 @@ export function AppointmentDetailsPage() {
       categoryCode,
       serviceId: String(service?.service_id ?? service?.id ?? ''),
       clientId: data.client_id,
-      providerId: data.professional_id,
+      providerId: data.professional_id ?? '',
       date: appointmentDate,
       startsAt: data.starts_at,
       endsAt: data.ends_at,
@@ -87,6 +87,7 @@ export function AppointmentDetailsPage() {
   }
 
   const canMarkComingUp = ['Completed', 'Canceled'].includes(status)
+  const canMarkInProgress = ['Upcoming', 'Coming up'].includes(status)
   const canMarkComplete = ['Upcoming', 'Coming up', 'In progress'].includes(status)
   const canCancel = ['Upcoming', 'Coming up', 'In progress'].includes(status)
 
@@ -127,6 +128,9 @@ export function AppointmentDetailsPage() {
       <div className="grid gap-3">
         {canMarkComplete && (
           <Button fullWidth loading={mutation.loading} onClick={() => updateStatus('completed')}>Mark as complete</Button>
+        )}
+        {canMarkInProgress && (
+          <Button fullWidth loading={mutation.loading} onClick={() => updateStatus('in_progress')} variant="outline">Mark as in progress</Button>
         )}
         <Button fullWidth onClick={rescheduleAppointment} variant={canMarkComplete ? 'outline' : 'primary'}>Reschedule appointment</Button>
         {canMarkComingUp && (

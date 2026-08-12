@@ -38,6 +38,10 @@ function readLashMapEditorState(details: Record<string, unknown>) {
   return { eye, map, length, current: map[eye] ?? [] }
 }
 
+function sideTotal(entries: Array<{ position: number; length: number }> | undefined) {
+  return (entries ?? []).reduce((total, entry) => total + (Number(entry.length) || 0), 0)
+}
+
 export function LashMapEditor({ details, onChange }: {
   details: Record<string, unknown>
   onChange: (next: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>)) => void
@@ -56,11 +60,14 @@ export function LashMapEditor({ details, onChange }: {
       const { eye: activeEye, map: lashMap, length: zoneLength, current: eyeEntries } = readLashMapEditorState(currentDetails)
       const next = [...eyeEntries.filter((item) => item.position !== position), { position, length: zoneLength }]
         .sort((a, b) => a.position - b.position)
+      const nextMap = { ...lashMap, [activeEye]: next }
       return {
         ...currentDetails,
-        lashMap: { ...lashMap, [activeEye]: next },
+        lashMap: nextMap,
         activeLashEye: activeEye,
         lashMapLength: zoneLength,
+        rightSide: sideTotal(nextMap.rightEye),
+        leftSide: sideTotal(nextMap.leftEye),
       }
     })
   }
@@ -156,7 +163,7 @@ export function LashMapEditor({ details, onChange }: {
             eye === 'leftEye' && '-scale-x-100',
           )}
           style={{
-            backgroundImage: `url("${lashesBookingAssets.lashMap.clean}")`,
+            backgroundImage: `url("${String(details.style ?? '').toLowerCase().includes('cat') ? lashesBookingAssets.lashMap.catEye : lashesBookingAssets.lashMap.clean}")`,
             backgroundPosition: '50% 58%',
             backgroundSize: '148% auto',
           }}
@@ -167,8 +174,10 @@ export function LashMapEditor({ details, onChange }: {
             <button
               aria-label={`Lash map position ${position}${assigned ? `, length ${assigned.length}` : ''}`}
               className={cn(
-                'absolute flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full',
-                assigned ? 'text-[#7444cf]' : 'text-transparent',
+                'absolute flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border transition',
+                assigned
+                  ? 'border-[#7444cf] bg-white/85 text-[#7444cf] shadow-[0_6px_14px_rgba(116,68,207,0.2)]'
+                  : 'border-dashed border-[#7444cf]/55 bg-white/45 text-[#7444cf]/70',
               )}
               key={position}
               onClick={() => assign(position)}
@@ -179,7 +188,7 @@ export function LashMapEditor({ details, onChange }: {
                 <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 text-[16px] font-semibold leading-none text-[#7444cf]">
                   {assigned.length}
                 </span>
-              ) : null}
+              ) : <span className="text-[11px] font-semibold">{position}</span>}
             </button>
           )
         })}

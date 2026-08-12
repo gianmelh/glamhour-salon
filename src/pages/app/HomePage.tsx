@@ -5,9 +5,9 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Badge, Button, Card, ErrorState, LoadingState,
-  ProfessionalEditorModal, emptyProfessionalDraft, type ProfessionalDraft,
+  CreateAppointmentModal, ProfessionalEditorModal, emptyProfessionalDraft, type ProfessionalDraft,
 } from '../../components'
-import { useDashboard, useNailSettings, useProfessionals, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
+import { useClients, useDashboard, useNailSettings, useProfessionals, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { cn } from '../../lib/cn'
 import { formatMoney, formatTime } from '../../lib/format'
@@ -83,8 +83,10 @@ export function HomePage() {
   const navigate = useNavigate()
   const [selectedDate, setSelectedDate] = useState(() => isoDate(new Date()))
   const [providerEditor, setProviderEditor] = useState<ProfessionalDraft | null>(null)
+  const [quickAppointmentOpen, setQuickAppointmentOpen] = useState(false)
   const [providerMessage, setProviderMessage] = useState('')
   const dashboard = useDashboard(selectedDate)
+  const clients = useClients()
   const professionals = useProfessionals()
   const services = useServices()
   const categories = useServiceCategories()
@@ -164,7 +166,7 @@ export function HomePage() {
           </div>
         </div>
         <div className="mt-5">
-          <Button className="min-h-[64px] rounded-[14px] text-[18px] font-medium shadow-[0_14px_20px_rgb(78_35_153_/_0.32)]" fullWidth onClick={() => navigate('/app/appointments/new?fresh=1')}>
+          <Button className="min-h-[64px] rounded-[14px] text-[18px] font-medium shadow-[0_14px_20px_rgb(78_35_153_/_0.32)]" fullWidth onClick={() => setQuickAppointmentOpen(true)}>
             Create new appointment
           </Button>
         </div>
@@ -318,6 +320,14 @@ export function HomePage() {
           services={assignableServices}
         />
       )}
+      <CreateAppointmentModal
+        clients={clients.data ?? []}
+        onClose={() => setQuickAppointmentOpen(false)}
+        onCreated={() => dashboard.retry()}
+        open={quickAppointmentOpen}
+        professionals={professionals.data?.filter((provider) => provider.status === 'active') ?? []}
+        services={assignableServices}
+      />
     </div>
   )
 }
