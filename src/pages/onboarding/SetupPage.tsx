@@ -306,26 +306,6 @@ function sanitizeStoredDraft(draft: OnboardingDraft | null, categories: ServiceC
   return sanitizedDraft.selectedCategoryIds.length ? withRequiredDraftServices(sanitizedDraft, categories) : null
 }
 
-function isSetupTreatmentService(service: DraftService, categories: ServiceCategory[]) {
-  const category = categories.find((item) => item.id === service.categoryId)
-  const setupSection = category ? getServiceSetupSection(category) : undefined
-  return Boolean(
-    setupSection
-    && service.section !== 'material'
-    && setupSection.serviceItems.some((name) => name.toLowerCase() === service.name.toLowerCase()),
-  )
-}
-
-function getSetupTreatmentServices(draft: OnboardingDraft, categories: ServiceCategory[]) {
-  return categories.flatMap((category) => {
-    const setupSection = getServiceSetupSection(category)
-    if (!setupSection) return []
-    return setupSection.serviceItems
-      .map((name) => draft.services.find((service) => service.categoryId === category.id && isSetupTreatmentService(service, categories) && service.name.toLowerCase() === name.toLowerCase()))
-      .filter((service): service is DraftService => Boolean(service))
-  })
-}
-
 function getProviderCategoryServices(draft: OnboardingDraft) {
   return draft.services.filter((service) => service.section !== 'material')
 }
@@ -333,6 +313,50 @@ function getProviderCategoryServices(draft: OnboardingDraft) {
 function getSelectedProviderCategoryServices(draft: OnboardingDraft) {
   const selectedCategoryIds = new Set(draft.selectedCategoryIds)
   return getProviderCategoryServices(draft).filter((service) => selectedCategoryIds.has(service.categoryId))
+}
+
+function getSalonConfiguredServices(draft: OnboardingDraft) {
+  const selectedCategoryIds = new Set(draft.selectedCategoryIds)
+  return draft.services.filter((service) => (
+    service.section !== 'material'
+    && selectedCategoryIds.has(service.categoryId)
+    && service.selected
+    && service.name.trim()
+    && Number(service.duration) > 0
+  ))
+}
+
+function buildProviderServiceDurations(services: DraftService[]) {
+  return Object.fromEntries(services.map((service) => [service.id, service.duration || '60']))
+}
+
+function syncProviderWithSalonServices(provider: DraftProvider, salonServices: DraftService[]) {
+  const serviceDurations = { ...(provider.serviceDurations ?? {}) }
+  const serviceIds = new Set(provider.serviceIds)
+  let changed = false
+
+  salonServices.forEach((service) => {
+    if (serviceDurations[service.id] === undefined) {
+      serviceDurations[service.id] = service.duration || '60'
+      serviceIds.add(service.id)
+      changed = true
+    }
+  })
+
+  const categoryIds = new Set([
+    ...(provider.categoryIds ?? []),
+    ...[...serviceIds]
+      .map((serviceId) => salonServices.find((service) => service.id === serviceId)?.categoryId)
+      .filter((categoryId): categoryId is string => Boolean(categoryId)),
+  ])
+  const categoryIdsChanged = categoryIds.size !== (provider.categoryIds?.length ?? 0)
+
+  return changed || categoryIdsChanged ? {
+    ...provider,
+    categoryIds: [...categoryIds],
+    serviceIds: [...serviceIds],
+    serviceDurations,
+  } : provider
 }
 
 function createDraft(categories: ServiceCategory[], services: Service[], professionals: Professional[]): OnboardingDraft {
@@ -392,28 +416,46 @@ function createDraft(categories: ServiceCategory[], services: Service[], profess
     })
   })
 
+  const serviceDraftById = new Map(serviceDrafts.map((service) => [service.id, service]))
+
   return {
     selectedCategoryIds,
     services: serviceDrafts,
     schedule: defaultSchedule,
-    providers: professionals.slice(0, 1).map((professional) => ({
-      id: professional.id,
-      name: professional.full_name,
-      email: professional.email ?? '',
-      phone: professional.phone ?? '',
-      languages: professional.languages.length ? professional.languages : ['en'],
-      salonPercent: professional.salon_earnings_percent.split('.')[0] ?? '60',
-      professionalPercent: professional.professional_earnings_percent.split('.')[0] ?? '40',
-      categoryIds: [],
-      serviceIds: serviceDrafts.filter((service) => service.selected).map((service) => service.id),
-      serviceDurations: {},
-      schedule: defaultSchedule,
-      useSalonSchedule: false,
-    })),
+    providers: professionals.slice(0, 1).map((professional) => {
+      const assignments = professional.service_assignments ?? []
+      const activeServiceIds = assignments
+        .filter((assignment) => assignment.is_active && serviceDraftById.has(assignment.service_id))
+        .map((assignment) => assignment.service_id)
+      const serviceDurations = Object.fromEntries(assignments
+        .filter((assignment) => serviceDraftById.has(assignment.service_id))
+        .map((assignment) => {
+          const service = serviceDraftById.get(assignment.service_id)
+          return [
+            assignment.service_id,
+            String(assignment.duration_override_minutes ?? service?.duration ?? '60'),
+          ]
+        }))
+
+      return {
+        id: professional.id,
+        name: professional.full_name,
+        email: professional.email ?? '',
+        phone: professional.phone ?? '',
+        languages: professional.languages.length ? professional.languages : ['en'],
+        salonPercent: professional.salon_earnings_percent.split('.')[0] ?? '60',
+        professionalPercent: professional.professional_earnings_percent.split('.')[0] ?? '40',
+        categoryIds: [...new Set(activeServiceIds.map((serviceId) => serviceDraftById.get(serviceId)?.categoryId).filter((categoryId): categoryId is string => Boolean(categoryId)))],
+        serviceIds: activeServiceIds,
+        serviceDurations,
+        schedule: defaultSchedule,
+        useSalonSchedule: false,
+      }
+    }),
   }
 }
 
-function createBlankProvider(schedule: Record<string, DraftDay>): DraftProvider {
+function createBlankProvider(schedule: Record<string, DraftDay>, salonServices: DraftService[] = []): DraftProvider {
   return {
     id: `provider-${Date.now()}`,
     name: '',
@@ -422,9 +464,9 @@ function createBlankProvider(schedule: Record<string, DraftDay>): DraftProvider 
     languages: ['en'],
     salonPercent: '40',
     professionalPercent: '60',
-    categoryIds: [],
-    serviceIds: [],
-    serviceDurations: {},
+    categoryIds: [...new Set(salonServices.map((service) => service.categoryId))],
+    serviceIds: salonServices.map((service) => service.id),
+    serviceDurations: buildProviderServiceDurations(salonServices),
     schedule,
     useSalonSchedule: true,
   }
@@ -953,7 +995,7 @@ function ServicePriceRow({
   }
 
   return (
-    <div className={cn('grid items-center gap-2', onRemove ? 'grid-cols-[minmax(0,1fr)_auto_82px_32px]' : 'grid-cols-[minmax(0,1fr)_auto_82px]')}>
+    <div className={cn('grid items-center gap-2', onRemove ? 'grid-cols-[minmax(0,1fr)_auto_70px_58px_auto_32px]' : 'grid-cols-[minmax(0,1fr)_auto_70px_58px_auto]')}>
       <div
         className={cn('flex min-h-[53px] min-w-0 items-center gap-3 rounded-2xl border px-4 text-left transition', service.selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white')}
       >
@@ -1003,6 +1045,23 @@ function ServicePriceRow({
           value={service.price}
         />
       </label>
+      <label className="grid min-h-[53px] items-center overflow-hidden rounded-2xl border border-[#d7dce8] bg-white px-2 text-[12px] font-medium text-[#7b8498]">
+        <input
+          aria-label={`${service.name || 'Custom service'} duration`}
+          className="[appearance:textfield] min-w-0 bg-transparent text-center text-[12px] text-[#1b2133] outline-none placeholder:text-[12px] placeholder:text-[#7b8498] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          onChange={(event) => {
+            const duration = event.target.value
+            updateDraft((current) => ({
+              ...current,
+              services: current.services.map((item) => item.id === service.id ? { ...item, duration, selected: duration.trim() ? true : item.selected } : item),
+            }))
+          }}
+          placeholder="60"
+          type="number"
+          value={service.duration}
+        />
+      </label>
+      <span className="text-[13px] leading-none text-[#10172a]">min</span>
       {onRemove && (
         <button
           aria-label={`Remove ${service.name || 'custom service'}`}
@@ -1019,7 +1078,7 @@ function ServicePriceRow({
 
 function OtherServiceRow({ onSelect }: { onSelect: () => void }) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto_82px] items-center gap-2">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_70px_58px_auto] items-center gap-2">
       <button
         aria-label="Add custom service"
         className="flex min-h-[53px] min-w-0 items-center gap-3 rounded-2xl border border-[#d7dce8] bg-white px-4 text-left transition hover:border-[#cbb9ff] hover:bg-[#fbf9ff]"
@@ -1033,6 +1092,10 @@ function OtherServiceRow({ onSelect }: { onSelect: () => void }) {
       <span className="grid min-h-[53px] items-center rounded-2xl border border-[#d7dce8] bg-white px-2 text-center text-[12px] font-medium text-[#7b8498]">
         e.g. 40
       </span>
+      <span className="grid min-h-[53px] items-center rounded-2xl border border-[#d7dce8] bg-white px-2 text-center text-[12px] font-medium text-[#7b8498]">
+        60
+      </span>
+      <span className="text-[13px] leading-none text-[#10172a]">min</span>
     </div>
   )
 }
@@ -1260,13 +1323,14 @@ function ReadOnlyTime({ value }: { value: string }) {
 
 function TeamStep({ categories, draft, updateDraft }: { categories: ServiceCategory[]; draft: OnboardingDraft; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
   const activeProvider = draft.providers.find((provider) => provider.id === draft.activeProviderId)
+  const salonConfiguredServices = getSalonConfiguredServices(draft)
 
   function addProvider() {
     if (draft.providers.length >= 10) {
       return
     }
 
-    const provider = createBlankProvider(draft.schedule)
+    const provider = createBlankProvider(draft.schedule, salonConfiguredServices)
     updateDraft((current) => ({
       ...current,
       activeProviderId: provider.id,
@@ -1275,7 +1339,16 @@ function TeamStep({ categories, draft, updateDraft }: { categories: ServiceCateg
   }
 
   function editProvider(providerId: string) {
-    updateDraft((current) => ({ ...current, activeProviderId: providerId }))
+    updateDraft((current) => {
+      const currentSalonServices = getSalonConfiguredServices(current)
+      return {
+        ...current,
+        activeProviderId: providerId,
+        providers: current.providers.map((provider) => (
+          provider.id === providerId ? syncProviderWithSalonServices(provider, currentSalonServices) : provider
+        )),
+      }
+    })
   }
 
   return (
@@ -1319,8 +1392,9 @@ function ProviderSummaryList({ categories, draft, onAddProvider, onEditProvider 
 }
 
 function ProviderSummaryCard({ categories, draft, provider, onEdit }: { categories: ServiceCategory[]; draft: OnboardingDraft; provider: DraftProvider; onEdit: () => void }) {
-  const categoryServiceMap = new Map(getProviderCategoryServices(draft).map((service) => [service.id, service]))
-  const treatmentServiceMap = new Map(getSetupTreatmentServices(draft, categories).map((service) => [service.id, service]))
+  const salonConfiguredServices = getSalonConfiguredServices(draft)
+  const categoryServiceMap = new Map(salonConfiguredServices.map((service) => [service.id, service]))
+  const treatmentServiceMap = new Map(salonConfiguredServices.map((service) => [service.id, service]))
   const providerCategoryServices = provider.serviceIds
     .map((serviceId) => categoryServiceMap.get(serviceId))
     .filter((service): service is DraftService => Boolean(service))
@@ -1394,12 +1468,12 @@ function ProviderSummarySection({ icon, label, values }: { icon: ReactNode; labe
 }
 
 function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraft }: { categories: ServiceCategory[]; draft: OnboardingDraft; provider: DraftProvider; salonSchedule: Record<string, DraftDay>; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
-  const selectedCategoryIds = new Set(draft.selectedCategoryIds)
-  const providerServices = getSetupTreatmentServices(draft, categories).filter((service) => selectedCategoryIds.has(service.categoryId))
-  const providerCategoryServices = getProviderCategoryServices(draft)
+  const providerServices = getSalonConfiguredServices(draft)
+  const providerCategoryServices = providerServices
   const providerServiceIds = new Set(provider.serviceIds)
   const usesSalonSchedule = provider.useSalonSchedule === true
   const [photoError, setPhotoError] = useState('')
+  const providerCategories = categories.filter((category) => providerServices.some((service) => service.categoryId === category.id))
 
   function updateProvider(patch: Partial<DraftProvider>) {
     updateDraft((current) => ({
@@ -1438,15 +1512,17 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
 
     updateDraft((current) => ({
       ...current,
-      services: current.services.map((service) => (
-        serviceIds.includes(service.id) && Number(service.price) > 0
-          ? { ...service, selected: true }
-          : service
-      )),
       providers: current.providers.map((item) => item.id === provider.id ? {
         ...item,
         categoryIds: [...new Set([...(item.categoryIds ?? []), categoryId])],
         serviceIds: [...new Set([...item.serviceIds, ...serviceIds])],
+        serviceDurations: {
+          ...(item.serviceDurations ?? {}),
+          ...Object.fromEntries(categoryServices(categoryId).map((service) => [
+            service.id,
+            item.serviceDurations?.[service.id] ?? service.duration,
+          ])),
+        },
       } : item),
     }))
   }
@@ -1454,13 +1530,17 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
   function toggleProviderService(serviceId: string, selected: boolean) {
     updateDraft((current) => ({
       ...current,
-      services: current.services.map((service) => (
-        service.id === serviceId && selected && Number(service.price) > 0
-          ? { ...service, selected: true }
-          : service
-      )),
       providers: current.providers.map((item) => item.id === provider.id
-        ? { ...item, serviceIds: selected ? [...new Set([...item.serviceIds, serviceId])] : item.serviceIds.filter((id) => id !== serviceId) }
+        ? {
+          ...item,
+          serviceIds: selected ? [...new Set([...item.serviceIds, serviceId])] : item.serviceIds.filter((id) => id !== serviceId),
+          serviceDurations: {
+            ...(item.serviceDurations ?? {}),
+            [serviceId]: item.serviceDurations?.[serviceId]
+              ?? providerServices.find((service) => service.id === serviceId)?.duration
+              ?? '60',
+          },
+        }
         : item),
     }))
   }
@@ -1602,7 +1682,7 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
         <div>
           <p className="mb-2 text-xs font-semibold text-[#242a39]">Services & Treatments</p>
           <div className="space-y-3">
-            {categories.map((category) => {
+            {providerCategories.map((category) => {
               const selected = categoryAssigned(category.id)
               return (
                 <button
@@ -1627,34 +1707,42 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
 
           <p className="mb-3 mt-4 text-[16px] leading-5 text-[#68738b]">Services</p>
           <div className="space-y-2">
-            {providerServices.map((service) => {
-              const selected = provider.serviceIds.includes(service.id)
+            {providerCategories.map((category) => {
+              const servicesForCategory = providerServices.filter((service) => service.categoryId === category.id)
               return (
-                <div
-                  className="grid grid-cols-[minmax(0,1fr)_74px_auto] items-center gap-2"
-                  key={service.id}
-                >
-                  <button
-                    className={cn('flex min-h-[48px] min-w-0 items-center gap-3 rounded-2xl border px-4 text-left transition', selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white')}
-                    onClick={() => toggleProviderService(service.id, !selected)}
-                    type="button"
-                  >
-                    <span className={cn('grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)]', selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent')}>
-                      <Check className="size-3" />
-                    </span>
-                    <span className="truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
-                  </button>
-                  <label className="grid min-h-[48px] items-center overflow-hidden rounded-2xl border border-[#d7dce8] bg-white px-2">
-                    <input
-                      aria-label={`${service.name} duration`}
-                      className="[appearance:textfield] min-w-0 bg-transparent text-center text-[12px] text-[#1b2133] outline-none placeholder:text-[12px] placeholder:text-[#7b8498] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      onChange={(event) => updateProviderServiceDuration(service.id, event.target.value)}
-                      placeholder={service.duration || '60'}
-                      type="number"
-                      value={provider.serviceDurations?.[service.id] ?? service.duration}
-                    />
-                  </label>
-                  <span className="text-[15px] leading-none text-[#10172a]">min</span>
+                <div className="space-y-2" key={category.id}>
+                  <p className="px-1 pt-1 text-[12px] font-bold uppercase tracking-[0.08em] text-[#69748c]">{category.name}</p>
+                  {servicesForCategory.map((service) => {
+                    const selected = provider.serviceIds.includes(service.id)
+                    return (
+                      <div
+                        className="grid grid-cols-[minmax(0,1fr)_74px_auto] items-center gap-2"
+                        key={service.id}
+                      >
+                        <button
+                          className={cn('flex min-h-[48px] min-w-0 items-center gap-3 rounded-2xl border px-4 text-left transition', selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white')}
+                          onClick={() => toggleProviderService(service.id, !selected)}
+                          type="button"
+                        >
+                          <span className={cn('grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)]', selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent')}>
+                            <Check className="size-3" />
+                          </span>
+                          <span className="truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
+                        </button>
+                        <label className="grid min-h-[48px] items-center overflow-hidden rounded-2xl border border-[#d7dce8] bg-white px-2">
+                          <input
+                            aria-label={`${service.name} duration`}
+                            className="[appearance:textfield] min-w-0 bg-transparent text-center text-[12px] text-[#1b2133] outline-none placeholder:text-[12px] placeholder:text-[#7b8498] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            onChange={(event) => updateProviderServiceDuration(service.id, event.target.value)}
+                            placeholder={service.duration || '60'}
+                            type="number"
+                            value={provider.serviceDurations?.[service.id] ?? service.duration}
+                          />
+                        </label>
+                        <span className="text-[15px] leading-none text-[#10172a]">min</span>
+                      </div>
+                    )
+                  })}
                 </div>
               )
             })}

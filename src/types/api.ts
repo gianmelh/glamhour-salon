@@ -33,6 +33,7 @@ export interface Professional extends Timestamped {
   is_owner: boolean
   salon_earnings_percent: string
   professional_earnings_percent: string
+  service_assignments?: ProfessionalServiceAssignment[]
 }
 
 export interface ProfessionalServiceAssignment {

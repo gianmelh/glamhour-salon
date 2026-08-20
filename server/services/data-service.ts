@@ -2180,9 +2180,24 @@ export const dataService = {
 
   listProfessionals(salonId: string, options: ListOptions): Promise<Professional[]> {
     return query<Professional>(
-      `SELECT * FROM professionals
-       WHERE salon_id = $1 AND deleted_at IS NULL
-       ORDER BY full_name
+      `SELECT
+         p.*,
+         COALESCE(
+           jsonb_agg(jsonb_build_object(
+             'service_id', ps.service_id,
+             'duration_override_minutes', ps.duration_override_minutes,
+             'price_override_minor', ps.price_override_minor,
+             'is_active', ps.is_active
+           ) ORDER BY ps.created_at) FILTER (WHERE ps.service_id IS NOT NULL),
+           '[]'::jsonb
+         ) AS service_assignments
+       FROM professionals p
+       LEFT JOIN professional_services ps
+         ON ps.salon_id = p.salon_id
+        AND ps.professional_id = p.id
+       WHERE p.salon_id = $1 AND p.deleted_at IS NULL
+       GROUP BY p.id
+       ORDER BY p.full_name
        LIMIT $2 OFFSET $3`,
       [salonId, options.limit, options.offset],
     )
