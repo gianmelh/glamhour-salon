@@ -19,6 +19,8 @@ import { MicropigmentationClientStep } from './steps/MicropigmentationClientStep
 import { AppointmentDetailsStep } from './steps/AppointmentDetailsStep'
 import { CalendarSetupStep } from './steps/CalendarSetupStep'
 import { ReviewStep, SuccessStep } from './steps/SchedulingSteps'
+import { ServiceSelectionStep } from './steps/ServiceSelectionStep'
+import { HomeQuickCreateAppointmentStep, quickAppointmentTimes } from './steps/HomeQuickCreateAppointmentStep'
 import { buildTreatmentPayload } from './buildTreatmentPayload'
 import { mergeDetailsPatchForCategory, sanitizeDetailsForCategory } from './categoryDetails'
 import {
@@ -91,11 +93,18 @@ function parseDraftTime(details: Record<string, unknown>) {
 
 function readInitialDraft() {
   if (typeof window === 'undefined') return readDraft()
-  const fresh = new URLSearchParams(window.location.search).get('fresh') === '1'
+  const params = new URLSearchParams(window.location.search)
+  const fresh = params.get('fresh') === '1'
   if (fresh) {
+    const date = params.get('date') ?? ''
+    const source = params.get('source')
     window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
     window.history.replaceState(null, '', window.location.pathname)
-    return emptyDraft()
+    return {
+      ...emptyDraft(),
+      date: clampToToday(date),
+      entryPoint: source === 'home' ? 'home' : undefined,
+    } satisfies AppointmentDraft
   }
   return readDraft()
 }
@@ -115,6 +124,22 @@ function detailsWithSelectedClient(categoryCode: string, details: Record<string,
     generalPhone: client.phone ?? '',
     generalEmail: client.email ?? details.generalEmail ?? '',
   }
+}
+
+function detailsForSelectedService(categoryCode: string, service: Service, details: Record<string, unknown>) {
+  if (categoryCode === 'nails') {
+    return sanitizeDetailsForCategory(categoryCode, { ...details, nailServiceType: service.name })
+  }
+  if (categoryCode === 'lashes') {
+    return sanitizeDetailsForCategory(categoryCode, { ...details, style: service.name })
+  }
+  if (categoryCode === 'cosmetology') {
+    return sanitizeDetailsForCategory(categoryCode, { ...details, serviceType: service.name })
+  }
+  if (categoryCode === 'micropigmentation') {
+    return sanitizeDetailsForCategory(categoryCode, { ...details, procedure: service.name })
+  }
+  return sanitizeDetailsForCategory(categoryCode, details)
 }
 
 export function NewAppointmentPage() {
@@ -319,6 +344,7 @@ export function NewAppointmentPage() {
   ))
   const selectedService = allServices.find((service) => service.id === draft.serviceId) ?? categoryServices[0]
   const selectedClient = clients.data.find((client) => client.id === draft.clientId)
+  const isHomeQuickFlow = draft.entryPoint === 'home' && !draft.appointmentId
   const scheduleProviders = eligibleProviders.length
     ? eligibleProviders
     : professionals.data
@@ -372,7 +398,9 @@ export function NewAppointmentPage() {
   }
 
   const goBack = () => {
-    const order: BookingStep[] = ['categories', 'client', 'service', 'provider', 'appointment-details', 'review', 'success']
+    const order: BookingStep[] = isHomeQuickFlow
+      ? ['categories', 'service', 'quick-create', 'success']
+      : ['categories', 'client', 'service', 'provider', 'appointment-details', 'review', 'success']
     const index = order.indexOf(step)
     if (index <= 0) navigate('/app/home')
     else setStep(order[index - 1])
@@ -510,6 +538,52 @@ export function NewAppointmentPage() {
     return defaultAppointmentTimes()
   }
 
+  const quickCreateAppointment = async () => {
+    setConfirmError(null)
+    const time = typeof draft.details.consentTime === 'string' ? draft.details.consentTime : ''
+    if (!selectedClient) {
+      setConfirmError(new Error('Client is required.'))
+      return
+    }
+    if (!selectedService) {
+      setConfirmError(new Error('Service is required.'))
+      return
+    }
+    if (!draft.date) {
+      setConfirmError(new Error('Day is required.'))
+      return
+    }
+    if (!time) {
+      setConfirmError(new Error('Time is required.'))
+      return
+    }
+
+    setConfirmLoading(true)
+    try {
+      const durationMinutes = selectedProvider?.durationMinutes ?? selectedService.duration_minutes
+      const slot = draft.providerId ? availability.find((item) => item.time === time && item.available) : undefined
+      const appointmentTimes = slot
+        ? { startsAt: slot.startsAt, endsAt: slot.endsAt }
+        : quickAppointmentTimes(draft.date, time, durationMinutes)
+      const appointment = await mutation.mutate({
+        clientId: selectedClient.id,
+        professionalId: draft.providerId || null,
+        serviceIds: [selectedService.id],
+        startsAt: appointmentTimes.startsAt,
+        endsAt: appointmentTimes.endsAt,
+      })
+      setDraft(emptyDraft())
+      window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
+      appointments.setData((current) => [appointment, ...(current ?? [])])
+      setCreatedAppointmentId(appointment.id)
+      navigate(`/app/calendar?date=${appointment.starts_at.slice(0, 10)}`)
+    } catch (reason) {
+      setConfirmError(reason instanceof Error ? reason : new Error('Appointment could not be scheduled.'))
+    } finally {
+      setConfirmLoading(false)
+    }
+  }
+
   const confirm = async () => {
     setConfirmError(null)
     setConfirmLoading(true)
@@ -621,9 +695,15 @@ export function NewAppointmentPage() {
           onCalendar={() => navigate('/app/calendar')}
           services={allServices}
           onSelect={(category) => {
-            setDraft({ ...emptyDraft(), categoryId: category.id, categoryCode: category.code, date: appointmentDraftDate(draft) })
+            setDraft({
+              ...emptyDraft(),
+              categoryId: category.id,
+              categoryCode: category.code,
+              date: appointmentDraftDate(draft),
+              entryPoint: draft.entryPoint,
+            })
             setCreatedAppointmentId('')
-            setStep('client')
+            setStep(isHomeQuickFlow ? 'service' : 'client')
           }}
         />
       )}
@@ -678,28 +758,99 @@ export function NewAppointmentPage() {
       )}
 
       {step === 'service' && selectedCategory && (
-        <CategoryServiceStep
-          category={selectedCategory}
-          details={draft.details}
-          onBack={goBack}
-          onChange={(patch: DraftPatch) => setDraft((current) => {
-            const nextDetails = typeof patch.details === 'function'
-              ? patch.details(current.details)
-              : mergeDetailsPatchForCategory(current.categoryCode, current.details, patch.details ?? {})
-            return {
+        isHomeQuickFlow ? (
+          <ServiceSelectionStep
+            category={selectedCategory}
+            onBack={goBack}
+            onSelect={(service) => {
+              setDraft((current) => ({
+                ...current,
+                serviceId: service.id,
+                providerId: '',
+                startsAt: '',
+                endsAt: '',
+                details: detailsForSelectedService(current.categoryCode, service, current.details),
+              }))
+              setStep('quick-create')
+            }}
+            selectedServiceId={draft.serviceId}
+            services={categoryServices}
+          />
+        ) : (
+          <CategoryServiceStep
+            category={selectedCategory}
+            details={draft.details}
+            onBack={goBack}
+            onChange={(patch: DraftPatch) => setDraft((current) => {
+              const nextDetails = typeof patch.details === 'function'
+                ? patch.details(current.details)
+                : mergeDetailsPatchForCategory(current.categoryCode, current.details, patch.details ?? {})
+              return {
+                ...current,
+                ...patch,
+                details: sanitizeDetailsForCategory(current.categoryCode, nextDetails),
+              }
+            })}
+            categorySource={categories.data}
+            onServiceCreated={(service) => {
+              setLocalServices((current) => [service, ...current.filter((item) => item.id !== service.id)])
+              services.setData((current) => [service, ...(current ?? []).filter((item) => item.id !== service.id)])
+            }}
+            onNext={continueFromServiceDetails}
+            selectedServiceId={draft.serviceId}
+            services={categoryServices}
+          />
+        )
+      )}
+
+      {step === 'quick-create' && selectedService && (
+        <HomeQuickCreateAppointmentStep
+          clientVisitByClientId={clientVisitByClientId}
+          clients={clients.data}
+          date={draft.date}
+          error={confirmError ?? mutation.error}
+          loading={confirmLoading || mutation.loading}
+          onClientCreated={(client) => clients.setData((current) => [client, ...(current ?? []).filter((item) => item.id !== client.id)])}
+          onClientSelect={(clientId) => setDraft((current) => ({
+            ...current,
+            clientId,
+            details: detailsWithSelectedClient(
+              current.categoryCode,
+              current.details,
+              (clients.data ?? []).find((item) => item.id === clientId),
+            ),
+          }))}
+          onCreate={() => void quickCreateAppointment()}
+          onDateChange={(date) => setDraft((current) => ({
+            ...current,
+            date: clampToToday(date),
+            startsAt: '',
+            endsAt: '',
+          }))}
+          onProviderChange={(providerId) => setDraft((current) => ({
+            ...current,
+            providerId,
+            startsAt: '',
+            endsAt: '',
+          }))}
+          onTimeChange={(time) => {
+            const slot = draft.providerId ? availability.find((item) => item.time === time && item.available) : undefined
+            setDraft((current) => ({
               ...current,
-              ...patch,
-              details: sanitizeDetailsForCategory(current.categoryCode, nextDetails),
-            }
-          })}
-          categorySource={categories.data}
-          onServiceCreated={(service) => {
-            setLocalServices((current) => [service, ...current.filter((item) => item.id !== service.id)])
-            services.setData((current) => [service, ...(current ?? []).filter((item) => item.id !== service.id)])
+              startsAt: slot?.startsAt ?? '',
+              endsAt: slot?.endsAt ?? '',
+              details: sanitizeDetailsForCategory(current.categoryCode, {
+                ...current.details,
+                consentTime: time,
+              }),
+            }))
           }}
-          onNext={continueFromServiceDetails}
-          selectedServiceId={draft.serviceId}
-          services={categoryServices}
+          providerId={draft.providerId}
+          providers={scheduleProviders}
+          selectedClientId={draft.clientId}
+          service={selectedService}
+          slots={availability}
+          time={typeof draft.details.consentTime === 'string' ? draft.details.consentTime : ''}
         />
       )}
 

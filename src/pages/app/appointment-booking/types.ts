@@ -1,6 +1,6 @@
 import type { Service, ServiceCategory } from '../../../types/api'
 
-export type BookingStep = 'categories' | 'service' | 'client' | 'health' | 'appointment-details' | 'provider' | 'time' | 'review' | 'success'
+export type BookingStep = 'categories' | 'service' | 'client' | 'quick-create' | 'health' | 'appointment-details' | 'provider' | 'time' | 'review' | 'success'
 
 export type BookingCategoryCode = 'nails' | 'lashes' | 'cosmetology' | 'micropigmentation'
 
@@ -29,6 +29,7 @@ export type AppointmentDraft = {
   /** When set, confirm updates this appointment instead of creating a new one. */
   appointmentId?: string
   mode?: 'edit' | 'reschedule'
+  entryPoint?: 'home'
 }
 
 export type DraftPatch = Omit<Partial<AppointmentDraft>, 'details'> & {

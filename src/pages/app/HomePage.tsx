@@ -5,9 +5,9 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Badge, Button, Card, ErrorState, LoadingState,
-  CreateAppointmentModal, ProfessionalEditorModal, emptyProfessionalDraft, type ProfessionalDraft,
+  ProfessionalEditorModal, emptyProfessionalDraft, type ProfessionalDraft,
 } from '../../components'
-import { useClients, useDashboard, useNailSettings, useProfessionals, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
+import { useDashboard, useNailSettings, useProfessionals, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { cn } from '../../lib/cn'
 import { formatMoney, formatTime } from '../../lib/format'
@@ -83,10 +83,8 @@ export function HomePage() {
   const navigate = useNavigate()
   const [selectedDate, setSelectedDate] = useState(() => isoDate(new Date()))
   const [providerEditor, setProviderEditor] = useState<ProfessionalDraft | null>(null)
-  const [quickAppointmentOpen, setQuickAppointmentOpen] = useState(false)
   const [providerMessage, setProviderMessage] = useState('')
   const dashboard = useDashboard(selectedDate)
-  const clients = useClients()
   const professionals = useProfessionals()
   const services = useServices()
   const categories = useServiceCategories()
@@ -155,24 +153,7 @@ export function HomePage() {
         </p>
       </header>
 
-      <Card className="mt-8 overflow-hidden rounded-[14px] px-5 py-5 shadow-none" padding="none" style={{ backgroundColor: LAVENDER_CARD, borderColor: LAVENDER_BORDER }}>
-        <div className="flex items-center gap-4">
-          <span className="grid size-[46px] shrink-0 place-items-center rounded-lg bg-[#7a3fe0] text-white">
-            <CalendarPlus className="size-5" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[15px] font-bold leading-5 text-[#111827]">Schedule a new appointment</p>
-            <p className="mt-1 text-[13px] leading-[1.35] text-[#68738b]">Client, service, specialist, date & time in one flow</p>
-          </div>
-        </div>
-        <div className="mt-5">
-          <Button className="min-h-[64px] rounded-[14px] text-[18px] font-medium shadow-[0_14px_20px_rgb(78_35_153_/_0.32)]" fullWidth onClick={() => setQuickAppointmentOpen(true)}>
-            Create new appointment
-          </Button>
-        </div>
-      </Card>
-
-      <Card className="mt-5 rounded-[14px] px-5 py-7 shadow-none" padding="none" style={{ backgroundColor: SURFACE_CARD, borderColor: CARD_BORDER }}>
+      <Card className="mt-8 rounded-[14px] px-5 py-7 shadow-none" padding="none" style={{ backgroundColor: SURFACE_CARD, borderColor: CARD_BORDER }}>
         <p className="text-center text-[21px] font-bold text-[#111827]">{monthLabel(selectedDate)}</p>
         <div className="mt-7 grid grid-cols-[34px_1fr_34px] items-center gap-3">
           <button
@@ -223,6 +204,27 @@ export function HomePage() {
           >
             ›
           </button>
+        </div>
+      </Card>
+
+      <Card className="mt-5 overflow-hidden rounded-[14px] px-5 py-5 shadow-none" padding="none" style={{ backgroundColor: LAVENDER_CARD, borderColor: LAVENDER_BORDER }}>
+        <div className="flex items-center gap-4">
+          <span className="grid size-[46px] shrink-0 place-items-center rounded-lg bg-[#7a3fe0] text-white">
+            <CalendarPlus className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[15px] font-bold leading-5 text-[#111827]">Schedule a new appointment</p>
+            <p className="mt-1 text-[13px] leading-[1.35] text-[#68738b]">Client, service, specialist, date & time in one flow</p>
+          </div>
+        </div>
+        <div className="mt-5">
+          <Button
+            className="min-h-[64px] rounded-[14px] text-[18px] font-medium shadow-[0_14px_20px_rgb(78_35_153_/_0.32)]"
+            fullWidth
+            onClick={() => navigate(`/app/appointments/new?fresh=1&source=home&date=${selectedDate}`)}
+          >
+            Create new appointment
+          </Button>
         </div>
       </Card>
 
@@ -320,14 +322,6 @@ export function HomePage() {
           services={assignableServices}
         />
       )}
-      <CreateAppointmentModal
-        clients={clients.data ?? []}
-        onClose={() => setQuickAppointmentOpen(false)}
-        onCreated={() => dashboard.retry()}
-        open={quickAppointmentOpen}
-        professionals={professionals.data?.filter((provider) => provider.status === 'active') ?? []}
-        services={assignableServices}
-      />
     </div>
   )
 }
