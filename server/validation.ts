@@ -319,7 +319,7 @@ export const saveOnboardingSchema = z.object({
     services: z.array(z.object({
       id: z.string().min(1),
       categoryId: uuidSchema,
-      name: z.string().trim().min(1).max(160),
+      name: z.string().trim().max(160),
       selected: z.boolean(),
       price: z.string().trim(),
       duration: z.string().trim(),

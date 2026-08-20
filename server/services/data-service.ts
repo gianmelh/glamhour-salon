@@ -1726,6 +1726,7 @@ export const dataService = {
 
       const selectedServices = input.draft.services.filter((service) => (
         service.selected && service.section !== 'material' && selectedCategoryIds.includes(service.categoryId)
+        && service.name.trim() !== ''
         && service.price.trim() !== ''
         && Number.isFinite(Number(service.price))
         && Number.isInteger(Number(service.duration))
@@ -1814,6 +1815,7 @@ export const dataService = {
         service.selected
         && service.section === 'material'
         && selectedCategoryIds.includes(service.categoryId)
+        && service.name.trim() !== ''
       ))
       for (const [index, material] of selectedMaterials.entries()) {
         const existingMaterial = await clientRows<{ id: string }>(

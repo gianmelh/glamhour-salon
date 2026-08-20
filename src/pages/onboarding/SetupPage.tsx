@@ -11,6 +11,9 @@ import { ApiClientError } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { glamhourApi } from '../../services/glamhour-api'
 import type { Professional, Service, ServiceCategory } from '../../types/api'
+import { cosmetologyServiceTypes } from '../app/appointment-booking/categories/cosmetology/cosmetologyDetailsSpec'
+import { micropigmentationProcedureGroups } from '../app/appointment-booking/categories/micropigmentation/micropigmentationDetailsSpec'
+import { lashStyleOptions, lashVariantOptions } from '../app/lashes-booking/lashesDetailsSpec'
 import {
   nailMaterialSetupItems,
   nailServiceSetupItems,
@@ -33,6 +36,7 @@ type DraftService = {
   price: string
   duration: string
   section?: 'service' | 'material'
+  isCustom?: boolean
 }
 
 type DraftDay = {
@@ -65,6 +69,15 @@ type OnboardingDraft = {
   activeProviderId?: string
 }
 
+type ServiceSetupSection = {
+  title: string
+  subtitle: string
+  servicesLabel: string
+  materialsLabel: string
+  serviceItems: readonly string[]
+  materialItems: readonly string[]
+}
+
 const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const defaultSchedule = weekDays.reduce<Record<string, DraftDay>>((days, day, index) => {
   days[day] = { enabled: index < 6, open: '09:00', close: '18:00' }
@@ -76,6 +89,53 @@ const categoryDescriptions: Record<string, string> = {
   lashes: 'Eyelash extensions, lifts, and tinting services.',
   cosmetology: 'Facials, skincare treatments, and beauty enhancements.',
   micropigmentation: 'Microblading, lip liner, eyeliner, and more pigmentation services.',
+}
+
+const serviceSetupSections: Record<string, ServiceSetupSection> = {
+  nails: {
+    title: 'Nail Services',
+    subtitle: 'Main treatments and services',
+    servicesLabel: 'Services',
+    materialsLabel: 'Materials',
+    serviceItems: nailServiceSetupItems,
+    materialItems: nailMaterialSetupItems.map((material) => material.name),
+  },
+  lashes: {
+    title: 'Lash Services',
+    subtitle: 'Extensions, lifts, tinting, and lash styling',
+    servicesLabel: 'Services',
+    materialsLabel: 'Materials',
+    serviceItems: [
+      ...lashVariantOptions.map((option) => option.title),
+      'Lash Lift',
+      'Lash Tint',
+      'Removal',
+      'Refill',
+      'Other',
+    ],
+    materialItems: [
+      ...lashStyleOptions.map((option) => option.label),
+      'Lash Adhesive',
+      'Lash Cleanser',
+      'Other',
+    ],
+  },
+  cosmetology: {
+    title: 'Cosmetology Services',
+    subtitle: 'Facials, skincare treatments, and beauty enhancements',
+    servicesLabel: 'Services',
+    materialsLabel: 'Materials',
+    serviceItems: [...cosmetologyServiceTypes, 'Hydrating Facial', 'Radiofrequency', 'Other'],
+    materialItems: ['Serums', 'Peels', 'Masks', 'LED Therapy', 'Ozone Steam', 'Other'],
+  },
+  micropigmentation: {
+    title: 'Micropigmentation Services',
+    subtitle: 'Brows, lips, eyes, removal, and enhancement procedures',
+    servicesLabel: 'Services',
+    materialsLabel: 'Materials',
+    serviceItems: [...Object.values(micropigmentationProcedureGroups).flat(), 'Other'],
+    materialItems: ['Pigments', 'Needles', 'Anesthetics', 'Aftercare', 'Other'],
+  },
 }
 
 const stepHeaderSubtitles: Partial<Record<Step, string>> = {
@@ -142,6 +202,10 @@ function serviceIdSuffix(name: string) {
   return name.toLowerCase().replace(/\s+/g, '-')
 }
 
+function isCustomServiceDraft(service: DraftService) {
+  return Boolean(service.isCustom || service.id.includes('-custom-service-'))
+}
+
 function isGeneratedPlaceholderService(serviceName: string, category: ServiceCategory | undefined) {
   if (!category || category.code === 'nails') return false
   const normalizedName = serviceName.trim().toLowerCase()
@@ -150,16 +214,39 @@ function isGeneratedPlaceholderService(serviceName: string, category: ServiceCat
     || normalizedName === `${normalizedCategoryName} maintenance`
 }
 
+function isLegacyCustomServicePlaceholder(service: DraftService) {
+  const normalizedName = service.name.trim().toLowerCase()
+  return isCustomServiceDraft(service) && (normalizedName === 'other' || /^new service(?:\s+\d+)?$/.test(normalizedName))
+}
+
+function normalizeStoredService(service: DraftService) {
+  const normalizedName = service.name.trim().toLowerCase()
+  if (normalizedName === 'other' && service.id.endsWith('-service-other')) {
+    return { ...service, selected: false, isCustom: undefined }
+  }
+
+  if (isLegacyCustomServicePlaceholder(service)) {
+    return { ...service, name: '', selected: true, isCustom: true }
+  }
+
+  return service
+}
+
+function getServiceSetupSection(category: ServiceCategory) {
+  return serviceSetupSections[category.code]
+}
+
 function withRequiredDraftServices(draft: OnboardingDraft, categories: ServiceCategory[]) {
   const services = [...draft.services]
   const serviceDraftKeys = new Set(services.map((service) => `${service.categoryId}:${service.name.toLowerCase()}:${service.section ?? 'service'}`))
 
   categories.forEach((category) => {
-    if (category.code !== 'nails') {
+    const setupSection = getServiceSetupSection(category)
+    if (!setupSection) {
       return
     }
 
-    nailServiceSetupItems.forEach((name) => {
+    setupSection.serviceItems.forEach((name) => {
       const serviceKey = `${category.id}:${name.toLowerCase()}:service`
       if (!serviceDraftKeys.has(serviceKey)) {
         services.push({
@@ -175,13 +262,13 @@ function withRequiredDraftServices(draft: OnboardingDraft, categories: ServiceCa
       }
     })
 
-    nailMaterialSetupItems.forEach((material) => {
-      const materialKey = `${category.id}:${material.name.toLowerCase()}:material`
+    setupSection.materialItems.forEach((material) => {
+      const materialKey = `${category.id}:${material.toLowerCase()}:material`
       if (!serviceDraftKeys.has(materialKey)) {
         services.push({
-          id: `${category.id}-material-${material.id}`,
+          id: `${category.id}-material-${serviceIdSuffix(material)}`,
           categoryId: category.id,
-          name: material.name,
+          name: material,
           selected: false,
           price: '',
           duration: '60',
@@ -206,28 +293,37 @@ function sanitizeStoredDraft(draft: OnboardingDraft | null, categories: ServiceC
   const sanitizedDraft = {
     ...draft,
     selectedCategoryIds: draft.selectedCategoryIds.filter((id) => categoryIds.has(id)),
-    services: draft.services.filter((service) => {
-      if (!categoryIds.has(service.categoryId)) return false
-      if (isGeneratedPlaceholderService(service.name, categoryById.get(service.categoryId))) return false
-      if (service.section !== 'material') return true
-      return !legacyMaterialNames.has(service.name.toLowerCase())
-    }),
+    services: draft.services
+      .map(normalizeStoredService)
+      .filter((service) => {
+        if (!categoryIds.has(service.categoryId)) return false
+        if (isGeneratedPlaceholderService(service.name, categoryById.get(service.categoryId))) return false
+        if (service.section !== 'material') return true
+        return !legacyMaterialNames.has(service.name.toLowerCase())
+      }),
   }
 
   return sanitizedDraft.selectedCategoryIds.length ? withRequiredDraftServices(sanitizedDraft, categories) : null
 }
 
-function isNailTreatmentService(service: DraftService, categories: ServiceCategory[]) {
+function isSetupTreatmentService(service: DraftService, categories: ServiceCategory[]) {
   const category = categories.find((item) => item.id === service.categoryId)
-  return category?.code === 'nails'
+  const setupSection = category ? getServiceSetupSection(category) : undefined
+  return Boolean(
+    setupSection
     && service.section !== 'material'
-    && nailServiceSetupItems.some((name) => name.toLowerCase() === service.name.toLowerCase())
+    && setupSection.serviceItems.some((name) => name.toLowerCase() === service.name.toLowerCase()),
+  )
 }
 
-function getNailTreatmentServices(draft: OnboardingDraft, categories: ServiceCategory[]) {
-  return nailServiceSetupItems
-    .map((name) => draft.services.find((service) => isNailTreatmentService(service, categories) && service.name.toLowerCase() === name.toLowerCase()))
-    .filter((service): service is DraftService => Boolean(service))
+function getSetupTreatmentServices(draft: OnboardingDraft, categories: ServiceCategory[]) {
+  return categories.flatMap((category) => {
+    const setupSection = getServiceSetupSection(category)
+    if (!setupSection) return []
+    return setupSection.serviceItems
+      .map((name) => draft.services.find((service) => service.categoryId === category.id && isSetupTreatmentService(service, categories) && service.name.toLowerCase() === name.toLowerCase()))
+      .filter((service): service is DraftService => Boolean(service))
+  })
 }
 
 function getProviderCategoryServices(draft: OnboardingDraft) {
@@ -258,11 +354,12 @@ function createDraft(categories: ServiceCategory[], services: Service[], profess
   const serviceDraftKeys = new Set(serviceDrafts.map((service) => `${service.categoryId}:${service.name.toLowerCase()}:${service.section ?? 'service'}`))
 
   categories.forEach((category) => {
-    if (category.code !== 'nails') {
+    const setupSection = getServiceSetupSection(category)
+    if (!setupSection) {
       return
     }
 
-    nailServiceSetupItems.forEach((name) => {
+    setupSection.serviceItems.forEach((name) => {
       const serviceKey = `${category.id}:${name.toLowerCase()}:service`
       if (!serviceDraftKeys.has(serviceKey)) {
         serviceDrafts.push({
@@ -278,13 +375,13 @@ function createDraft(categories: ServiceCategory[], services: Service[], profess
       }
     })
 
-    nailMaterialSetupItems.forEach((material) => {
-      const materialKey = `${category.id}:${material.name.toLowerCase()}:material`
+    setupSection.materialItems.forEach((material) => {
+      const materialKey = `${category.id}:${material.toLowerCase()}:material`
       if (!serviceDraftKeys.has(materialKey)) {
         serviceDrafts.push({
-          id: `${category.id}-material-${material.id}`,
+          id: `${category.id}-material-${serviceIdSuffix(material)}`,
           categoryId: category.id,
-          name: material.name,
+          name: material,
           selected: false,
           price: '',
           duration: '60',
@@ -577,12 +674,14 @@ function CategoriesStep({ categories, draft, updateDraft }: { categories: Servic
 
 function ServicesStep({ categories, draft, updateDraft }: { categories: ServiceCategory[]; draft: OnboardingDraft; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
   const selectedCategories = categories.filter((category) => draft.selectedCategoryIds.includes(category.id))
-  const selectedNailsCategory = selectedCategories.find((category) => category.code === 'nails')
+  const setupCategories = selectedCategories.filter((category) => getServiceSetupSection(category))
   return (
     <OnboardingPanel backgroundColor="#F2F5FF" title="Select Services" subtitle="Choose the services you offer and set your base prices.">
       <div className="mt-5 space-y-5">
-        {selectedNailsCategory
-          ? <NailServicesSetup category={selectedNailsCategory} draft={draft} updateDraft={updateDraft} />
+        {setupCategories.length
+          ? setupCategories.map((category) => (
+            <CategoryServicesSetup category={category} draft={draft} key={category.id} updateDraft={updateDraft} />
+          ))
           : (
             <p className="rounded-xl bg-white px-4 py-3 text-[13px] leading-5 text-[#68738b]">
               Service setup can be completed later in Settings.
@@ -593,22 +692,155 @@ function ServicesStep({ categories, draft, updateDraft }: { categories: ServiceC
   )
 }
 
-function NailServicesSetup({ category, draft, updateDraft }: { category: ServiceCategory; draft: OnboardingDraft; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
+function CategoryServicesSetup({ category, draft, updateDraft }: { category: ServiceCategory; draft: OnboardingDraft; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
   const [servicesExpanded, setServicesExpanded] = useState(true)
   const [materialsExpanded, setMaterialsExpanded] = useState(true)
+  const [focusedCustomServiceId, setFocusedCustomServiceId] = useState<string>()
+  const [focusedCustomMaterialId, setFocusedCustomMaterialId] = useState<string>()
+  const setupSection = getServiceSetupSection(category)
   const services = draft.services.filter((service) => service.categoryId === category.id)
-  const treatmentServices = nailServiceSetupItems
+  const serviceItems = setupSection?.serviceItems ?? []
+  const materialItems = setupSection?.materialItems ?? []
+  const otherService = serviceItems.includes('Other')
+    ? services.find((service) => service.name.toLowerCase() === 'other' && (service.section ?? 'service') === 'service' && !isCustomServiceDraft(service))
+    : undefined
+  const defaultServiceNames = new Set(serviceItems.map((name) => name.toLowerCase()))
+  const treatmentServices = serviceItems
+    .filter((name) => name.toLowerCase() !== 'other')
     .map((name) => services.find((service) => service.name.toLowerCase() === name.toLowerCase() && (service.section ?? 'service') === 'service'))
     .filter((service): service is DraftService => Boolean(service))
-  const materialServices = nailMaterialSetupItems
-    .map((material) => services.find((service) => service.name.toLowerCase() === material.name.toLowerCase() && service.section === 'material'))
+  const customServices = services.filter((service) => (
+    (service.section ?? 'service') === 'service'
+    && (isCustomServiceDraft(service) || !defaultServiceNames.has(service.name.toLowerCase()))
+    && !treatmentServices.some((item) => item.id === service.id)
+  ))
+  const otherMaterial = materialItems.includes('Other')
+    ? services.find((service) => service.name.toLowerCase() === 'other' && service.section === 'material' && !isCustomServiceDraft(service))
+    : undefined
+  const defaultMaterialNames = new Set(materialItems.map((name) => name.toLowerCase()))
+  const materialServices = materialItems
+    .filter((material) => material.toLowerCase() !== 'other')
+    .map((material) => services.find((service) => service.name.toLowerCase() === material.toLowerCase() && service.section === 'material'))
     .filter((service): service is DraftService => Boolean(service))
+  const customMaterials = services.filter((service) => (
+    service.section === 'material'
+    && (isCustomServiceDraft(service) || !defaultMaterialNames.has(service.name.toLowerCase()))
+    && !materialServices.some((item) => item.id === service.id)
+  ))
+
+  if (!setupSection) {
+    return null
+  }
+
+  function addCustomService() {
+    const serviceId = `${category.id}-custom-service-${Date.now()}`
+    setFocusedCustomServiceId(serviceId)
+    updateDraft((current) => {
+      return {
+        ...current,
+        services: [
+          ...current.services,
+          {
+            id: serviceId,
+            categoryId: category.id,
+            name: '',
+            selected: true,
+            price: '',
+            duration: '60',
+            section: 'service',
+            isCustom: true,
+          },
+        ],
+      }
+    })
+  }
+
+  function selectOtherService() {
+    const serviceId = `${category.id}-custom-service-${Date.now()}`
+    setFocusedCustomServiceId(serviceId)
+    updateDraft((current) => ({
+      ...current,
+      services: [
+        ...current.services.filter((service) => service.id !== otherService?.id),
+        {
+          id: serviceId,
+          categoryId: category.id,
+          name: '',
+          selected: true,
+          price: '',
+          duration: '60',
+          section: 'service',
+          isCustom: true,
+        },
+      ],
+    }))
+  }
+
+  function removeCustomService(serviceId: string) {
+    updateDraft((current) => ({
+      ...current,
+      services: current.services.filter((service) => service.id !== serviceId),
+      providers: current.providers.map((provider) => ({
+        ...provider,
+        serviceIds: provider.serviceIds.filter((id) => id !== serviceId),
+      })),
+    }))
+  }
+
+  function addCustomMaterial() {
+    const materialId = `${category.id}-custom-material-${Date.now()}`
+    setFocusedCustomMaterialId(materialId)
+    updateDraft((current) => ({
+      ...current,
+      services: [
+        ...current.services,
+        {
+          id: materialId,
+          categoryId: category.id,
+          name: '',
+          selected: true,
+          price: '',
+          duration: '60',
+          section: 'material',
+          isCustom: true,
+        },
+      ],
+    }))
+  }
+
+  function selectOtherMaterial() {
+    const materialId = `${category.id}-custom-material-${Date.now()}`
+    setFocusedCustomMaterialId(materialId)
+    updateDraft((current) => ({
+      ...current,
+      services: [
+        ...current.services.filter((service) => service.id !== otherMaterial?.id),
+        {
+          id: materialId,
+          categoryId: category.id,
+          name: '',
+          selected: true,
+          price: '',
+          duration: '60',
+          section: 'material',
+          isCustom: true,
+        },
+      ],
+    }))
+  }
+
+  function removeCustomMaterial(materialId: string) {
+    updateDraft((current) => ({
+      ...current,
+      services: current.services.filter((service) => service.id !== materialId),
+    }))
+  }
 
   return (
     <div className="rounded-2xl border border-[#d6dce8] bg-white px-6 py-7 shadow-[0_3px_10px_rgb(34_42_66_/_0.03)]">
       <div>
-        <p className="text-[20px] font-bold leading-6 text-[#10172a]">Nail Services</p>
-        <p className="mt-2 text-[15px] leading-5 text-[#68738b]">Main treatments and services</p>
+        <p className="text-[20px] font-bold leading-6 text-[#10172a]">{setupSection.title}</p>
+        <p className="mt-2 text-[15px] leading-5 text-[#68738b]">{setupSection.subtitle}</p>
       </div>
 
       <div className="mt-7">
@@ -618,14 +850,32 @@ function NailServicesSetup({ category, draft, updateDraft }: { category: Service
           onClick={() => setServicesExpanded((expanded) => !expanded)}
           type="button"
         >
-          <p className="text-[16px] leading-5 text-[#68738b]">Services</p>
+          <p className="text-[16px] leading-5 text-[#68738b]">{setupSection.servicesLabel}</p>
           <ChevronUp className={cn('size-5 text-[#10172a] transition-transform', !servicesExpanded && 'rotate-180')} />
         </button>
         {servicesExpanded && (
           <div className="space-y-2">
-            {treatmentServices.map((service) => (
-              <NailServicePriceRow key={service.id} service={service} updateDraft={updateDraft} />
+            {[...treatmentServices, ...customServices].map((service) => (
+              <ServicePriceRow
+                autoFocusName={service.id === focusedCustomServiceId}
+                editableName={isCustomServiceDraft(service)}
+                key={service.id}
+                onRemove={isCustomServiceDraft(service) ? () => removeCustomService(service.id) : undefined}
+                service={service}
+                updateDraft={updateDraft}
+              />
             ))}
+            {otherService && (
+              <OtherServiceRow onSelect={selectOtherService} />
+            )}
+            <button
+              className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[#c7cede] bg-[#fbfcff] px-4 text-[14px] font-medium text-[#6734c7] transition hover:border-[#bda9f6] hover:bg-[#f7f3ff]"
+              onClick={addCustomService}
+              type="button"
+            >
+              <Plus className="size-4" />
+              Add service
+            </button>
           </div>
         )}
       </div>
@@ -637,18 +887,32 @@ function NailServicesSetup({ category, draft, updateDraft }: { category: Service
           onClick={() => setMaterialsExpanded((expanded) => !expanded)}
           type="button"
         >
-          <p className="text-[16px] leading-5 text-[#68738b]">Materials</p>
+          <p className="text-[16px] leading-5 text-[#68738b]">{setupSection.materialsLabel}</p>
           <ChevronUp className={cn('size-5 text-[#10172a] transition-transform', !materialsExpanded && 'rotate-180')} />
         </button>
         {materialsExpanded && (
           <div className="space-y-2">
-            {materialServices.map((service) => (
-              <NailMaterialRow
+            {[...materialServices, ...customMaterials].map((service) => (
+              <MaterialRow
+                autoFocusName={service.id === focusedCustomMaterialId}
+                editableName={isCustomServiceDraft(service)}
                 key={service.id}
+                onRemove={isCustomServiceDraft(service) ? () => removeCustomMaterial(service.id) : undefined}
                 service={service}
                 updateDraft={updateDraft}
               />
             ))}
+            {otherMaterial && (
+              <OtherMaterialRow onSelect={selectOtherMaterial} />
+            )}
+            <button
+              className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[#c7cede] bg-[#fbfcff] px-4 text-[14px] font-medium text-[#6734c7] transition hover:border-[#bda9f6] hover:bg-[#f7f3ff]"
+              onClick={addCustomMaterial}
+              type="button"
+            >
+              <Plus className="size-4" />
+              Add material
+            </button>
           </div>
         )}
       </div>
@@ -656,7 +920,19 @@ function NailServicesSetup({ category, draft, updateDraft }: { category: Service
   )
 }
 
-function NailServicePriceRow({ service, updateDraft }: { service: DraftService; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
+function ServicePriceRow({
+  autoFocusName = false,
+  editableName = false,
+  onRemove,
+  service,
+  updateDraft,
+}: {
+  autoFocusName?: boolean
+  editableName?: boolean
+  onRemove?: () => void
+  service: DraftService
+  updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void
+}) {
   function toggleService() {
     updateDraft((current) => ({
       ...current,
@@ -664,20 +940,52 @@ function NailServicePriceRow({ service, updateDraft }: { service: DraftService; 
     }))
   }
 
+  function updateServiceName(name: string) {
+    updateDraft((current) => ({
+      ...current,
+      services: current.services.map((item) => item.id === service.id ? {
+        ...item,
+        name,
+        selected: true,
+        isCustom: true,
+      } : item),
+    }))
+  }
+
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto_82px] items-center gap-2">
-      <button
-        aria-checked={service.selected}
-        className={cn('flex min-h-[53px] min-w-0 cursor-pointer items-center gap-3 rounded-2xl border px-4 text-left transition', service.selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white')}
-        onClick={toggleService}
-        role="checkbox"
-        type="button"
+    <div className={cn('grid items-center gap-2', onRemove ? 'grid-cols-[minmax(0,1fr)_auto_82px_32px]' : 'grid-cols-[minmax(0,1fr)_auto_82px]')}>
+      <div
+        className={cn('flex min-h-[53px] min-w-0 items-center gap-3 rounded-2xl border px-4 text-left transition', service.selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white')}
       >
-        <span className={cn('grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)] transition', service.selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent')}>
+        <button
+          aria-checked={service.selected}
+          aria-label={`${service.selected ? 'Disable' : 'Enable'} ${service.name || 'custom service'}`}
+          className={cn('grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)] transition', service.selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent')}
+          onClick={toggleService}
+          role="checkbox"
+          type="button"
+        >
           <Check className="size-3" />
-        </span>
-        <span className="truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
-      </button>
+        </button>
+        {editableName ? (
+          <input
+            aria-label={`${service.name || 'Custom service'} name`}
+            className="min-h-[40px] min-w-0 flex-1 cursor-text bg-transparent text-[15px] font-medium leading-5 text-[#1b2133] outline-none placeholder:text-[#8b92a1]"
+            autoFocus={autoFocusName}
+            onChange={(event) => updateServiceName(event.target.value)}
+            placeholder="Service name"
+            value={service.name}
+          />
+        ) : (
+          <button
+            className="min-w-0 flex-1 text-left"
+            onClick={toggleService}
+            type="button"
+          >
+            <span className="block truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
+          </button>
+        )}
+      </div>
       <span className="text-[18px] leading-none text-[#10172a]">$</span>
       <label className="grid min-h-[53px] items-center overflow-hidden rounded-2xl border border-[#d7dce8] bg-white px-2 text-[12px] font-medium text-[#7b8498]">
         <input
@@ -695,14 +1003,50 @@ function NailServicePriceRow({ service, updateDraft }: { service: DraftService; 
           value={service.price}
         />
       </label>
+      {onRemove && (
+        <button
+          aria-label={`Remove ${service.name || 'custom service'}`}
+          className="grid size-8 place-items-center rounded-md text-[#8b92a1] transition hover:bg-[#fff0f0] hover:text-[#e05252]"
+          onClick={onRemove}
+          type="button"
+        >
+          <Trash2 className="size-4" />
+        </button>
+      )}
     </div>
   )
 }
 
-function NailMaterialRow({
+function OtherServiceRow({ onSelect }: { onSelect: () => void }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_82px] items-center gap-2">
+      <button
+        aria-label="Add custom service"
+        className="flex min-h-[53px] min-w-0 items-center gap-3 rounded-2xl border border-[#d7dce8] bg-white px-4 text-left transition hover:border-[#cbb9ff] hover:bg-[#fbf9ff]"
+        onClick={onSelect}
+        type="button"
+      >
+        <span className="grid size-4 shrink-0 place-items-center rounded-[4px] border border-[#d5dce8] bg-[#f6f9ff] shadow-[0_2px_5px_rgb(24_32_50_/_0.08)]" />
+        <span className="truncate text-[15px] font-medium leading-5 text-[#1b2133]">Other</span>
+      </button>
+      <span className="text-[18px] leading-none text-[#10172a]">$</span>
+      <span className="grid min-h-[53px] items-center rounded-2xl border border-[#d7dce8] bg-white px-2 text-center text-[12px] font-medium text-[#7b8498]">
+        e.g. 40
+      </span>
+    </div>
+  )
+}
+
+function MaterialRow({
+  autoFocusName = false,
+  editableName = false,
+  onRemove,
   service,
   updateDraft,
 }: {
+  autoFocusName?: boolean
+  editableName?: boolean
+  onRemove?: () => void
   service: DraftService
   updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void
 }) {
@@ -713,25 +1057,80 @@ function NailMaterialRow({
     }))
   }
 
+  function updateMaterialName(name: string) {
+    updateDraft((current) => ({
+      ...current,
+      services: current.services.map((item) => item.id === service.id ? {
+        ...item,
+        name,
+        selected: true,
+        isCustom: true,
+      } : item),
+    }))
+  }
+
+  return (
+    <div className={cn('grid items-center gap-2', onRemove ? 'grid-cols-[minmax(0,1fr)_32px]' : 'grid-cols-[minmax(0,1fr)]')}>
+      <div className={cn(
+        'flex min-h-[53px] w-full items-center gap-3 rounded-2xl border px-4 text-left transition',
+        service.selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white',
+      )}>
+        <button
+          aria-checked={service.selected}
+          aria-label={`${service.selected ? 'Disable' : 'Enable'} ${service.name || 'custom material'}`}
+          className={cn(
+            'grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)] transition',
+            service.selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent',
+          )}
+          onClick={toggleService}
+          role="checkbox"
+          type="button"
+        >
+          <Check className="size-3" />
+        </button>
+        {editableName ? (
+          <input
+            aria-label={`${service.name || 'Custom material'} name`}
+            autoFocus={autoFocusName}
+            className="min-h-[40px] min-w-0 flex-1 cursor-text bg-transparent text-[15px] font-medium leading-5 text-[#1b2133] outline-none placeholder:text-[#8b92a1]"
+            onChange={(event) => updateMaterialName(event.target.value)}
+            placeholder="Material name"
+            value={service.name}
+          />
+        ) : (
+          <button
+            className="min-w-0 flex-1 text-left"
+            onClick={toggleService}
+            type="button"
+          >
+            <span className="block truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
+          </button>
+        )}
+      </div>
+      {onRemove && (
+        <button
+          aria-label={`Remove ${service.name || 'custom material'}`}
+          className="grid size-8 place-items-center rounded-md text-[#8b92a1] transition hover:bg-[#fff0f0] hover:text-[#e05252]"
+          onClick={onRemove}
+          type="button"
+        >
+          <Trash2 className="size-4" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function OtherMaterialRow({ onSelect }: { onSelect: () => void }) {
   return (
     <button
-      aria-checked={service.selected}
-      aria-label={service.name}
-      className={cn(
-        'flex min-h-[53px] w-full cursor-pointer items-center gap-3 rounded-2xl border px-4 text-left transition',
-        service.selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white',
-      )}
-      onClick={toggleService}
-      role="checkbox"
+      aria-label="Add custom material"
+      className="flex min-h-[53px] w-full min-w-0 items-center gap-3 rounded-2xl border border-[#d7dce8] bg-white px-4 text-left transition hover:border-[#cbb9ff] hover:bg-[#fbf9ff]"
+      onClick={onSelect}
       type="button"
     >
-      <span className={cn(
-        'grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)] transition',
-        service.selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent',
-      )}>
-        <Check className="size-3" />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
+      <span className="grid size-4 shrink-0 place-items-center rounded-[4px] border border-[#d5dce8] bg-[#f6f9ff] shadow-[0_2px_5px_rgb(24_32_50_/_0.08)]" />
+      <span className="truncate text-[15px] font-medium leading-5 text-[#1b2133]">Other</span>
     </button>
   )
 }
@@ -921,12 +1320,12 @@ function ProviderSummaryList({ categories, draft, onAddProvider, onEditProvider 
 
 function ProviderSummaryCard({ categories, draft, provider, onEdit }: { categories: ServiceCategory[]; draft: OnboardingDraft; provider: DraftProvider; onEdit: () => void }) {
   const categoryServiceMap = new Map(getProviderCategoryServices(draft).map((service) => [service.id, service]))
-  const nailServiceMap = new Map(getNailTreatmentServices(draft, categories).map((service) => [service.id, service]))
+  const treatmentServiceMap = new Map(getSetupTreatmentServices(draft, categories).map((service) => [service.id, service]))
   const providerCategoryServices = provider.serviceIds
     .map((serviceId) => categoryServiceMap.get(serviceId))
     .filter((service): service is DraftService => Boolean(service))
-  const providerNailServices = provider.serviceIds
-    .map((serviceId) => nailServiceMap.get(serviceId))
+  const providerTreatmentServices = provider.serviceIds
+    .map((serviceId) => treatmentServiceMap.get(serviceId))
     .filter((service): service is DraftService => Boolean(service))
   const categoryIds = new Set([
     ...(provider.categoryIds ?? []),
@@ -964,7 +1363,7 @@ function ProviderSummaryCard({ categories, draft, provider, onEdit }: { categori
         </div>
 
         <ProviderSummarySection icon={<Sparkles className="size-4" />} label="SERVICES" values={providerCategories.map((category) => category.name)} />
-        <ProviderSummarySection icon={<Sparkles className="size-4" />} label="SPECIALTIES" values={providerNailServices.map((service) => service.name)} />
+        <ProviderSummarySection icon={<Sparkles className="size-4" />} label="SPECIALTIES" values={providerTreatmentServices.map((service) => service.name)} />
       </div>
 
       <Button className="mt-7 min-h-14 rounded-xl border-0 bg-[#f4f5ff] text-[16px] font-medium text-[#7a3fe0] shadow-[0_12px_22px_rgb(59_45_115_/_0.16)] hover:bg-[#eef0ff]" fullWidth onClick={onEdit} type="button" variant="outline">
@@ -995,7 +1394,8 @@ function ProviderSummarySection({ icon, label, values }: { icon: ReactNode; labe
 }
 
 function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraft }: { categories: ServiceCategory[]; draft: OnboardingDraft; provider: DraftProvider; salonSchedule: Record<string, DraftDay>; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
-  const providerServices = getNailTreatmentServices(draft, categories)
+  const selectedCategoryIds = new Set(draft.selectedCategoryIds)
+  const providerServices = getSetupTreatmentServices(draft, categories).filter((service) => selectedCategoryIds.has(service.categoryId))
   const providerCategoryServices = getProviderCategoryServices(draft)
   const providerServiceIds = new Set(provider.serviceIds)
   const usesSalonSchedule = provider.useSalonSchedule === true
@@ -1291,7 +1691,7 @@ function isStepComplete(step: Step, draft: OnboardingDraft) {
   if (step === 'services') {
     const services = getSelectedProviderCategoryServices(draft)
     if (!services.length) return true
-    return services.some((service) => service.selected && Number(service.price) > 0 && Number(service.duration) > 0)
+    return services.some((service) => service.selected && service.name.trim() && Number(service.price) > 0 && Number(service.duration) > 0)
   }
   if (step === 'schedule') return Object.values(draft.schedule).some((day) => day.enabled && day.open && day.close && day.open < day.close)
   if (step === 'team') {
