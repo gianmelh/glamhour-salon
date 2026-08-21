@@ -129,7 +129,7 @@ export const defaultMaterialSpecs: MaterialSpec[] = [
     label: 'Builder Gel',
     imageSrc: nailsBookingAssets.materials.builderGel,
     imageFrame: 'h-[61px] w-[42px]',
-    col: 2,
+    col: 1,
     row: 2,
     width: 'w-[162.5px]',
   },
@@ -138,9 +138,9 @@ export const defaultMaterialSpecs: MaterialSpec[] = [
     label: 'Other',
     imageSrc: '',
     imageFrame: '',
-    col: 1,
-    row: 3,
-    width: 'w-full col-span-2',
+    col: 2,
+    row: 2,
+    width: 'w-[162.5px]',
   },
 ]
 

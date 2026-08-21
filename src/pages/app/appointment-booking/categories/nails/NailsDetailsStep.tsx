@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type PointerEvent } from 'react'
 import { ChevronUp } from 'lucide-react'
 import { cn } from '../../../../../lib/cn'
 import { useNailsServiceMaterials } from '../../../../../hooks/useServiceMaterials'
@@ -53,6 +53,8 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
   const [materialsExpanded, setMaterialsExpanded] = useState(true)
   const [continuing, setContinuing] = useState(false)
   const [continueError, setContinueError] = useState('')
+  const serviceScrollerRef = useRef<HTMLDivElement | null>(null)
+  const serviceDragRef = useRef({ dragging: false, moved: false, captured: false, startX: 0, scrollLeft: 0 })
 
   const setDetails = (next: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>)) => {
     onChange({ details: next })
@@ -81,7 +83,19 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
       setPendingSelection({ kind: 'nailType', label })
       return
     }
-    setDetails({ ...details, nailType: label })
+    setDetails({
+      ...details,
+      nailType: label,
+      customNailTypeName: label === 'Custom' ? '' : undefined,
+    })
+  }
+
+  const updateCustomNailTypeName = (name: string) => {
+    setDetails({
+      ...details,
+      nailType: 'Custom',
+      customNailTypeName: name,
+    })
   }
 
   const selectedType = String(details.nailServiceType ?? '')
@@ -150,11 +164,58 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
     }
   }
 
+  const startServiceScrollDrag = (event: PointerEvent<HTMLDivElement>) => {
+    const scroller = serviceScrollerRef.current
+    if (!scroller) return
+    serviceDragRef.current = {
+      dragging: true,
+      moved: false,
+      captured: false,
+      startX: event.clientX,
+      scrollLeft: scroller.scrollLeft,
+    }
+  }
+
+  const moveServiceScrollDrag = (event: PointerEvent<HTMLDivElement>) => {
+    const scroller = serviceScrollerRef.current
+    const drag = serviceDragRef.current
+    if (!scroller || !drag.dragging) return
+    const deltaX = event.clientX - drag.startX
+    if (Math.abs(deltaX) > 10) {
+      drag.moved = true
+      if (!drag.captured) {
+        scroller.setPointerCapture(event.pointerId)
+        drag.captured = true
+      }
+    }
+    if (!drag.moved) return
+    scroller.scrollLeft = drag.scrollLeft - deltaX
+  }
+
+  const endServiceScrollDrag = (event: PointerEvent<HTMLDivElement>) => {
+    const scroller = serviceScrollerRef.current
+    if (scroller?.hasPointerCapture(event.pointerId)) {
+      scroller.releasePointerCapture(event.pointerId)
+    }
+    serviceDragRef.current.dragging = false
+    window.setTimeout(() => {
+      serviceDragRef.current.moved = false
+      serviceDragRef.current.captured = false
+    }, 0)
+  }
+
   return (
     <RegistrationFlowShell activeCategory="nails" onBack={onBack}>
         <BookingSectionTitle>Type of service</BookingSectionTitle>
-        <div className="-mx-4 overflow-x-auto px-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex w-max gap-4">
+        <div
+          className="-mx-4 min-w-0 max-w-[calc(100%+32px)] cursor-grab touch-pan-x select-none overflow-x-scroll overflow-y-hidden overscroll-x-contain px-4 pb-2 active:cursor-grabbing [-ms-overflow-style:auto] [scrollbar-width:thin]"
+          onPointerCancel={endServiceScrollDrag}
+          onPointerDown={startServiceScrollDrag}
+          onPointerMove={moveServiceScrollDrag}
+          onPointerUp={endServiceScrollDrag}
+          ref={serviceScrollerRef}
+        >
+          <div className="flex w-max min-w-max gap-4">
             {serviceTypeOptions.map((option) => (
               <ServiceTypeCard
                 active={selectedType === option.label}
@@ -177,29 +238,27 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
             {nailTypeRows.map((row) => (
               <div className="grid w-full min-w-0 grid-cols-2 gap-3" key={row.map((item) => item.label).join('-')}>
                 {row.map((item) => (
-                  <NailTypeCard
-                    active={selectedNailType === item.label}
-                    className={item.className}
-                    imageSrc={item.imageSrc}
-                    key={item.label}
-                    label={selectedNailType === 'Custom' && item.label === 'Custom' && customNailTypeName ? customNailTypeName : item.label}
-                    onClick={() => requestNailTypeChange(item.label)}
-                    variant={item.variant}
-                  />
+                  item.label === 'Custom' && selectedNailType === 'Custom' ? (
+                    <CustomNailTypeCard
+                      imageSrc={item.imageSrc}
+                      key={item.label}
+                      onChange={updateCustomNailTypeName}
+                      value={String(details.customNailTypeName ?? '')}
+                    />
+                  ) : (
+                    <NailTypeCard
+                      active={selectedNailType === item.label}
+                      className={item.className}
+                      imageSrc={item.imageSrc}
+                      key={item.label}
+                      label={item.label}
+                      onClick={() => requestNailTypeChange(item.label)}
+                      variant={item.variant}
+                    />
+                  )
                 ))}
               </div>
             ))}
-            {selectedNailType === 'Custom' && (
-              <label className="grid w-full min-w-0 gap-2 text-[13px] font-medium text-[#101828]">
-                Custom nail type
-                <input
-                  className="min-h-[48px] rounded-[12px] border border-[#d0d5dd] bg-white px-3 text-[15px] text-[#101828] outline-none placeholder:text-[#98a2b3]"
-                  placeholder="Write nail type"
-                  value={String(details.customNailTypeName ?? '')}
-                  onChange={(event) => setDetails({ ...details, customNailTypeName: event.target.value })}
-                />
-              </label>
-            )}
           </div>
         )}
 
@@ -223,7 +282,7 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
                 return (
                   <MaterialCard
                     active={active}
-                    className={cn(spec.label === 'Other' ? 'col-span-2' : 'justify-self-stretch')}
+                    className={cn(spec.width, 'justify-self-stretch')}
                     imageCrop={spec.imageCrop}
                     imageFrame={spec.imageFrame}
                     imageSrc={spec.imageSrc}
@@ -285,12 +344,42 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
           onApply={() => {
             if (!pendingSelection) return
             if (pendingSelection.kind === 'service') applyServiceType(pendingSelection.label)
-            else setDetails({ ...details, nailType: pendingSelection.label })
+            else setDetails({
+              ...details,
+              nailType: pendingSelection.label,
+              customNailTypeName: pendingSelection.label === 'Custom' ? '' : undefined,
+            })
             setPendingSelection(null)
           }}
           onKeep={() => setPendingSelection(null)}
           open={Boolean(pendingSelection)}
         />
     </RegistrationFlowShell>
+  )
+}
+
+function CustomNailTypeCard({
+  imageSrc,
+  onChange,
+  value,
+}: {
+  imageSrc: string
+  onChange: (value: string) => void
+  value: string
+}) {
+  return (
+    <label className="grid h-[64px] w-full min-w-0 grid-cols-[minmax(0,1fr)_86px] items-center gap-[8px] rounded-[10px] border border-solid border-[#7344cd] bg-[#ebe7ff] px-[12px] text-left">
+      <input
+        aria-label="Custom nail type"
+        autoFocus
+        className="min-w-0 bg-transparent text-[11px] font-normal leading-none tracking-normal text-black outline-none placeholder:text-[#667085]"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Nail type"
+        value={value}
+      />
+      <span className="flex h-[58px] w-[86px] shrink-0 items-center justify-center overflow-visible">
+        <img alt="" className="h-[58px] w-[58px] object-contain object-center" src={imageSrc} />
+      </span>
+    </label>
   )
 }

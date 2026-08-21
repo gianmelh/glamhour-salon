@@ -132,6 +132,10 @@ export function detailEntries(details: Record<string, unknown> | null, categoryC
       value = formatLashMap(details[key])
     } else if (key === 'materials' || key === 'materialLabels') {
       value = formatValue(details.materialLabels ?? details.materials)
+    } else if (key === 'nailType') {
+      const nailType = String(details.nailType ?? '').trim()
+      const customNailTypeName = String(details.customNailTypeName ?? '').trim()
+      value = formatValue(nailType === 'Custom' && customNailTypeName ? customNailTypeName : details.nailType)
     } else {
       value = formatValue(details[key])
     }

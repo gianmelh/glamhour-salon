@@ -64,10 +64,18 @@ function formatMaterialLabels(details: Record<string, unknown>) {
   ))
 }
 
+function formatNailType(details: Record<string, unknown>) {
+  const nailType = String(details.nailType ?? '').trim()
+  const customNailTypeName = String(details.customNailTypeName ?? '').trim()
+  if (nailType === 'Custom' && customNailTypeName) return customNailTypeName
+  return nailType
+}
+
 function buildNailsTreatmentReviewRows(details: Record<string, unknown>) {
   const rows: Array<{ label: string; value: string }> = []
   if (details.nailServiceType) rows.push({ label: 'Service type', value: String(details.nailServiceType) })
-  if (details.nailType) rows.push({ label: 'Nail shape', value: String(details.nailType) })
+  const nailType = formatNailType(details)
+  if (nailType) rows.push({ label: 'Nail shape', value: nailType })
   if (details.handMode) {
     rows.push({ label: 'Hand mode', value: details.handMode === 'finger' ? 'Finger to finger' : 'Full hand' })
   }
