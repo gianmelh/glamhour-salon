@@ -19,8 +19,10 @@ import {
   nailServiceSetupItems,
 } from './onboardingNailsSpec'
 
-const steps = ['categories', 'services', 'schedule', 'team', 'complete'] as const
+const steps = ['categories', 'services', 'durations', 'schedule', 'team', 'complete'] as const
 type Step = typeof steps[number]
+type PersistedOnboardingStep = 'categories' | 'services' | 'schedule' | 'team' | 'complete'
+const setupStepCount = steps.length - 1
 
 type OnboardingState = {
   salonId?: string
@@ -139,8 +141,13 @@ const serviceSetupSections: Record<string, ServiceSetupSection> = {
 }
 
 const stepHeaderSubtitles: Partial<Record<Step, string>> = {
+  durations: 'Set how long each service takes.',
   schedule: 'Set your regular operating hours.',
   team: 'Set your regular operating hours.',
+}
+
+function persistedOnboardingStep(step: Step): PersistedOnboardingStep {
+  return step === 'durations' ? 'services' : step
 }
 
 const languageLabels: Record<string, string> = {
@@ -514,6 +521,7 @@ export function SetupPage() {
   if (!services.data || !professionals.data) return <div className="min-h-dvh bg-canvas p-4"><ErrorState description="Salon setup data could not be loaded." onRetry={() => { categories.retry(); services.retry(); professionals.retry() }} /></div>
 
   const stepIndex = Math.max(0, steps.indexOf(currentStep))
+  const visibleStepNumber = Math.min(stepIndex + 1, setupStepCount)
   const canContinue = isStepComplete(currentStep, draft)
   const headerSubtitle = stepHeaderSubtitles[currentStep] ?? "Let's get your business ready for clients."
   const isTeamEditor = currentStep === 'team' && Boolean(draft.activeProviderId)
@@ -535,7 +543,7 @@ export function SetupPage() {
     setSaveError('')
     try {
       await glamhourApi.saveOnboarding({
-        step: nextStep,
+        step: persistedOnboardingStep(nextStep),
         completed,
         draft,
       }, salonId)
@@ -620,16 +628,17 @@ export function SetupPage() {
               <h1 className="text-[28px] font-bold leading-none tracking-[-0.02em] text-[#10172a]">Salon Setup</h1>
               <p className="mt-2 whitespace-nowrap text-[16px] leading-5 text-[#747d96]">{headerSubtitle}</p>
             </div>
-            <p className="shrink-0 pb-1 text-[12px] font-medium text-[#626b84]">Step {Math.min(stepIndex + 1, 4)} of 4</p>
+            <p className="shrink-0 pb-1 text-[12px] font-medium text-[#626b84]">Step {visibleStepNumber} of {setupStepCount}</p>
           </div>
           <div className="mt-5 h-2 rounded-full bg-white/75">
-            <div className="h-full rounded-full bg-[#6734c7] transition-all" style={{ width: `${((Math.min(stepIndex, 3) + 1) / 4) * 100}%` }} />
+            <div className="h-full rounded-full bg-[#6734c7] transition-all" style={{ width: `${(visibleStepNumber / setupStepCount) * 100}%` }} />
           </div>
         </header>
 
         <div className="mt-8 flex-1">
           {currentStep === 'categories' && <CategoriesStep categories={categoryData} draft={draft} updateDraft={updateDraft} />}
           {currentStep === 'services' && <ServicesStep categories={categoryData} draft={draft} updateDraft={updateDraft} />}
+          {currentStep === 'durations' && <DurationsStep categories={categoryData} draft={draft} updateDraft={updateDraft} />}
           {currentStep === 'schedule' && <ScheduleStep draft={draft} updateDraft={updateDraft} />}
           {currentStep === 'team' && <TeamStep categories={categoryData} draft={draft} updateDraft={updateDraft} />}
         </div>
@@ -731,6 +740,98 @@ function ServicesStep({ categories, draft, updateDraft }: { categories: ServiceC
           )}
       </div>
     </OnboardingPanel>
+  )
+}
+
+function DurationsStep({ categories, draft, updateDraft }: { categories: ServiceCategory[]; draft: OnboardingDraft; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
+  const selectedCategoryIds = new Set(draft.selectedCategoryIds)
+  const categoriesWithServices = categories
+    .filter((category) => selectedCategoryIds.has(category.id))
+    .map((category) => ({
+      category,
+      services: draft.services.filter((service) => (
+        service.categoryId === category.id
+        && service.section !== 'material'
+        && service.selected
+        && service.name.trim()
+      )),
+    }))
+    .filter(({ services }) => services.length > 0)
+
+  return (
+    <OnboardingPanel backgroundColor="#FFFFFF" title="Service Duration" subtitle="Set the default time for every service you selected.">
+      <div className="mt-5 space-y-5">
+        {categoriesWithServices.length
+          ? categoriesWithServices.map(({ category, services }) => (
+            <CategoryDurationsSetup category={category} key={category.id} services={services} updateDraft={updateDraft} />
+          ))
+          : (
+            <p className="rounded-xl bg-[#f8f9fd] px-4 py-3 text-[13px] leading-5 text-[#68738b]">
+              Select at least one service with a base price before setting durations.
+            </p>
+          )}
+      </div>
+    </OnboardingPanel>
+  )
+}
+
+function CategoryDurationsSetup({
+  category,
+  services,
+  updateDraft,
+}: {
+  category: ServiceCategory
+  services: DraftService[]
+  updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void
+}) {
+  const setupSection = getServiceSetupSection(category)
+
+  return (
+    <div className="rounded-2xl border border-[#d6dce8] bg-white px-6 py-7 shadow-[0_3px_10px_rgb(34_42_66_/_0.03)]">
+      <div>
+        <p className="text-[20px] font-bold leading-6 text-[#10172a]">{setupSection?.title ?? category.name}</p>
+        <p className="mt-2 text-[15px] leading-5 text-[#68738b]">Service time in minutes</p>
+      </div>
+
+      <div className="mt-6 space-y-2">
+        {services.map((service) => (
+          <ServiceDurationRow key={service.id} service={service} updateDraft={updateDraft} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ServiceDurationRow({
+  service,
+  updateDraft,
+}: {
+  service: DraftService
+  updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_92px_auto] items-center gap-2">
+      <div className="flex min-h-[53px] min-w-0 items-center rounded-2xl border border-[#e8ddff] bg-[#eee8ff] px-4 py-3 text-left">
+        <span className="block min-w-0 break-words text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
+      </div>
+      <label className="grid min-h-[53px] items-center overflow-hidden rounded-2xl border border-[#d7dce8] bg-white px-2 text-[12px] font-medium text-[#7b8498]">
+        <input
+          aria-label={`${service.name || 'Service'} duration`}
+          className="[appearance:textfield] min-w-0 bg-transparent text-center text-[14px] text-[#1b2133] outline-none placeholder:text-[12px] placeholder:text-[#7b8498] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          onChange={(event) => {
+            const duration = event.target.value
+            updateDraft((current) => ({
+              ...current,
+              services: current.services.map((item) => item.id === service.id ? { ...item, duration } : item),
+            }))
+          }}
+          placeholder="60"
+          type="number"
+          value={service.duration}
+        />
+      </label>
+      <span className="text-[13px] leading-none text-[#10172a]">min</span>
+    </div>
   )
 }
 
@@ -995,9 +1096,9 @@ function ServicePriceRow({
   }
 
   return (
-    <div className={cn('grid items-center gap-2', onRemove ? 'grid-cols-[minmax(0,1fr)_auto_70px_58px_auto_32px]' : 'grid-cols-[minmax(0,1fr)_auto_70px_58px_auto]')}>
+    <div className={cn('grid items-center gap-2', onRemove ? 'grid-cols-[minmax(0,1fr)_auto_96px_32px]' : 'grid-cols-[minmax(0,1fr)_auto_96px]')}>
       <div
-        className={cn('flex min-h-[53px] min-w-0 items-center gap-3 rounded-2xl border px-4 text-left transition', service.selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white')}
+        className={cn('flex min-h-[53px] min-w-0 items-center gap-3 rounded-2xl border px-4 py-3 text-left transition', service.selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white')}
       >
         <button
           aria-checked={service.selected}
@@ -1024,7 +1125,7 @@ function ServicePriceRow({
             onClick={toggleService}
             type="button"
           >
-            <span className="block truncate text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
+            <span className="block min-w-0 break-words text-[15px] font-medium leading-5 text-[#1b2133]">{service.name}</span>
           </button>
         )}
       </div>
@@ -1045,23 +1146,6 @@ function ServicePriceRow({
           value={service.price}
         />
       </label>
-      <label className="grid min-h-[53px] items-center overflow-hidden rounded-2xl border border-[#d7dce8] bg-white px-2 text-[12px] font-medium text-[#7b8498]">
-        <input
-          aria-label={`${service.name || 'Custom service'} duration`}
-          className="[appearance:textfield] min-w-0 bg-transparent text-center text-[12px] text-[#1b2133] outline-none placeholder:text-[12px] placeholder:text-[#7b8498] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          onChange={(event) => {
-            const duration = event.target.value
-            updateDraft((current) => ({
-              ...current,
-              services: current.services.map((item) => item.id === service.id ? { ...item, duration, selected: duration.trim() ? true : item.selected } : item),
-            }))
-          }}
-          placeholder="60"
-          type="number"
-          value={service.duration}
-        />
-      </label>
-      <span className="text-[13px] leading-none text-[#10172a]">min</span>
       {onRemove && (
         <button
           aria-label={`Remove ${service.name || 'custom service'}`}
@@ -1078,24 +1162,20 @@ function ServicePriceRow({
 
 function OtherServiceRow({ onSelect }: { onSelect: () => void }) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto_70px_58px_auto] items-center gap-2">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_96px] items-center gap-2">
       <button
         aria-label="Add custom service"
-        className="flex min-h-[53px] min-w-0 items-center gap-3 rounded-2xl border border-[#d7dce8] bg-white px-4 text-left transition hover:border-[#cbb9ff] hover:bg-[#fbf9ff]"
+        className="flex min-h-[53px] min-w-0 items-center gap-3 rounded-2xl border border-[#d7dce8] bg-white px-4 py-3 text-left transition hover:border-[#cbb9ff] hover:bg-[#fbf9ff]"
         onClick={onSelect}
         type="button"
       >
         <span className="grid size-4 shrink-0 place-items-center rounded-[4px] border border-[#d5dce8] bg-[#f6f9ff] shadow-[0_2px_5px_rgb(24_32_50_/_0.08)]" />
-        <span className="truncate text-[15px] font-medium leading-5 text-[#1b2133]">Other</span>
+        <span className="break-words text-[15px] font-medium leading-5 text-[#1b2133]">Other</span>
       </button>
       <span className="text-[18px] leading-none text-[#10172a]">$</span>
       <span className="grid min-h-[53px] items-center rounded-2xl border border-[#d7dce8] bg-white px-2 text-center text-[12px] font-medium text-[#7b8498]">
         e.g. 40
       </span>
-      <span className="grid min-h-[53px] items-center rounded-2xl border border-[#d7dce8] bg-white px-2 text-center text-[12px] font-medium text-[#7b8498]">
-        60
-      </span>
-      <span className="text-[13px] leading-none text-[#10172a]">min</span>
     </div>
   )
 }
@@ -1779,7 +1859,13 @@ function isStepComplete(step: Step, draft: OnboardingDraft) {
   if (step === 'services') {
     const services = getSelectedProviderCategoryServices(draft)
     if (!services.length) return true
-    return services.some((service) => service.selected && service.name.trim() && Number(service.price) > 0 && Number(service.duration) > 0)
+    return services.some((service) => service.selected && service.name.trim() && Number(service.price) > 0)
+  }
+  if (step === 'durations') {
+    const selectedServices = getSelectedProviderCategoryServices(draft)
+      .filter((service) => service.selected && service.name.trim())
+    if (!selectedServices.length) return false
+    return selectedServices.every((service) => Number(service.duration) > 0)
   }
   if (step === 'schedule') return Object.values(draft.schedule).some((day) => day.enabled && day.open && day.close && day.open < day.close)
   if (step === 'team') {
