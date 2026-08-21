@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, Clock3, DollarSign, UserRound } from 'lucide-react'
+import { CalendarDays, ChevronLeft, Clock3, DollarSign, Play, UserRound } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Avatar, Badge, Button, Card, DataSourceNotice, ErrorState, LoadingState, MutationError, PageTitle, ScreenSection } from '../../components'
 import { useAppointment } from '../../hooks/useGlamhourData'
@@ -21,6 +21,42 @@ function displayAppointmentTime(startsAt: string, treatmentDetails: Record<strin
   const [hour, minute] = consentTime.split(':').map(Number)
   if (!Number.isFinite(hour) || !Number.isFinite(minute)) return formatTime(startsAt)
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(2026, 0, 1, hour, minute))
+}
+
+function detailsForServiceStart(categoryCode: string, serviceName: string, treatmentDetails: Record<string, unknown>) {
+  if (categoryCode === 'nails') {
+    return {
+      ...treatmentDetails,
+      nailServiceType: typeof treatmentDetails.nailServiceType === 'string' && treatmentDetails.nailServiceType
+        ? treatmentDetails.nailServiceType
+        : serviceName,
+    }
+  }
+  if (categoryCode === 'lashes') {
+    return {
+      ...treatmentDetails,
+      style: typeof treatmentDetails.style === 'string' && treatmentDetails.style
+        ? treatmentDetails.style
+        : serviceName,
+    }
+  }
+  if (categoryCode === 'cosmetology') {
+    return {
+      ...treatmentDetails,
+      serviceType: typeof treatmentDetails.serviceType === 'string' && treatmentDetails.serviceType
+        ? treatmentDetails.serviceType
+        : serviceName,
+    }
+  }
+  if (categoryCode === 'micropigmentation') {
+    return {
+      ...treatmentDetails,
+      procedure: typeof treatmentDetails.procedure === 'string' && treatmentDetails.procedure
+        ? treatmentDetails.procedure
+        : serviceName,
+    }
+  }
+  return treatmentDetails
 }
 
 export function AppointmentDetailsPage() {
@@ -52,6 +88,7 @@ export function AppointmentDetailsPage() {
   }
 
   const editAppointment = () => {
+    const serviceName = service?.service_name_snapshot ?? ''
     window.sessionStorage.setItem(APPOINTMENT_DRAFT_KEY, JSON.stringify({
       categoryId: '',
       categoryCode,
@@ -62,7 +99,7 @@ export function AppointmentDetailsPage() {
       startsAt: '',
       endsAt: '',
       notes: data.internal_notes ?? data.customer_notes ?? '',
-      details: treatmentDetails,
+      details: detailsForServiceStart(categoryCode, serviceName, treatmentDetails),
       appointmentId: data.id,
     }))
     navigate('/app/appointments/new')
@@ -126,6 +163,9 @@ export function AppointmentDetailsPage() {
 
       <MutationError error={mutation.error} />
       <div className="grid gap-3">
+        <Button fullWidth onClick={editAppointment}>
+          <Play className="mr-2 size-4" /> Start service
+        </Button>
         {canMarkComplete && (
           <Button fullWidth loading={mutation.loading} onClick={() => updateStatus('completed')}>Mark as complete</Button>
         )}
