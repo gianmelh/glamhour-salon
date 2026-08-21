@@ -98,6 +98,22 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
     })
   }
 
+  const updateOtherMaterialName = (name: string) => {
+    setDetails((current) => {
+      const currentIds = new Set((current.materialIds as string[] | undefined) ?? [])
+      const currentLabels = new Set((current.materialLabels as string[] | undefined) ?? (current.materials as string[] | undefined) ?? [])
+      currentIds.add('other')
+      currentLabels.add('Other')
+      return {
+        ...current,
+        materialIds: [...currentIds],
+        materialLabels: [...currentLabels],
+        materials: [...currentLabels],
+        otherMaterialName: name,
+      }
+    })
+  }
+
   const selectedType = String(details.nailServiceType ?? '')
   const selectedNailType = String(details.nailType ?? '')
   const customNailTypeName = String(details.customNailTypeName ?? '').trim()
@@ -106,7 +122,6 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
     && isHandComplete(details.leftHand as Record<string, Record<string, string>> | undefined)
   const selectedMaterialIds = new Set((details.materialIds as string[] | undefined) ?? [])
   const selectedMaterialLabels = new Set((details.materialLabels as string[] | undefined) ?? (details.materials as string[] | undefined) ?? [])
-  const otherMaterialSelected = selectedMaterialIds.has('other') || selectedMaterialLabels.has('Other')
   const materialsLoading = materialsQuery.loading
   const materialsError = materialsQuery.error
 
@@ -280,53 +295,51 @@ export function NailsDetailsStep({ category, categorySource, services, selectedS
               {materialSpecs.map((spec) => {
                 const active = selectedMaterialIds.has(spec.id) || selectedMaterialLabels.has(spec.label)
                 return (
-                  <MaterialCard
-                    active={active}
-                    className={cn(spec.width, 'justify-self-stretch')}
-                    imageCrop={spec.imageCrop}
-                    imageFrame={spec.imageFrame}
-                    imageSrc={spec.imageSrc}
-                    key={spec.id}
-                    label={spec.label}
-                    onClick={() => {
-                      setDetails((current) => {
-                        const currentIds = new Set((current.materialIds as string[] | undefined) ?? [])
-                        const currentLabels = new Set((current.materialLabels as string[] | undefined) ?? (current.materials as string[] | undefined) ?? [])
-                        const selected = currentIds.has(spec.id) || currentLabels.has(spec.label)
+                  spec.label === 'Other' && active ? (
+                    <OtherMaterialCard
+                      className={cn(spec.width, 'justify-self-stretch')}
+                      key={spec.id}
+                      onChange={updateOtherMaterialName}
+                      value={String(details.otherMaterialName ?? '')}
+                    />
+                  ) : (
+                    <MaterialCard
+                      active={active}
+                      className={cn(spec.width, 'justify-self-stretch')}
+                      imageCrop={spec.imageCrop}
+                      imageFrame={spec.imageFrame}
+                      imageSrc={spec.imageSrc}
+                      key={spec.id}
+                      label={spec.label}
+                      onClick={() => {
+                        setDetails((current) => {
+                          const currentIds = new Set((current.materialIds as string[] | undefined) ?? [])
+                          const currentLabels = new Set((current.materialLabels as string[] | undefined) ?? (current.materials as string[] | undefined) ?? [])
+                          const selected = currentIds.has(spec.id) || currentLabels.has(spec.label)
 
-                        if (selected) {
-                          currentIds.delete(spec.id)
-                          currentLabels.delete(spec.label)
-                        } else {
-                          currentIds.add(spec.id)
-                          currentLabels.add(spec.label)
-                        }
+                          if (selected) {
+                            currentIds.delete(spec.id)
+                            currentLabels.delete(spec.label)
+                          } else {
+                            currentIds.add(spec.id)
+                            currentLabels.add(spec.label)
+                          }
 
-                        return {
-                          ...current,
-                          materialIds: [...currentIds],
-                          materialLabels: [...currentLabels],
-                          materials: [...currentLabels],
-                          otherMaterialName: currentLabels.has('Other') ? current.otherMaterialName : '',
-                        }
-                      })
-                    }}
-                  />
+                          return {
+                            ...current,
+                            materialIds: [...currentIds],
+                            materialLabels: [...currentLabels],
+                            materials: [...currentLabels],
+                            otherMaterialName: currentLabels.has('Other') ? current.otherMaterialName : '',
+                          }
+                        })
+                      }}
+                    />
+                  )
                 )
               })}
             </div>
           </>
-        )}
-        {otherMaterialSelected && (
-          <label className="grid w-full min-w-0 gap-2 text-[13px] font-medium text-[#101828]">
-            Other product used
-            <input
-              className="min-h-[48px] rounded-[12px] border border-[#d0d5dd] bg-white px-3 text-[15px] text-[#101828] outline-none placeholder:text-[#98a2b3]"
-              placeholder="Write product name"
-              value={String(details.otherMaterialName ?? '')}
-              onChange={(event) => setDetails({ ...details, otherMaterialName: event.target.value })}
-            />
-          </label>
         )}
 
         {handMapRequired && <HandEditor details={details} onChange={setDetails} />}
@@ -380,6 +393,32 @@ function CustomNailTypeCard({
       <span className="flex h-[58px] w-[86px] shrink-0 items-center justify-center overflow-visible">
         <img alt="" className="h-[58px] w-[58px] object-contain object-center" src={imageSrc} />
       </span>
+    </label>
+  )
+}
+
+function OtherMaterialCard({
+  className,
+  onChange,
+  value,
+}: {
+  className?: string
+  onChange: (value: string) => void
+  value: string
+}) {
+  return (
+    <label className={cn(
+      'flex h-[82px] min-h-[48px] shrink-0 items-center justify-center gap-[6px] rounded-[10px] border border-solid border-[#7344cd] bg-[#ebe7ff] px-[10px] py-[8px]',
+      className,
+    )}>
+      <input
+        aria-label="Other material name"
+        autoFocus
+        className="min-w-0 bg-transparent text-center text-[12px] font-normal leading-none tracking-normal text-black outline-none placeholder:text-[#667085]"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Other"
+        value={value}
+      />
     </label>
   )
 }
