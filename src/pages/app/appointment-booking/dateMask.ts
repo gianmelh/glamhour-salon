@@ -5,6 +5,19 @@ export function formatBirthDateInput(value: string) {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
 }
 
+export function formatClientBirthDate(value: string | null | undefined) {
+  if (!value) return ''
+  const datePart = value.split('T')[0]
+  const isoMatch = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (isoMatch) {
+    return `${isoMatch[2]}/${isoMatch[3]}/${isoMatch[1]}`
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+    return value
+  }
+  return formatBirthDateInput(value)
+}
+
 export function isValidMmDdYyyy(value: string) {
   const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
   if (!match) return false

@@ -1,12 +1,14 @@
 import { CalendarDays, ChevronLeft, Clock3, DollarSign, Play, UserRound } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Avatar, Badge, Button, Card, DataSourceNotice, ErrorState, LoadingState, MutationError, PageTitle, ScreenSection } from '../../components'
-import { useAppointment } from '../../hooks/useGlamhourData'
+import { useAppointment, useClients } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { appointmentService, formatDate, formatMoney, formatTime, timedAppointmentStatus } from '../../lib/format'
 import { glamhourApi } from '../../services/glamhour-api'
 import { AppointmentClinicalDetails } from './AppointmentClinicalDetails'
 import { APPOINTMENT_DRAFT_KEY } from './appointment-booking/draft'
+import { formatClientBirthDate } from './appointment-booking/dateMask'
+import type { Client } from '../../types/api'
 
 function displayAppointmentDate(startsAt: string, treatmentDetails: Record<string, unknown>) {
   const consentDate = typeof treatmentDetails.consentDate === 'string' ? treatmentDetails.consentDate : ''
@@ -23,7 +25,30 @@ function displayAppointmentTime(startsAt: string, treatmentDetails: Record<strin
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(2026, 0, 1, hour, minute))
 }
 
-function detailsForServiceStart(categoryCode: string, serviceName: string, treatmentDetails: Record<string, unknown>) {
+function withClientGeneralInformation(
+  categoryCode: string,
+  details: Record<string, unknown>,
+  client: Client | undefined,
+  fallbackName: string,
+) {
+  if (categoryCode !== 'cosmetology' && categoryCode !== 'micropigmentation') return details
+
+  return {
+    ...details,
+    generalFullName: client?.full_name ?? fallbackName ?? details.generalFullName ?? '',
+    generalPhone: client?.phone ?? details.generalPhone ?? '',
+    generalEmail: client?.email ?? details.generalEmail ?? '',
+    generalDateOfBirth: formatClientBirthDate(client?.date_of_birth) || details.generalDateOfBirth || '',
+  }
+}
+
+function detailsForServiceStart(
+  categoryCode: string,
+  serviceName: string,
+  treatmentDetails: Record<string, unknown>,
+  client: Client | undefined,
+  fallbackClientName: string,
+) {
   if (categoryCode === 'nails') {
     return {
       ...treatmentDetails,
@@ -41,20 +66,20 @@ function detailsForServiceStart(categoryCode: string, serviceName: string, treat
     }
   }
   if (categoryCode === 'cosmetology') {
-    return {
+    return withClientGeneralInformation(categoryCode, {
       ...treatmentDetails,
       serviceType: typeof treatmentDetails.serviceType === 'string' && treatmentDetails.serviceType
         ? treatmentDetails.serviceType
         : serviceName,
-    }
+    }, client, fallbackClientName)
   }
   if (categoryCode === 'micropigmentation') {
-    return {
+    return withClientGeneralInformation(categoryCode, {
       ...treatmentDetails,
       procedure: typeof treatmentDetails.procedure === 'string' && treatmentDetails.procedure
         ? treatmentDetails.procedure
         : serviceName,
-    }
+    }, client, fallbackClientName)
   }
   return treatmentDetails
 }
@@ -63,18 +88,23 @@ export function AppointmentDetailsPage() {
   const navigate = useNavigate()
   const { appointmentId = '' } = useParams()
   const appointment = useAppointment(appointmentId)
+  const clients = useClients()
   const mutation = useMutation((status: string) =>
     glamhourApi.updateAppointmentStatus(appointmentId, status),
   )
 
-  if (appointment.loading) return <LoadingState label="Loading booking details..." />
+  if (appointment.loading || clients.loading) return <LoadingState label="Loading booking details..." />
   if (!appointment.data) {
     return <ErrorState description={appointment.error?.message ?? 'Appointment not found'} onRetry={appointment.retry} />
+  }
+  if (!clients.data) {
+    return <ErrorState description={clients.error?.message ?? 'Clients could not be loaded.'} onRetry={clients.retry} />
   }
 
   const data = appointment.data
   const status = timedAppointmentStatus(data)
   const service = data.services?.[0]
+  const client = clients.data.find((item) => item.id === data.client_id)
   const categoryCode = service?.category_code_snapshot ?? ''
   const treatmentDetails = data.treatment_details_by_category?.[categoryCode] ?? {}
   const terminalStatus = ['completed', 'canceled', 'no_show'].includes(data.status_code)
@@ -99,7 +129,7 @@ export function AppointmentDetailsPage() {
       startsAt: '',
       endsAt: '',
       notes: data.internal_notes ?? data.customer_notes ?? '',
-      details: detailsForServiceStart(categoryCode, serviceName, treatmentDetails),
+      details: detailsForServiceStart(categoryCode, serviceName, treatmentDetails, client, data.client_name ?? ''),
       appointmentId: data.id,
     }))
     navigate('/app/appointments/new')

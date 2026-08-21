@@ -14,6 +14,7 @@ import { CategoryServiceStep } from './CategoryServiceStep'
 import { usesCategoryStepLayout } from './categoryStepLayout'
 import { buildAppointmentCategories } from './constants'
 import { APPOINTMENT_DRAFT_KEY, emptyDraft, initialBookingStep, readDraft, todayString } from './draft'
+import { formatClientBirthDate } from './dateMask'
 import { ClientStep } from './steps/ClientHealthSteps'
 import { MicropigmentationClientStep } from './steps/MicropigmentationClientStep'
 import { AppointmentDetailsStep } from './steps/AppointmentDetailsStep'
@@ -123,6 +124,7 @@ function detailsWithSelectedClient(categoryCode: string, details: Record<string,
     generalFullName: client.full_name,
     generalPhone: client.phone ?? '',
     generalEmail: client.email ?? details.generalEmail ?? '',
+    generalDateOfBirth: formatClientBirthDate(client.date_of_birth) || details.generalDateOfBirth || '',
   }
 }
 

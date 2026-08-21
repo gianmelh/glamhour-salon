@@ -1,14 +1,21 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarDays, ChevronRight, CreditCard, LogOut, Save, Scissors, UsersRound } from 'lucide-react'
+import { CalendarDays, ChevronRight, CreditCard, LogOut, Plus, Save, Scissors, UsersRound } from 'lucide-react'
 import { Avatar, Badge, Button, Card, DataSourceNotice, ErrorState, LoadingState, PageTitle } from '../../components'
 import { ScreenSection } from '../../components/screen/ScreenSection'
 import { MutationError } from '../../components/screen/MutationError'
-import { useNailSettings, useNotifications, useProfessionals, useSalon, useSettings } from '../../hooks/useGlamhourData'
+import { useNailSettings, useNotifications, useProfessionals, useSalon, useServiceCategories, useServices, useSettings } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { glamhourApi } from '../../services/glamhour-api'
 import { cn } from '../../lib/cn'
+
+const categoryDescriptions: Record<string, string> = {
+  nails: 'Manicures, pedicures, acrylics, and nail art.',
+  lashes: 'Eyelash extensions, lifts, and tinting services.',
+  cosmetology: 'Facials, skincare treatments, and beauty enhancements.',
+  micropigmentation: 'Microblading, lip liner, eyeliner, and more pigmentation services.',
+}
 
 export function SettingsPage() {
   const [tab, setTab] = useState<'account' | 'salon'>('salon')
@@ -17,12 +24,17 @@ export function SettingsPage() {
   const professionals = useProfessionals()
   const notifications = useNotifications()
   const nails = useNailSettings()
+  const categories = useServiceCategories(undefined, { includeAll: true })
+  const services = useServices()
   const mutation = useMutation(glamhourApi.updateSettings)
 
-  if (salon.loading || settings.loading) return <LoadingState label="Loading settings..." />
-  if (!salon.data || !settings.data) return <ErrorState description="Settings could not be loaded." onRetry={() => { salon.retry(); settings.retry() }} />
+  if (salon.loading || settings.loading || categories.loading || services.loading) return <LoadingState label="Loading settings..." />
+  if (!salon.data || !settings.data || !categories.data || !services.data) return <ErrorState description="Settings could not be loaded." onRetry={() => { salon.retry(); settings.retry(); categories.retry(); services.retry() }} />
 
   const settingsData = settings.data
+  const categoryData = categories.data
+  const serviceData = services.data
+  const setupState = { salonId: salon.data.id, salonName: salon.data.name }
   const savePublicBooking = async () => {
     const updated = await mutation.mutate({ allowPublicBooking: !settingsData.allow_public_booking })
     settings.setData(updated)
@@ -37,7 +49,7 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <DataSourceNotice visible={salon.isFallback || settings.isFallback || professionals.isFallback || notifications.isFallback} />
+      <DataSourceNotice visible={salon.isFallback || settings.isFallback || professionals.isFallback || notifications.isFallback || categories.isFallback || services.isFallback} />
       <PageTitle title="Settings" subtitle="Manage your account settings and salon preferences." />
 
       <div className="grid grid-cols-2 rounded-lg bg-surface-soft p-1">
@@ -79,16 +91,30 @@ export function SettingsPage() {
 
           <ScreenSection title="Service Categories">
             <Card padding="none">
-              <CategoryRow
-                description={nails.data?.category.description ?? 'Manicures, pedicures, acrylics, and nail art.'}
-                enabled={nails.data?.category.isEnabled ?? false}
-                label="Nails"
-                to="/app/settings/services/nails"
-              />
-              {['Lashes', 'Cosmetology', 'Micropigmentation'].map((label) => (
-                <CategoryRow description="Service details coming from your salon catalog." enabled key={label} label={label} />
-              ))}
+              {categoryData.map((category) => {
+                const configuredServices = serviceData.filter((service) => service.category_id === category.id && service.is_active)
+                const enabled = category.code === 'nails'
+                  ? (nails.data?.category.isEnabled ?? configuredServices.length > 0)
+                  : configuredServices.length > 0
+                return (
+                  <CategoryRow
+                    description={category.description ?? categoryDescriptions[category.code] ?? 'Service details coming from your salon catalog.'}
+                    enabled={enabled}
+                    key={category.id}
+                    label={category.name}
+                    state={setupState}
+                    to={category.code === 'nails' && enabled ? '/app/settings/services/nails' : '/onboarding/categories'}
+                  />
+                )
+              })}
             </Card>
+            <CardLink
+              description="Add or remove service categories using the onboarding setup flow."
+              icon={<Plus className="size-4" />}
+              label="Add service categories"
+              state={setupState}
+              to="/onboarding/categories"
+            />
           </ScreenSection>
 
           <ScreenSection title="Team & Providers">
@@ -119,9 +145,9 @@ function TabButton({ active, children, onClick }: { active: boolean; children: s
   )
 }
 
-function CardLink({ icon, label, description, to }: { icon: ReactNode; label: string; description: string; to: string }) {
+function CardLink({ icon, label, description, state, to }: { icon: ReactNode; label: string; description: string; state?: unknown; to: string }) {
   return (
-    <Link className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 shadow-card" to={to}>
+    <Link className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 shadow-card" state={state} to={to}>
       <span className="grid size-9 place-items-center rounded-md bg-lavender text-primary">{icon}</span>
       <div className="min-w-0 flex-1">
         <p className="text-xs font-semibold text-ink">{label}</p>
@@ -132,7 +158,7 @@ function CardLink({ icon, label, description, to }: { icon: ReactNode; label: st
   )
 }
 
-function CategoryRow({ label, description, enabled, to }: { label: string; description: string; enabled: boolean; to?: string }) {
+function CategoryRow({ label, description, enabled, state, to }: { label: string; description: string; enabled: boolean; state?: unknown; to?: string }) {
   const content = (
     <>
       <span className="grid size-9 place-items-center rounded-md bg-lavender text-primary"><Scissors className="size-4" /></span>
@@ -147,5 +173,5 @@ function CategoryRow({ label, description, enabled, to }: { label: string; descr
     </>
   )
   const className = 'flex items-center gap-3 border-b border-border p-4 last:border-b-0'
-  return to ? <Link className={className} to={to}>{content}</Link> : <div className={className}>{content}</div>
+  return to ? <Link className={className} state={state} to={to}>{content}</Link> : <div className={className}>{content}</div>
 }

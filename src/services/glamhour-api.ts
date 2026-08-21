@@ -63,7 +63,7 @@ export const glamhourApi = {
   appointment: (id: string, salonId?: string) => apiRequest<Appointment>(`/salons/${resolveSalonId(salonId)}/appointments/${id}`),
   clients: (salonId?: string) => apiRequest<Client[]>(`/salons/${resolveSalonId(salonId)}/clients?limit=100`),
   services: (salonId?: string) => apiRequest<Service[]>(`/salons/${resolveSalonId(salonId)}/services?limit=100`),
-  categories: (salonId?: string) => apiRequest<ServiceCategory[]>(`/service-categories?salonId=${resolveSalonId(salonId)}`),
+  categories: (salonId?: string, options?: { includeAll?: boolean }) => apiRequest<ServiceCategory[]>(`/service-categories${queryString({ salonId: resolveSalonId(salonId), includeAll: options?.includeAll ? 'true' : undefined })}`),
   appointmentCategories: (salonId?: string) => apiRequest<AppointmentCategory[]>(`/salons/${resolveSalonId(salonId)}/appointment-categories`),
   healthProfile: (clientId: string, category: string, salonId?: string) => apiRequest<HealthProfileVersion | null>(`/salons/${resolveSalonId(salonId)}/clients/${clientId}/health-profiles/${category}`),
   professionals: (salonId?: string) => apiRequest<Professional[]>(`/salons/${resolveSalonId(salonId)}/professionals?limit=100`),

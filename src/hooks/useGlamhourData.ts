@@ -38,9 +38,9 @@ export const useServices = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
   return useApiResource(useCallback(() => glamhourApi.services(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackServices))
 }
-export const useServiceCategories = (salonId?: string) => {
+export const useServiceCategories = (salonId?: string, options?: { includeAll?: boolean }) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.categories(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackCategories))
+  return useApiResource(useCallback(() => glamhourApi.categories(resolvedSalonId, options), [options?.includeAll, resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackCategories))
 }
 export const useProfessionals = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)

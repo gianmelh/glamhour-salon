@@ -7,6 +7,7 @@ import { cn } from '../../../../lib/cn'
 import { deferTask } from '../../../../lib/defer'
 import { formatShortDate } from '../../../../lib/format'
 import { glamhourApi } from '../../../../services/glamhour-api'
+import { formatClientBirthDate } from '../dateMask'
 import type { Client, HealthProfileVersion } from '../../../../types/api'
 import { ClientSearchCard } from './AppointmentDetailsStep'
 
@@ -186,7 +187,7 @@ export function MicropigmentationClientStep({
               generalFullName: selectedClient.full_name,
               generalPhone: selectedClient.phone ?? '',
               generalEmail: selectedClient.email ?? '',
-              generalDateOfBirth: selectedClient.date_of_birth ?? '',
+              generalDateOfBirth: formatClientBirthDate(selectedClient.date_of_birth),
               healthAnswers: profile.answers ?? {},
               healthHistory: Array.isArray(profile.answers?.healthHistory)
                 ? profile.answers?.healthHistory

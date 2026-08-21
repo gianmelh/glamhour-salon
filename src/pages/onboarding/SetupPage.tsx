@@ -367,7 +367,9 @@ function syncProviderWithSalonServices(provider: DraftProvider, salonServices: D
 }
 
 function createDraft(categories: ServiceCategory[], services: Service[], professionals: Professional[]): OnboardingDraft {
-  const selectedCategoryIds: string[] = []
+  const selectedCategoryIds = [...new Set(services
+    .filter((service) => service.is_active)
+    .map((service) => service.category_id))]
   const categoryById = new Map(categories.map((category) => [category.id, category]))
   const serviceDrafts: DraftService[] = services.length
     ? services
@@ -376,7 +378,7 @@ function createDraft(categories: ServiceCategory[], services: Service[], profess
         id: service.id,
         categoryId: service.category_id,
         name: service.name,
-        selected: false,
+        selected: service.is_active,
         price: String(Math.round(service.price_minor / 100)),
         duration: String(service.duration_minutes),
         section: 'service' as const,
@@ -487,7 +489,7 @@ export function SetupPage() {
   const salonId = onboardingState.salonId ?? window.sessionStorage.getItem('glamhour:active-salon-id') ?? undefined
   const salonName = onboardingState.salonName ?? 'your salon'
   const currentStep = steps.includes(step as Step) ? step as Step : 'categories'
-  const categories = useServiceCategories()
+  const categories = useServiceCategories(salonId, { includeAll: true })
   const services = useServices(salonId)
   const professionals = useProfessionals(salonId)
   const categoryData = categories.data?.length ? categories.data : fallbackCategories

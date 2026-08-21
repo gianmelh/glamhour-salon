@@ -257,8 +257,8 @@ router.get('/salons/:salonId/clients/:clientId/health-profiles/:category', async
 }))
 
 router.get('/service-categories', asyncHandler(async (request, response) => {
-  const query = validate(z.object({ salonId: uuidSchema.optional() }), request.query)
-  response.json({ data: await dataService.listServiceCategories(query.salonId) })
+  const query = validate(z.object({ salonId: uuidSchema.optional(), includeAll: z.enum(['true', 'false']).optional() }), request.query)
+  response.json({ data: await dataService.listServiceCategories(query.salonId, query.includeAll === 'true') })
 }))
 
 router.get('/salons/:salonId/appointment-categories', asyncHandler(async (request, response) => {

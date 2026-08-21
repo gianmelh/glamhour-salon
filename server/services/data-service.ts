@@ -2502,8 +2502,8 @@ export const dataService = {
     )
   },
 
-  listServiceCategories(salonId?: string): Promise<ServiceCategory[]> {
-    if (!salonId) {
+  listServiceCategories(salonId?: string, includeAll = false): Promise<ServiceCategory[]> {
+    if (!salonId || includeAll) {
       return query<ServiceCategory>(
         'SELECT * FROM service_categories WHERE is_active ORDER BY sort_order, name',
       )
