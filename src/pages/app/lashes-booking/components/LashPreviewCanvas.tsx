@@ -129,10 +129,13 @@ export function LashPreviewCanvas({
   const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const gestureRef = useRef<GestureSession | null>(null);
+  const canvasPointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const canvasPinchRef = useRef<PinchSession | null>(null);
   const stickersRef = useRef<StickersState>(
     isStickersState(initialStickers) ? initialStickers : createDefaultStickers(),
   );
   const onStickersChangeRef = useRef(onStickersChange);
+  const selectedIdRef = useRef<StickerId | null>(null);
   const lastSwapNonce = useRef(swapNonce);
   const lastDeselectNonce = useRef(deselectNonce);
   const lastCombo = useRef(`${style}::${variant}`);
@@ -146,8 +149,16 @@ export function LashPreviewCanvas({
 
   const clearSelection = () => {
     gestureRef.current = null;
+    canvasPinchRef.current = null;
+    canvasPointersRef.current.clear();
+    selectedIdRef.current = null;
     setSelectedId(null);
     setActiveId(null);
+  };
+
+  const selectSticker = (id: StickerId | null) => {
+    selectedIdRef.current = id;
+    setSelectedId(id);
   };
 
   const commitStickers = (next: StickersState) => {
@@ -163,6 +174,10 @@ export function LashPreviewCanvas({
   useEffect(() => {
     stickersRef.current = stickers;
   }, [stickers]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   useEffect(() => {
     const combo = `${style}::${variant}`;
@@ -272,7 +287,7 @@ export function LashPreviewCanvas({
       offsetXPct: point.xPct - current.xPct,
       offsetYPct: point.yPct - current.yPct,
     };
-    setSelectedId(id);
+    selectSticker(id);
     setActiveId(id);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -283,6 +298,7 @@ export function LashPreviewCanvas({
   ) => {
     event.preventDefault();
     event.stopPropagation();
+    if (canvasPinchRef.current) return;
     const gesture = gestureRef.current;
 
     // Second finger on the same sticker → pinch/rotate.
@@ -329,6 +345,7 @@ export function LashPreviewCanvas({
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (canvasPinchRef.current) return;
     const gesture = gestureRef.current;
     if (!gesture) return;
 
@@ -366,6 +383,7 @@ export function LashPreviewCanvas({
   };
 
   const endPointer = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (canvasPinchRef.current) return;
     const gesture = gestureRef.current;
     if (!gesture) return;
 
@@ -420,6 +438,69 @@ export function LashPreviewCanvas({
     });
   };
 
+  const beginCanvasPinch = () => {
+    const id = selectedIdRef.current;
+    if (!id) return;
+    const pts = [...canvasPointersRef.current.values()];
+    if (pts.length < 2) return;
+    gestureRef.current = null;
+    canvasPinchRef.current = {
+      mode: "pinch",
+      id,
+      pointers: new Map(canvasPointersRef.current),
+      startDistance: Math.max(distance(pts[0], pts[1]), 1),
+      startAngle: angleDeg(pts[0], pts[1]),
+      startScale: stickersRef.current[id].scale,
+      startRotation: stickersRef.current[id].rotationDeg,
+    };
+    setActiveId(id);
+  };
+
+  const updateCanvasPinch = () => {
+    const gesture = canvasPinchRef.current;
+    if (!gesture) return;
+    gesture.pointers = new Map(canvasPointersRef.current);
+    const pts = [...gesture.pointers.values()];
+    if (pts.length < 2) return;
+    const dist = Math.max(distance(pts[0], pts[1]), 1);
+    const ang = angleDeg(pts[0], pts[1]);
+    updateSticker(gesture.id, {
+      scale: clampScale(gesture.startScale * (dist / gesture.startDistance)),
+      rotationDeg: gesture.startRotation + (ang - gesture.startAngle),
+    });
+  };
+
+  const onCanvasPointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    canvasPointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    if (canvasPointersRef.current.size >= 2) {
+      event.preventDefault();
+      beginCanvasPinch();
+    }
+  };
+
+  const onCanvasPointerMoveCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!canvasPointersRef.current.has(event.pointerId)) return;
+    canvasPointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    if (canvasPinchRef.current) {
+      event.preventDefault();
+      updateCanvasPinch();
+    }
+  };
+
+  const onCanvasPointerEndCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    canvasPointersRef.current.delete(event.pointerId);
+    if (canvasPointersRef.current.size < 2) {
+      canvasPinchRef.current = null;
+      setActiveId(null);
+    }
+  };
+
   if (!assets) {
     return (
       <div className="relative flex h-[431px] w-full items-center justify-center overflow-hidden rounded-[16px] bg-[#f2f5ff]">
@@ -440,12 +521,17 @@ export function LashPreviewCanvas({
     <div className="flex w-full min-w-0 flex-col gap-2" ref={rootRef}>
       <div
         className="relative h-[431px] w-full touch-none overflow-hidden rounded-[16px]"
+        onPointerCancelCapture={onCanvasPointerEndCapture}
         onPointerDown={(event) => {
           // Empty photo area only — sticker handlers stopPropagation.
+          if (event.defaultPrevented || canvasPointersRef.current.size >= 2) return;
           if (event.target !== event.currentTarget) return;
           event.preventDefault();
           clearSelection();
         }}
+        onPointerDownCapture={onCanvasPointerDownCapture}
+        onPointerMoveCapture={onCanvasPointerMoveCapture}
+        onPointerUpCapture={onCanvasPointerEndCapture}
         ref={containerRef}
       >
         <img
