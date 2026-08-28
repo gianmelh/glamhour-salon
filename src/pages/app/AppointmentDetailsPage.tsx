@@ -159,21 +159,21 @@ export function AppointmentDetailsPage() {
   const canCancel = ['Upcoming', 'Coming up', 'In progress'].includes(status)
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 max-w-full space-y-5 overflow-x-hidden">
       <DataSourceNotice visible={appointment.isFallback} />
       <button className="inline-flex items-center gap-1 text-xs font-semibold text-primary" onClick={() => navigate(-1)} type="button">
         <ChevronLeft className="size-4" /> Back
       </button>
       <PageTitle title="Appointment Details" subtitle="Review and manage this salon appointment." />
 
-      <Card className="overflow-hidden border-0 bg-gradient-to-b from-[#7a48db] to-[#6138b8] p-6 text-white shadow-[0px_8px_16px_rgba(115,68,205,0.2)]">
+      <Card className="min-w-0 overflow-hidden border-0 bg-gradient-to-b from-[#7a48db] to-[#6138b8] p-6 text-white shadow-[0px_8px_16px_rgba(115,68,205,0.2)]">
         <Badge tone="primary">{status.toUpperCase()}</Badge>
-        <h2 className="mt-6 text-[32px] font-bold leading-10">{appointmentService(data)}</h2>
+        <h2 className="mt-6 max-w-full break-words text-[30px] font-bold leading-9">{appointmentService(data)}</h2>
         <p className="mt-2 text-base text-white/80">with {data.professional_name ?? 'Professional'}</p>
       </Card>
 
       <ScreenSection title="Information">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid min-w-0 grid-cols-2 gap-4">
           <InfoCard icon={<UserRound className="size-4" />} label="Client" value={data.client_name ?? 'Client'} />
           <InfoCard icon={<CalendarDays className="size-4" />} label="Date" value={displayAppointmentDate(data.starts_at, treatmentDetails)} />
           <InfoCard icon={<Clock3 className="size-4" />} label="Time" value={displayAppointmentTime(data.starts_at, treatmentDetails)} />
@@ -181,9 +181,9 @@ export function AppointmentDetailsPage() {
         </div>
       </ScreenSection>
 
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <Avatar name={data.client_name ?? 'Client'} />
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-semibold">{data.client_name ?? 'Client'}</p>
           <p className="text-xs text-muted">{appointmentService(data)}</p>
         </div>
@@ -219,10 +219,10 @@ export function AppointmentDetailsPage() {
 
 function InfoCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <Card className="rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
+    <Card className="min-w-0 overflow-hidden rounded-[16px] border border-[#d0d5dd] bg-[#fcfcfd] p-4">
       <span className="grid size-8 place-items-center rounded-full bg-[#ebe7ff] text-[#7344cd]">{icon}</span>
       <p className="mt-3 text-[12px] text-[#666]">{label}</p>
-      <p className="mt-1 text-[16px] font-bold text-[#0a0a0a]">{value}</p>
+      <p className="mt-1 break-words text-[16px] font-bold leading-tight text-[#0a0a0a]">{value}</p>
     </Card>
   )
 }

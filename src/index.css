@@ -54,11 +54,20 @@
 }
 
 @layer base {
+  html,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   * {
     box-sizing: border-box;
   }
 
   body {
+    width: 100%;
+    max-width: 100%;
     min-width: 320px;
     min-height: 100vh;
     margin: 0;
@@ -67,6 +76,8 @@
     font-family: var(--font-sans);
     font-size: 14px;
     line-height: 1.45;
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
   }
