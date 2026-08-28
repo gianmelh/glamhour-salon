@@ -19,6 +19,17 @@ function displayDate(date: string) {
   return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(year, month - 1, day))
 }
 
+function compactDisplayDate(date: string) {
+  if (!date) return 'Select day'
+  const [year, month, day] = date.split('-').map(Number)
+  if (!year || !month || !day) return date
+  return new Intl.DateTimeFormat('es', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(year, month - 1, day)).replace('.', '')
+}
+
 function localIsoDateTime(date: string, time: string) {
   const [year, month, day] = date.split('-').map(Number)
   const [hour, minute] = time.split(':').map(Number)
@@ -203,13 +214,16 @@ export function HomeQuickCreateAppointmentStep({
       </Card>
 
       <Card className="space-y-4 rounded-[20px] border-[#d0d5dd] bg-white p-4">
-        <label className="grid gap-2 text-[14px] font-semibold text-[#101828]">
+        <label className="grid min-w-0 gap-2 text-[14px] font-semibold text-[#101828]">
           Day *
           <span className="text-[16px] font-bold text-[#0c111d]">{displayDate(date)}</span>
-          <span className="relative">
-            <Calendar className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#7344cd]" />
+          <span className="relative block min-w-0 overflow-hidden rounded-[14px] border border-[#d0d5dd] bg-white">
+            <span className="pointer-events-none flex min-h-[50px] min-w-0 items-center gap-3 pl-10 pr-3 text-[15px] font-bold text-[#101828]">
+              <Calendar className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#7344cd]" />
+              <span className="min-w-0 truncate">{compactDisplayDate(date)}</span>
+            </span>
             <input
-              className="min-h-[50px] w-full rounded-[14px] border border-[#d0d5dd] bg-white pl-10 pr-3 text-[15px] outline-none"
+              className="absolute inset-0 h-full w-full min-w-0 cursor-pointer opacity-0"
               onChange={(event) => onDateChange(event.target.value)}
               type="date"
               value={date}

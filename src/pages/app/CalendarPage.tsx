@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, XCircle } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
@@ -72,6 +72,16 @@ function appointmentHour(value: string) {
   return new Date(value).getHours()
 }
 
+function hourLabel(hour: number) {
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(
+    new Date(2026, 0, 1, hour, 0),
+  )
+}
+
+function calendarDateFromParam(date: string | null) {
+  return date ? new Date(`${date}T12:00:00`) : new Date()
+}
+
 function appointmentCategory(appointment: Appointment) {
   const category = appointment.services?.[0]?.category_code_snapshot ?? ''
   if (category === 'lashes') return 'Lashes'
@@ -128,13 +138,15 @@ function moveToYear(date: Date, year: number) {
 
 export function CalendarPage() {
   const [searchParams] = useSearchParams()
-  const initialDate = searchParams.get('date')
-    ? new Date(`${searchParams.get('date')}T12:00:00`)
-    : new Date()
-  const [selectedDate, setSelectedDate] = useState(() => startOfDay(initialDate))
+  const selectedDateParam = searchParams.get('date')
+  const [selectedDate, setSelectedDate] = useState(() => startOfDay(calendarDateFromParam(selectedDateParam)))
   const [selectedProviderId, setSelectedProviderId] = useState<string>('')
   const appointments = useAppointments()
   const professionals = useProfessionals()
+
+  useEffect(() => {
+    setSelectedDate(startOfDay(calendarDateFromParam(selectedDateParam)))
+  }, [selectedDateParam])
 
   const week = useMemo(() => weekAround(selectedDate), [selectedDate])
   const yearOptions = useMemo(() => {
@@ -175,6 +187,17 @@ export function CalendarPage() {
           new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
       )
   }, [appointments.data, selectedDate, selectedProviderId])
+
+  const visibleScheduleHours = useMemo(() => {
+    const hours = new Map(scheduleHours.map((slot) => [slot.hour, slot]))
+    dayAppointments.forEach((appointment) => {
+      const hour = appointmentHour(appointment.starts_at)
+      if (!hours.has(hour)) {
+        hours.set(hour, { hour, label: hourLabel(hour) })
+      }
+    })
+    return Array.from(hours.values()).sort((a, b) => a.hour - b.hour)
+  }, [dayAppointments])
 
   if (appointments.loading) return <LoadingState label="Loading calendar..." />
   if (!appointments.data && appointments.error) {
@@ -305,7 +328,7 @@ export function CalendarPage() {
 
         <section className="mt-8 min-w-0 flex-1 overflow-x-hidden pb-4">
           <div className="grid grid-cols-[88px_1fr]">
-            {scheduleHours.map((slot) => {
+            {visibleScheduleHours.map((slot) => {
               const slotAppointments = dayAppointments.filter(
                 (appointment) => appointmentHour(appointment.starts_at) === slot.hour
               )

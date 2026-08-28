@@ -5,7 +5,7 @@ import { ErrorState, LoadingState } from '../../../components'
 import { useAppointments, useClients, useProfessionals, useServiceCategories, useServices } from '../../../hooks/useGlamhourData'
 import { useMutation } from '../../../hooks/useMutation'
 import { cn } from '../../../lib/cn'
-import { clampToToday } from '../../../lib/date'
+import { clampToToday, localDateString } from '../../../lib/date'
 import { deferTask, scrollMainToTop } from '../../../lib/defer'
 import { glamhourApi } from '../../../services/glamhour-api'
 import type { AvailabilitySlot, EligibleProvider } from '../../../types/api'
@@ -578,7 +578,7 @@ export function NewAppointmentPage() {
       window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
       appointments.setData((current) => [appointment, ...(current ?? [])])
       setCreatedAppointmentId(appointment.id)
-      navigate(`/app/calendar?date=${appointment.starts_at.slice(0, 10)}`)
+      navigate(`/app/calendar?date=${localDateString(new Date(appointment.starts_at))}`)
     } catch (reason) {
       setConfirmError(reason instanceof Error ? reason : new Error('Appointment could not be scheduled.'))
     } finally {
