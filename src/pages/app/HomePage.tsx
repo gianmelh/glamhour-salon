@@ -143,19 +143,19 @@ export function HomePage() {
   }
 
   return (
-    <div className="-mx-4 -mt-5 min-h-full px-5 pb-8 pt-11" style={{ backgroundColor: HOME_BG }}>
+    <div className="min-h-full min-w-0 max-w-full overflow-x-hidden px-5 pb-8 pt-8" style={{ backgroundColor: HOME_BG }}>
       <header>
-        <h1 className="max-w-[335px] text-[34px] font-extrabold leading-[1.05] text-[#111827]">
+        <h1 className="max-w-full break-words text-[28px] font-extrabold leading-[1.12] text-[#111827]">
           {greeting()}, {data.salon.name}!
         </h1>
-        <p className="mt-7 max-w-[335px] text-[17px] leading-[1.45] text-[#68738b]">
+        <p className="mt-5 max-w-full text-[15px] leading-[1.45] text-[#68738b]">
           Ready to manage your day? Schedule a new appointment or check your salon&apos;s performance.
         </p>
       </header>
 
-      <Card className="mt-8 rounded-[14px] px-5 py-7 shadow-none" padding="none" style={{ backgroundColor: SURFACE_CARD, borderColor: CARD_BORDER }}>
-        <p className="text-center text-[21px] font-bold text-[#111827]">{monthLabel(selectedDate)}</p>
-        <div className="mt-7 grid grid-cols-[34px_1fr_34px] items-center gap-3">
+      <Card className="mt-7 rounded-[14px] px-4 py-5 shadow-none" padding="none" style={{ backgroundColor: SURFACE_CARD, borderColor: CARD_BORDER }}>
+        <p className="text-center text-[19px] font-bold text-[#111827]">{monthLabel(selectedDate)}</p>
+        <div className="mt-5 grid min-w-0 grid-cols-[34px_minmax(0,1fr)_34px] items-center gap-2">
           <button
             aria-label="Previous day"
             className="grid size-9 place-items-center rounded-full border text-[22px] text-[#111827]"
@@ -169,20 +169,20 @@ export function HomePage() {
           >
             ‹
           </button>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid min-w-0 grid-cols-7 gap-1">
             {days.map((day) => {
               const dayIso = isoDate(day)
               const selected = dayIso === selectedDate
               return (
                 <button
-                  className="grid justify-items-center gap-2 rounded-md py-1 text-[14px] font-medium text-[#68738b]"
+                  className="grid min-w-0 justify-items-center gap-2 rounded-md py-1 text-[13px] font-medium text-[#68738b]"
                   key={dayIso}
                   onClick={() => setSelectedDate(dayIso)}
                   type="button"
                 >
                   <span>{new Intl.DateTimeFormat('en-US', { weekday: 'narrow' }).format(day)}</span>
                   <span className={cn(
-                    'grid size-9 place-items-center rounded-full text-[15px] font-semibold',
+                    'grid size-8 place-items-center rounded-full text-[14px] font-semibold',
                     selected ? 'bg-[#7a3fe0] text-white' : 'text-[#111827]',
                   )}>
                     {day.getUTCDate()}
@@ -207,19 +207,19 @@ export function HomePage() {
         </div>
       </Card>
 
-      <Card className="mt-5 overflow-hidden rounded-[14px] px-5 py-5 shadow-none" padding="none" style={{ backgroundColor: LAVENDER_CARD, borderColor: LAVENDER_BORDER }}>
+      <Card className="mt-5 overflow-hidden rounded-[14px] px-4 py-5 shadow-none" padding="none" style={{ backgroundColor: LAVENDER_CARD, borderColor: LAVENDER_BORDER }}>
         <div className="flex items-center gap-4">
           <span className="grid size-[46px] shrink-0 place-items-center rounded-lg bg-[#7a3fe0] text-white">
             <CalendarPlus className="size-5" />
           </span>
           <div className="min-w-0">
-            <p className="text-[15px] font-bold leading-5 text-[#111827]">Schedule a new appointment</p>
+            <p className="text-[14px] font-bold leading-5 text-[#111827]">Schedule a new appointment</p>
             <p className="mt-1 text-[13px] leading-[1.35] text-[#68738b]">Client, service, specialist, date & time in one flow</p>
           </div>
         </div>
         <div className="mt-5">
           <Button
-            className="min-h-[64px] rounded-[14px] text-[18px] font-medium shadow-[0_14px_20px_rgb(78_35_153_/_0.32)]"
+            className="min-h-[56px] rounded-[14px] text-[16px] font-medium shadow-[0_14px_20px_rgb(78_35_153_/_0.28)]"
             fullWidth
             onClick={() => navigate(`/app/appointments/new?fresh=1&source=home&date=${selectedDate}`)}
           >
