@@ -57,6 +57,13 @@ function pair(styleSlug: string, variantSlug: string): LashPreviewStickerSet {
   };
 }
 
+function swappedPair(styleSlug: string, variantSlug: string): LashPreviewStickerSet {
+  return {
+    left: `${stickersBase}/${styleSlug}-${variantSlug}-right.png`,
+    right: `${stickersBase}/${styleSlug}-${variantSlug}-left.png`,
+  };
+}
+
 /**
  * Explicit map of Style × Variant → left/right assets.
  * Only entries that exist as Figma symbols (both sides) are present.
@@ -81,7 +88,7 @@ const AVAILABLE_SETS: Partial<
     Volume: pair("doll", "volume"),
   },
   Eyeliner: {
-    Classic: pair("eyeliner", "classic"),
+    Classic: swappedPair("eyeliner", "classic"),
     Volume: pair("eyeliner", "volume"),
   },
   Fox: {
@@ -89,8 +96,8 @@ const AVAILABLE_SETS: Partial<
     Volume: pair("fox", "volume"),
   },
   Wispy: {
-    Classic: pair("wispy", "classic"),
-    Volume: pair("wispy", "volume"),
+    Classic: swappedPair("wispy", "classic"),
+    Volume: swappedPair("wispy", "volume"),
   },
 };
 
