@@ -174,9 +174,9 @@ export function LashMapEditor({ details, onChange }: {
             <button
               aria-label={`Lash map position ${position}${assigned ? `, length ${assigned.length}` : ''}`}
               className={cn(
-                'absolute flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border transition',
+                'absolute grid size-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border transition',
                 assigned
-                  ? 'border-[#7444cf] bg-white/85 text-[#7444cf] shadow-[0_6px_14px_rgba(116,68,207,0.2)]'
+                  ? 'border-transparent bg-transparent text-[#7444cf] shadow-none hover:bg-white/35 focus-visible:bg-white/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7444cf]/65'
                   : 'border-dashed border-[#7444cf]/55 bg-white/45 text-[#7444cf]/70',
               )}
               key={position}
@@ -185,7 +185,7 @@ export function LashMapEditor({ details, onChange }: {
               type="button"
             >
               {assigned ? (
-                <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 text-[16px] font-semibold leading-none text-[#7444cf]">
+                <span className="pointer-events-none grid min-h-6 min-w-6 place-items-center text-center text-[16px] font-semibold leading-none text-[#7444cf]">
                   {assigned.length}
                 </span>
               ) : <span className="text-[11px] font-semibold">{position}</span>}
