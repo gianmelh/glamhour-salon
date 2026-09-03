@@ -392,7 +392,7 @@ export function CosmetologyDetailsStep({
   onServiceCreated,
   category,
 }: CategoryStepProps & { category: ServiceCategory }) {
-  const [stage, setStage] = useState<'form' | 'face-map' | 'treatment'>('form')
+  const [stage, setStage] = useState<'form' | 'face-map'>('form')
   const [serviceError, setServiceError] = useState('')
   const [serviceCreating, setServiceCreating] = useState(false)
   const set = (key: string, value: unknown) => onChange({ details: { ...details, [key]: value } })
@@ -460,14 +460,6 @@ export function CosmetologyDetailsStep({
     }
   }
 
-  const finishWithResolvedService = async () => {
-    if (!serviceType) return
-    const serviceId = await resolveOrCreateServiceId()
-    if (!serviceId) return
-    setServiceError('')
-    onNext({ serviceId, details: { ...details, serviceType } })
-  }
-
   if (stage === 'face-map') {
     return (
       <RegistrationFlowShell
@@ -480,299 +472,8 @@ export function CosmetologyDetailsStep({
           <FaceMapEditor
             details={details}
             onChange={(next) => onChange({ details: next })}
-            onSave={() => setStage('treatment')}
+            onSave={() => setStage('form')}
           />
-        </div>
-      </RegistrationFlowShell>
-    )
-  }
-
-  if (stage === 'treatment') {
-    return (
-      <RegistrationFlowShell
-        activeCategory="cosmetology"
-        maxWidth={393}
-        onBack={() => setStage('form')}
-        title="Treatment and equipment"
-      >
-        <div className="mx-auto flex w-full max-w-[393px] flex-col gap-5">
-          <p className="text-[16px] leading-[1.4] text-[#475467]">
-            To be completed by the professional during or after the session for progress tracking
-          </p>
-
-          <FormCard title="Hygiene and preparation equipment">
-            <EquipmentBlock title="Ozone Steam">
-              <TextField
-                label="Time"
-                onChange={(value) => set('ozoneSteamTime', value)}
-                placeholder="e.g. 5"
-                suffix="min"
-                value={String(details.ozoneSteamTime ?? '')}
-              />
-              <CheckboxGroup
-                onChange={(value) => set('ozoneSteamModes', value)}
-                options={[...cosmetologyOzoneSteamModes]}
-                value={(details.ozoneSteamModes as string[] | undefined)?.map(normalizeCosmetologyHistoryLabel)}
-              />
-            </EquipmentBlock>
-
-            <EquipmentBlock title="Ultrasonic Peeling, Spatula">
-              <CheckboxGroup
-                onChange={(value) => set('ultrasonicPeelingModes', value)}
-                options={[...cosmetologyUltrasonicModes]}
-                value={details.ultrasonicPeelingModes as string[] | undefined}
-              />
-              <TextField
-                label="Level"
-                onChange={(value) => set('ultrasonicLevel', value)}
-                placeholder="e.g. 2"
-                value={String(details.ultrasonicLevel ?? '')}
-              />
-            </EquipmentBlock>
-
-            <EquipmentBlock title="Microdermabrasion, Diamond Tip">
-              <TextField
-                label="Head/grit"
-                onChange={(value) => set('microdermHeadGrit', value)}
-                placeholder="e.g. 80 grit"
-                value={String(details.microdermHeadGrit ?? '')}
-              />
-              <TextField
-                label="Suction"
-                onChange={(value) => set('microdermSuction', value)}
-                placeholder="e.g. level 3"
-                value={String(details.microdermSuction ?? '')}
-              />
-            </EquipmentBlock>
-          </FormCard>
-
-          <FormCard title="Treatment and stimulation equipment">
-            <EquipmentBlock title="High Frequency">
-              <TextField
-                label="Time"
-                onChange={(value) => set('highFrequencyTime', value)}
-                placeholder="e.g. 5"
-                suffix="min"
-                value={String(details.highFrequencyTime ?? '')}
-              />
-              <CheckboxGroup
-                onChange={(value) => set('highFrequencyModes', value)}
-                options={[...cosmetologyHighFrequencyModes]}
-                value={(details.highFrequencyModes as string[] | undefined)?.map(normalizeCosmetologyHistoryLabel)}
-              />
-            </EquipmentBlock>
-
-            <EquipmentBlock title="Radiofrequency">
-              <CheckboxGroup
-                onChange={(value) => set('radiofrequencyModes', value)}
-                options={[...cosmetologyRadiofrequencyModes]}
-                value={(details.radiofrequencyModes as string[] | undefined)?.map(normalizeCosmetologyHistoryLabel)}
-              />
-              <TextField
-                label="Temp"
-                onChange={(value) => set('radiofrequencyMaxTemp', value)}
-                placeholder="e.g. 30 degrees"
-                suffix="C°"
-                value={String(details.radiofrequencyMaxTemp ?? '')}
-              />
-              <TextField
-                label="Level"
-                onChange={(value) => set('radiofrequencyLevel', value)}
-                placeholder="e.g. 2"
-                value={String(details.radiofrequencyLevel ?? '')}
-              />
-            </EquipmentBlock>
-
-            <EquipmentBlock title="Ultrasound / Ultracavitation">
-              <CheckboxGroup
-                label="Skin type"
-                onChange={(value) => set('ultrasoundSkinTypes', value)}
-                options={['1MHz', '3MHz']}
-                value={details.ultrasoundSkinTypes as string[] | undefined}
-              />
-              <TextField
-                label="Power"
-                onChange={(value) => set('ultrasoundPower', value)}
-                placeholder="e.g. 80"
-                suffix="%"
-                value={String(details.ultrasoundPower ?? '')}
-              />
-            </EquipmentBlock>
-
-            <EquipmentBlock title="Dermapen">
-              <CheckboxGroup
-                label="Needle"
-                onChange={(value) => set('dermapenNeedle', value[value.length - 1] ?? '')}
-                options={[...cosmetologyDermapenNeedles]}
-                value={details.dermapenNeedle ? [String(details.dermapenNeedle)] : []}
-              />
-              <TextField
-                label="Depth"
-                onChange={(value) => set('dermapenDepth', value)}
-                placeholder="e.g. 2"
-                suffix="mm"
-                value={String(details.dermapenDepth ?? '')}
-              />
-              <TextField
-                label="Speed"
-                onChange={(value) => set('dermapenSpeed', value)}
-                placeholder="e.g. 5"
-                value={String(details.dermapenSpeed ?? '')}
-              />
-            </EquipmentBlock>
-
-            <EquipmentBlock title="Electroporation, Virtual Mesotherapy">
-              <TextField
-                label="Product"
-                onChange={(value) => set('electroporationProduct', value)}
-                placeholder="e.g. hyaluronic acid serum"
-                value={String(details.electroporationProduct ?? '')}
-              />
-              <TextField
-                label="Intensity"
-                onChange={(value) => set('electroporationIntensity', value)}
-                placeholder="e.g. level 3"
-                value={String(details.electroporationIntensity ?? '')}
-              />
-            </EquipmentBlock>
-
-            <EquipmentBlock title="LED Mask / Phototherapy">
-              <CheckboxGroup
-                onChange={(value) => set('ledMaskColors', value)}
-                options={[...cosmetologyLedColors]}
-                value={details.ledMaskColors as string[] | undefined}
-              />
-              <TextField
-                label="Time"
-                onChange={(value) => set('ledMaskTime', value)}
-                placeholder="e.g. 10"
-                suffix="min"
-                value={String(details.ledMaskTime ?? '')}
-              />
-            </EquipmentBlock>
-          </FormCard>
-
-          <FormCard title="Chemicals, exfoliation and active ingredients">
-            <EquipmentBlock title="Chemical peel">
-              <div className="grid grid-cols-2 gap-3">
-                <TextField
-                  label="Acid (s)"
-                  onChange={(value) => set('chemicalPeelAcid', value)}
-                  placeholder="e.g. glycolic acid"
-                  value={String(details.chemicalPeelAcid ?? '')}
-                />
-                <TextField
-                  label="%"
-                  onChange={(value) => set('chemicalPeelPercent', value)}
-                  placeholder="e.g. 30"
-                  value={String(details.chemicalPeelPercent ?? '')}
-                />
-              </div>
-              <TextField
-                label="Layers"
-                onChange={(value) => set('chemicalPeelLayers', value)}
-                placeholder="e.g. 2"
-                value={String(details.chemicalPeelLayers ?? '')}
-              />
-              <TextField
-                label="Exposure Time"
-                onChange={(value) => set('chemicalPeelExposureTime', value)}
-                placeholder="e.g. 2"
-                suffix="min"
-                value={String(details.chemicalPeelExposureTime ?? '')}
-              />
-              <TextField
-                label="Neutralized with"
-                onChange={(value) => set('chemicalPeelNeutralizer', value)}
-                placeholder="e.g. sodium bicarbonate solution"
-                value={String(details.chemicalPeelNeutralizer ?? '')}
-              />
-            </EquipmentBlock>
-
-            <TextAreaField
-              label="Active Ingredients / Serums / Ampoules"
-              onChange={(value) => set('activeIngredients', value)}
-              placeholder="e.g. vitamin C ampoule, niacinamide serum"
-              value={String(details.activeIngredients ?? '')}
-            />
-
-            <EquipmentBlock title="Final Mask">
-              <CheckboxGroup
-                onChange={(value) => set('finalMask', value)}
-                options={[...cosmetologyFinalMaskOptions]}
-                value={details.finalMask as string[] | undefined}
-              />
-              <TextField
-                label="Time"
-                onChange={(value) => set('finalMaskTime', value)}
-                placeholder="e.g. 2 minutes"
-                suffix="min"
-                value={String(details.finalMaskTime ?? '')}
-              />
-            </EquipmentBlock>
-          </FormCard>
-
-          <FormCard title="Professional control data">
-            <TextField
-              label="Cosmetic Brand / Line Used"
-              onChange={(value) => set('cosmeticBrandLine', value)}
-              placeholder="e.g. Mesoestetic, IMAGE Skincare"
-              value={String(details.cosmeticBrandLine ?? '')}
-            />
-            <CheckboxGroup
-              label="Immediate Reaction"
-              onChange={(value) => set('immediateReaction', value)}
-              options={[...cosmetologyReactionOptions]}
-              value={(details.immediateReaction as string[] | undefined)?.map(normalizeCosmetologyHistoryLabel)}
-            />
-            <TextAreaField
-              label="Additional note"
-              onChange={(value) => set('professionalControlNotes', value)}
-              placeholder="e.g., mild resistance during extractions on the nose, client reported sensitivity on left cheek, recommend reducing pressure in next session"
-              value={String(details.professionalControlNotes ?? '')}
-            />
-          </FormCard>
-
-          {cosmetologyRecommendationBlocks.map((block) => (
-            <FormCard key={block.title} title={block.title}>
-              {block.subtitle && (
-                <p className="text-[14px] leading-5 text-[#475467]">{block.subtitle}</p>
-              )}
-              <ul className="flex flex-col gap-3">
-                {block.items.map((item) => (
-                  <li className="text-[14px] leading-[1.45] text-[#101828]" key={item.label}>
-                    <span className="font-bold tracking-[0.24px]">{item.label}</span>{' '}
-                    <span>{item.text}</span>
-                  </li>
-                ))}
-              </ul>
-            </FormCard>
-          ))}
-
-          {serviceError && (
-            <p className="text-center text-[12px] leading-[1.44] text-[#b42318]">{serviceError}</p>
-          )}
-          <RegistrationContinueSection
-            canContinue={canContinue}
-            disabledMessage={
-              !serviceType
-                ? 'Select a service type to continue'
-                : missingItems.length
-                    ? validationSummary
-                    : serviceCreating
-                      ? `Creating ${cosmetologyServiceDisplayName(serviceType)}...`
-                    : undefined
-            }
-            label={serviceCreating ? 'Creating service...' : 'Mark service as complete'}
-            onContinue={() => void finishWithResolvedService()}
-          />
-          <button
-            className="pb-4 text-center text-[16px] font-medium text-[#475467]"
-            onClick={() => setStage('form')}
-            type="button"
-          >
-            Go back
-          </button>
         </div>
       </RegistrationFlowShell>
     )
@@ -966,6 +667,261 @@ export function CosmetologyDetailsStep({
           />
         </FormCard>
 
+        <FormCard optional title="Treatment and Equipment">
+          <p className="text-[16px] leading-[1.4] text-[#475467]">
+            To be completed by the professional during or after the session for progress tracking
+          </p>
+        </FormCard>
+
+        <FormCard optional title="Hygiene and preparation equipment">
+          <EquipmentBlock title="Ozone Steam">
+            <TextField
+              label="Time"
+              onChange={(value) => set('ozoneSteamTime', value)}
+              placeholder="e.g. 5"
+              suffix="min"
+              value={String(details.ozoneSteamTime ?? '')}
+            />
+            <CheckboxGroup
+              onChange={(value) => set('ozoneSteamModes', value)}
+              options={[...cosmetologyOzoneSteamModes]}
+              value={(details.ozoneSteamModes as string[] | undefined)?.map(normalizeCosmetologyHistoryLabel)}
+            />
+          </EquipmentBlock>
+
+          <EquipmentBlock title="Ultrasonic Peeling, Spatula">
+            <CheckboxGroup
+              onChange={(value) => set('ultrasonicPeelingModes', value)}
+              options={[...cosmetologyUltrasonicModes]}
+              value={details.ultrasonicPeelingModes as string[] | undefined}
+            />
+            <TextField
+              label="Level"
+              onChange={(value) => set('ultrasonicLevel', value)}
+              placeholder="e.g. 2"
+              value={String(details.ultrasonicLevel ?? '')}
+            />
+          </EquipmentBlock>
+
+          <EquipmentBlock title="Microdermabrasion, Diamond Tip">
+            <TextField
+              label="Head/grit"
+              onChange={(value) => set('microdermHeadGrit', value)}
+              placeholder="e.g. 80 grit"
+              value={String(details.microdermHeadGrit ?? '')}
+            />
+            <TextField
+              label="Suction"
+              onChange={(value) => set('microdermSuction', value)}
+              placeholder="e.g. level 3"
+              value={String(details.microdermSuction ?? '')}
+            />
+          </EquipmentBlock>
+        </FormCard>
+
+        <FormCard optional title="Treatment and stimulation equipment">
+          <EquipmentBlock title="High Frequency">
+            <TextField
+              label="Time"
+              onChange={(value) => set('highFrequencyTime', value)}
+              placeholder="e.g. 5"
+              suffix="min"
+              value={String(details.highFrequencyTime ?? '')}
+            />
+            <CheckboxGroup
+              onChange={(value) => set('highFrequencyModes', value)}
+              options={[...cosmetologyHighFrequencyModes]}
+              value={(details.highFrequencyModes as string[] | undefined)?.map(normalizeCosmetologyHistoryLabel)}
+            />
+          </EquipmentBlock>
+
+          <EquipmentBlock title="Radiofrequency">
+            <CheckboxGroup
+              onChange={(value) => set('radiofrequencyModes', value)}
+              options={[...cosmetologyRadiofrequencyModes]}
+              value={(details.radiofrequencyModes as string[] | undefined)?.map(normalizeCosmetologyHistoryLabel)}
+            />
+            <TextField
+              label="Temp"
+              onChange={(value) => set('radiofrequencyMaxTemp', value)}
+              placeholder="e.g. 30 degrees"
+              suffix="C°"
+              value={String(details.radiofrequencyMaxTemp ?? '')}
+            />
+            <TextField
+              label="Level"
+              onChange={(value) => set('radiofrequencyLevel', value)}
+              placeholder="e.g. 2"
+              value={String(details.radiofrequencyLevel ?? '')}
+            />
+          </EquipmentBlock>
+
+          <EquipmentBlock title="Ultrasound / Ultracavitation">
+            <CheckboxGroup
+              label="Skin type"
+              onChange={(value) => set('ultrasoundSkinTypes', value)}
+              options={['1MHz', '3MHz']}
+              value={details.ultrasoundSkinTypes as string[] | undefined}
+            />
+            <TextField
+              label="Power"
+              onChange={(value) => set('ultrasoundPower', value)}
+              placeholder="e.g. 80"
+              suffix="%"
+              value={String(details.ultrasoundPower ?? '')}
+            />
+          </EquipmentBlock>
+
+          <EquipmentBlock title="Dermapen">
+            <CheckboxGroup
+              label="Needle"
+              onChange={(value) => set('dermapenNeedle', value[value.length - 1] ?? '')}
+              options={[...cosmetologyDermapenNeedles]}
+              value={details.dermapenNeedle ? [String(details.dermapenNeedle)] : []}
+            />
+            <TextField
+              label="Depth"
+              onChange={(value) => set('dermapenDepth', value)}
+              placeholder="e.g. 2"
+              suffix="mm"
+              value={String(details.dermapenDepth ?? '')}
+            />
+            <TextField
+              label="Speed"
+              onChange={(value) => set('dermapenSpeed', value)}
+              placeholder="e.g. 5"
+              value={String(details.dermapenSpeed ?? '')}
+            />
+          </EquipmentBlock>
+
+          <EquipmentBlock title="Electroporation, Virtual Mesotherapy">
+            <TextField
+              label="Product"
+              onChange={(value) => set('electroporationProduct', value)}
+              placeholder="e.g. hyaluronic acid serum"
+              value={String(details.electroporationProduct ?? '')}
+            />
+            <TextField
+              label="Intensity"
+              onChange={(value) => set('electroporationIntensity', value)}
+              placeholder="e.g. level 3"
+              value={String(details.electroporationIntensity ?? '')}
+            />
+          </EquipmentBlock>
+
+          <EquipmentBlock title="LED Mask / Phototherapy">
+            <CheckboxGroup
+              onChange={(value) => set('ledMaskColors', value)}
+              options={[...cosmetologyLedColors]}
+              value={details.ledMaskColors as string[] | undefined}
+            />
+            <TextField
+              label="Time"
+              onChange={(value) => set('ledMaskTime', value)}
+              placeholder="e.g. 10"
+              suffix="min"
+              value={String(details.ledMaskTime ?? '')}
+            />
+          </EquipmentBlock>
+        </FormCard>
+
+        <FormCard optional title="Chemicals, exfoliation and active ingredients">
+          <EquipmentBlock title="Chemical peel">
+            <div className="grid grid-cols-2 gap-3">
+              <TextField
+                label="Acid (s)"
+                onChange={(value) => set('chemicalPeelAcid', value)}
+                placeholder="e.g. glycolic acid"
+                value={String(details.chemicalPeelAcid ?? '')}
+              />
+              <TextField
+                label="%"
+                onChange={(value) => set('chemicalPeelPercent', value)}
+                placeholder="e.g. 30"
+                value={String(details.chemicalPeelPercent ?? '')}
+              />
+            </div>
+            <TextField
+              label="Layers"
+              onChange={(value) => set('chemicalPeelLayers', value)}
+              placeholder="e.g. 2"
+              value={String(details.chemicalPeelLayers ?? '')}
+            />
+            <TextField
+              label="Exposure Time"
+              onChange={(value) => set('chemicalPeelExposureTime', value)}
+              placeholder="e.g. 2"
+              suffix="min"
+              value={String(details.chemicalPeelExposureTime ?? '')}
+            />
+            <TextField
+              label="Neutralized with"
+              onChange={(value) => set('chemicalPeelNeutralizer', value)}
+              placeholder="e.g. sodium bicarbonate solution"
+              value={String(details.chemicalPeelNeutralizer ?? '')}
+            />
+          </EquipmentBlock>
+
+          <TextAreaField
+            label="Active Ingredients / Serums / Ampoules"
+            onChange={(value) => set('activeIngredients', value)}
+            placeholder="e.g. vitamin C ampoule, niacinamide serum"
+            value={String(details.activeIngredients ?? '')}
+          />
+
+          <EquipmentBlock title="Final Mask">
+            <CheckboxGroup
+              onChange={(value) => set('finalMask', value)}
+              options={[...cosmetologyFinalMaskOptions]}
+              value={details.finalMask as string[] | undefined}
+            />
+            <TextField
+              label="Time"
+              onChange={(value) => set('finalMaskTime', value)}
+              placeholder="e.g. 2 minutes"
+              suffix="min"
+              value={String(details.finalMaskTime ?? '')}
+            />
+          </EquipmentBlock>
+        </FormCard>
+
+        <FormCard optional title="Professional control data">
+          <TextField
+            label="Cosmetic Brand / Line Used"
+            onChange={(value) => set('cosmeticBrandLine', value)}
+            placeholder="e.g. Mesoestetic, IMAGE Skincare"
+            value={String(details.cosmeticBrandLine ?? '')}
+          />
+          <CheckboxGroup
+            label="Immediate Reaction"
+            onChange={(value) => set('immediateReaction', value)}
+            options={[...cosmetologyReactionOptions]}
+            value={(details.immediateReaction as string[] | undefined)?.map(normalizeCosmetologyHistoryLabel)}
+          />
+          <TextAreaField
+            label="Additional note"
+            onChange={(value) => set('professionalControlNotes', value)}
+            placeholder="e.g., mild resistance during extractions on the nose, client reported sensitivity on left cheek, recommend reducing pressure in next session"
+            value={String(details.professionalControlNotes ?? '')}
+          />
+        </FormCard>
+
+        {cosmetologyRecommendationBlocks.map((block) => (
+          <FormCard key={block.title} optional title={block.title}>
+            {block.subtitle && (
+              <p className="text-[14px] leading-5 text-[#475467]">{block.subtitle}</p>
+            )}
+            <ul className="flex flex-col gap-3">
+              {block.items.map((item) => (
+                <li className="text-[14px] leading-[1.45] text-[#101828]" key={item.label}>
+                  <span className="font-bold tracking-[0.24px]">{item.label}</span>{' '}
+                  <span>{item.text}</span>
+                </li>
+              ))}
+            </ul>
+          </FormCard>
+        ))}
+
         <FormCard error={fieldErrors.professionalSignature ?? fieldErrors.consentDate} required title="Professional">
           <div className="rounded-[12px] bg-[#f2f5ff] p-4">
             <SectionHeading required>Signature</SectionHeading>
@@ -1016,7 +972,7 @@ export function CosmetologyDetailsStep({
                 })
               }
               setServiceError('')
-              setStage('face-map')
+              onNext({ serviceId: nextServiceId, details: { ...details, serviceType } })
             })()
           }}
         />
