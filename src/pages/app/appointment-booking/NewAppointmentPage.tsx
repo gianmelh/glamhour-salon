@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button, ErrorState, LoadingState } from '../../../components'
-import { useAppointments, useClients, useProfessionals, useServiceCategories, useServices } from '../../../hooks/useGlamhourData'
+import { useAppointments, useClients, useProfessionals, useSalon, useServiceCategories, useServices } from '../../../hooks/useGlamhourData'
 import { useMutation } from '../../../hooks/useMutation'
 import { ApiClientError } from '../../../lib/api'
 import { cn } from '../../../lib/cn'
-import { clampToToday, localDateString } from '../../../lib/date'
+import { clampToToday } from '../../../lib/date'
 import { deferTask, scrollMainToTop } from '../../../lib/defer'
+import { addMinutesIso, DEFAULT_SALON_TIMEZONE, formatZonedDate, formatZonedTime, zonedDateString, zonedDateTimeToIso, zonedTimeParts } from '../../../lib/salon-time'
 import { glamhourApi } from '../../../services/glamhour-api'
 import type { AvailabilitySlot, EligibleProvider } from '../../../types/api'
 import { NailsServicesScreen } from '../nails-booking/NailsServicesScreen'
@@ -77,23 +78,25 @@ function appointmentConflictDetails(error: Error | null | undefined) {
   return isAppointmentConflictDetails(error.details) ? error.details : null
 }
 
-function formatConflictDate(value: string) {
+function formatConflictDate(value: string, timeZone: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date)
+  return formatZonedDate(date, timeZone)
 }
 
-function formatConflictTime(value: string) {
+function formatConflictTime(value: string, timeZone: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(date)
+  return formatZonedTime(date, timeZone)
 }
 
-function AppointmentConflictAlert({ error, serviceName, onSelectSlot }: {
+function AppointmentConflictAlert({ error, serviceName, timeZone, onSelectSlot }: {
   error: Error | null | undefined
   serviceName: string
+  timeZone?: string
   onSelectSlot: (slot: NonNullable<AppointmentConflictErrorDetails['nextAvailableSlot']>) => void
 }) {
+  const resolvedTimeZone = timeZone ?? DEFAULT_SALON_TIMEZONE
   const details = appointmentConflictDetails(error)
   if (!details) return null
   const conflict = details.conflictingAppointment
@@ -105,8 +108,8 @@ function AppointmentConflictAlert({ error, serviceName, onSelectSlot }: {
       <div className="mt-3 space-y-1">
         <p className="text-xs font-semibold uppercase text-[#b42318]">Current appointment</p>
         <p className="font-bold text-[#111827]">{conflict.serviceName}</p>
-        <p>{formatConflictDate(conflict.startsAt)}</p>
-        <p>{formatConflictTime(conflict.startsAt)} - {formatConflictTime(conflict.endsAt)}</p>
+        <p>{formatConflictDate(conflict.startsAt, resolvedTimeZone)}</p>
+        <p>{formatConflictTime(conflict.startsAt, resolvedTimeZone)} - {formatConflictTime(conflict.endsAt, resolvedTimeZone)}</p>
       </div>
       <div className="mt-3 space-y-2">
         <p className="text-xs font-semibold uppercase text-[#b42318]">Next available time for {serviceName}</p>
@@ -148,10 +151,13 @@ function resolveCategoryServiceId(
     ?? ''
 }
 
-function appointmentDraftTime(draft: AppointmentDraft) {
+function appointmentDraftTime(draft: AppointmentDraft, timeZone: string) {
   if (draft.startsAt) {
     const date = new Date(draft.startsAt)
-    if (!Number.isNaN(date.getTime())) return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+    if (!Number.isNaN(date.getTime())) {
+      const parts = zonedTimeParts(date, timeZone)
+      return `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`
+    }
   }
   if (typeof draft.details.consentTime === 'string' && draft.details.consentTime) return draft.details.consentTime
   return '09:00'
@@ -224,6 +230,7 @@ function detailsForSelectedService(categoryCode: string, service: Service, detai
 
 export function NewAppointmentPage() {
   const navigate = useNavigate()
+  const salon = useSalon()
   const categories = useServiceCategories()
   const services = useServices()
   const clients = useClients()
@@ -253,6 +260,7 @@ export function NewAppointmentPage() {
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [nowTimestamp] = useState(() => Date.now())
   const devLashesBootstrapped = useRef(false)
+  const salonTimeZone = salon.data?.timezone ?? DEFAULT_SALON_TIMEZONE
   const allServices = useMemo(() => {
     const byId = new Map<string, Service>()
     for (const service of services.data ?? []) byId.set(service.id, service)
@@ -325,6 +333,7 @@ export function NewAppointmentPage() {
       providerId: draft.providerId,
       serviceId: draft.serviceId,
       date: appointmentDraftDate(draft),
+      timezone: salonTimeZone,
     }).then((result) => {
       if (active) setAvailability(result.slots)
     }).catch(() => {
@@ -333,7 +342,7 @@ export function NewAppointmentPage() {
       if (active) setAvailabilityLoading(false)
     })
     return () => { active = false }
-  }, [draft.date, draft.providerId, draft.serviceId])
+  }, [draft.date, draft.providerId, draft.serviceId, salonTimeZone])
 
   useEffect(() => {
     if (step !== 'appointment-details') return
@@ -396,10 +405,10 @@ export function NewAppointmentPage() {
     }, {})
   }, [appointments.data, nowTimestamp])
 
-  const loading = categories.loading || services.loading || clients.loading || appointments.loading || professionals.loading
+  const loading = salon.loading || categories.loading || services.loading || clients.loading || appointments.loading || professionals.loading
   if (loading) return <LoadingState label="Loading appointment flow..." />
-  if (!categories.data || !services.data || !clients.data || !appointments.data || !professionals.data) {
-    return <ErrorState description="Appointment data could not be loaded." onRetry={() => { categories.retry(); services.retry(); clients.retry(); appointments.retry(); professionals.retry() }} />
+  if (!salon.data || !categories.data || !services.data || !clients.data || !appointments.data || !professionals.data) {
+    return <ErrorState description="Appointment data could not be loaded." onRetry={() => { salon.retry(); categories.retry(); services.retry(); clients.retry(); appointments.retry(); professionals.retry() }} />
   }
 
   const currentSalonDraft = {
@@ -486,11 +495,15 @@ export function NewAppointmentPage() {
     else setStep(order[index - 1])
   }
 
+  const appointmentDurationMinutes = (service = selectedService, provider = selectedProvider) => (
+    provider?.durationMinutes ?? service?.duration_minutes ?? 60
+  )
+
   const selectSuggestedSlot = (slot: NonNullable<AppointmentConflictErrorDetails['nextAvailableSlot']>) => {
     setConfirmError(null)
     setDraft((current) => ({
       ...current,
-      date: localDateString(new Date(slot.startsAt)),
+      date: zonedDateString(slot.startsAt, salonTimeZone),
       startsAt: slot.startsAt,
       endsAt: slot.endsAt,
       details: sanitizeDetailsForCategory(current.categoryCode, {
@@ -500,13 +513,11 @@ export function NewAppointmentPage() {
     }))
   }
 
-  const defaultAppointmentTimes = () => {
-    const [year, month, day] = appointmentDraftDate(draft).split('-').map(Number)
+  const defaultAppointmentTimes = (durationMinutes = appointmentDurationMinutes()) => {
     const { hour, minute } = parseDraftTime(draft.details)
-    const starts = new Date(year, (month || 1) - 1, day || 1, hour, minute, 0, 0)
-    const ends = new Date(starts)
-    ends.setMinutes(starts.getMinutes() + (selectedService?.duration_minutes ?? 60))
-    return { startsAt: starts.toISOString(), endsAt: ends.toISOString() }
+    const time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+    const startsAt = zonedDateTimeToIso(appointmentDraftDate(draft), time, salonTimeZone)
+    return { startsAt, endsAt: addMinutesIso(startsAt, durationMinutes) }
   }
 
   const resolveBookableAssignment = async () => {
@@ -616,20 +627,23 @@ export function NewAppointmentPage() {
     throw new Error(`Assign at least one ${selectedCategory?.name ?? 'selected'} service to a provider in Staff settings before scheduling.`)
   }
 
-  const resolveAppointmentTimes = async (serviceId: string, providerId: string) => {
+  const resolveAppointmentTimes = async (service: Service, provider: EligibleProvider) => {
     if (draft.startsAt && draft.endsAt) return { startsAt: draft.startsAt, endsAt: draft.endsAt }
-    if (typeof draft.details.consentTime === 'string' && draft.details.consentTime) return defaultAppointmentTimes()
+    if (typeof draft.details.consentTime === 'string' && draft.details.consentTime) {
+      return defaultAppointmentTimes(appointmentDurationMinutes(service, provider))
+    }
 
     const availableSlots = await glamhourApi.appointmentAvailability({
-      providerId,
-      serviceId,
+      providerId: provider.id,
+      serviceId: service.id,
       date: appointmentDraftDate(draft),
+      timezone: salonTimeZone,
     }).then((result) => result.slots.filter((slot) => slot.available)).catch(() => [])
 
     const slot = availableSlots[0]
     if (slot) return { startsAt: slot.startsAt, endsAt: slot.endsAt }
 
-    return defaultAppointmentTimes()
+    return defaultAppointmentTimes(appointmentDurationMinutes(service, provider))
   }
 
   const quickCreateAppointment = async () => {
@@ -654,11 +668,11 @@ export function NewAppointmentPage() {
 
     setConfirmLoading(true)
     try {
-      const durationMinutes = selectedProvider?.durationMinutes ?? selectedService.duration_minutes
+      const durationMinutes = appointmentDurationMinutes(selectedService, selectedProvider)
       const slot = draft.providerId ? availability.find((item) => item.time === time && item.available) : undefined
       const appointmentTimes = slot
         ? { startsAt: slot.startsAt, endsAt: slot.endsAt }
-        : quickAppointmentTimes(draft.date, time, durationMinutes)
+        : quickAppointmentTimes(draft.date, time, durationMinutes, salonTimeZone)
       const appointment = await mutation.mutate({
         clientId: selectedClient.id,
         professionalId: draft.providerId || null,
@@ -670,7 +684,7 @@ export function NewAppointmentPage() {
       window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
       appointments.setData((current) => [appointment, ...(current ?? [])])
       setCreatedAppointmentId(appointment.id)
-      navigate(`/app/calendar?date=${localDateString(new Date(appointment.starts_at))}`)
+      navigate(`/app/calendar?date=${zonedDateString(appointment.starts_at, salonTimeZone)}`)
     } catch (reason) {
       setConfirmError(reason instanceof Error ? reason : new Error('Appointment could not be scheduled.'))
     } finally {
@@ -687,7 +701,7 @@ export function NewAppointmentPage() {
     try {
       if (draft.appointmentId && draft.mode === 'reschedule') {
         const assignment = await resolveBookableAssignment()
-        const appointmentTimes = await resolveAppointmentTimes(assignment.service.id, assignment.provider.id)
+        const appointmentTimes = await resolveAppointmentTimes(assignment.service, assignment.provider)
         const updated = await glamhourApi.rescheduleAppointment(draft.appointmentId, {
           professionalId: assignment.provider.id,
           startsAt: appointmentTimes.startsAt,
@@ -721,7 +735,7 @@ export function NewAppointmentPage() {
       }
 
       const assignment = await resolveBookableAssignment()
-      const appointmentTimes = await resolveAppointmentTimes(assignment.service.id, assignment.provider.id)
+      const appointmentTimes = await resolveAppointmentTimes(assignment.service, assignment.provider)
       const micropigmentationServiceIds = Array.isArray(draft.details.micropigmentationServiceIds)
         ? draft.details.micropigmentationServiceIds.filter((item): item is string => typeof item === 'string' && Boolean(item))
         : []
@@ -765,7 +779,7 @@ export function NewAppointmentPage() {
   const exitBooking = () => navigate('/app/home')
   const conflictAlertForService = (serviceName: string) => (
     appointmentConflictDetails(confirmError)
-      ? <AppointmentConflictAlert error={confirmError} serviceName={serviceName} onSelectSlot={selectSuggestedSlot} />
+      ? <AppointmentConflictAlert error={confirmError} serviceName={serviceName} timeZone={salonTimeZone} onSelectSlot={selectSuggestedSlot} />
       : null
   )
 
@@ -992,7 +1006,7 @@ export function NewAppointmentPage() {
           }}
           onNext={() => void confirm()}
           service={selectedService}
-          time={appointmentDraftTime(draft)}
+          time={appointmentDraftTime(draft, salonTimeZone)}
         />
       )}
 
@@ -1028,6 +1042,7 @@ export function NewAppointmentPage() {
           provider={selectedProvider}
           service={selectedService}
           startsAt={draft.startsAt}
+          timeZone={salonTimeZone}
         />
       )}
 

@@ -6,15 +6,18 @@ import {
   ErrorState,
   LoadingState,
 } from '../../components'
-import { useAppointments, useProfessionals } from '../../hooks/useGlamhourData'
+import { useAppointments, useProfessionals, useSalon } from '../../hooks/useGlamhourData'
 import { cn } from '../../lib/cn'
+import { localDateString } from '../../lib/date'
 import {
   appointmentService,
-  formatTime,
   timedAppointmentStatus,
 } from '../../lib/format'
+import { DEFAULT_SALON_TIMEZONE, formatZonedTime, zonedDateString, zonedTimeParts } from '../../lib/salon-time'
 import { nailsBookingAssets } from './appointment-booking/assets'
 import type { Appointment, Professional } from '../../types/api'
+
+const calendarHourHeight = 118
 
 const scheduleHours = [
   { hour: 9, label: '9:00 AM' },
@@ -68,8 +71,19 @@ function displayProviderName(name: string) {
   return name.split(' ')[0] || name
 }
 
-function appointmentHour(value: string) {
-  return new Date(value).getHours()
+function appointmentHour(value: string, timeZone: string) {
+  return zonedTimeParts(value, timeZone).hour
+}
+
+function appointmentMinute(value: string, timeZone: string) {
+  return zonedTimeParts(value, timeZone).minute
+}
+
+function appointmentDurationMinutes(appointment: Appointment) {
+  const startsAt = new Date(appointment.starts_at).getTime()
+  const endsAt = new Date(appointment.ends_at).getTime()
+  if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || endsAt <= startsAt) return 30
+  return Math.max(15, (endsAt - startsAt) / 60_000)
 }
 
 function hourLabel(hour: number) {
@@ -141,8 +155,10 @@ export function CalendarPage() {
   const selectedDateParam = searchParams.get('date')
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(calendarDateFromParam(selectedDateParam)))
   const [selectedProviderId, setSelectedProviderId] = useState<string>('')
+  const salon = useSalon()
   const appointments = useAppointments()
   const professionals = useProfessionals()
+  const salonTimeZone = salon.data?.timezone ?? DEFAULT_SALON_TIMEZONE
 
   useEffect(() => {
     setSelectedDate(startOfDay(calendarDateFromParam(selectedDateParam)))
@@ -174,9 +190,10 @@ export function CalendarPage() {
 
   const dayAppointments = useMemo(() => {
     const rows = appointments.data ?? []
+    const selectedDateString = localDateString(selectedDate)
     return rows
       .filter((appointment) =>
-        isSameDay(new Date(appointment.starts_at), selectedDate)
+        zonedDateString(appointment.starts_at, salonTimeZone) === selectedDateString
       )
       .filter(
         (appointment) =>
@@ -186,20 +203,20 @@ export function CalendarPage() {
         (a, b) =>
           new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
       )
-  }, [appointments.data, selectedDate, selectedProviderId])
+  }, [appointments.data, selectedDate, selectedProviderId, salonTimeZone])
 
   const visibleScheduleHours = useMemo(() => {
     const hours = new Map(scheduleHours.map((slot) => [slot.hour, slot]))
     dayAppointments.forEach((appointment) => {
-      const hour = appointmentHour(appointment.starts_at)
+      const hour = appointmentHour(appointment.starts_at, salonTimeZone)
       if (!hours.has(hour)) {
         hours.set(hour, { hour, label: hourLabel(hour) })
       }
     })
     return Array.from(hours.values()).sort((a, b) => a.hour - b.hour)
-  }, [dayAppointments])
+  }, [dayAppointments, salonTimeZone])
 
-  if (appointments.loading) return <LoadingState label="Loading calendar..." />
+  if (salon.loading || appointments.loading) return <LoadingState label="Loading calendar..." />
   if (!appointments.data && appointments.error) {
     return (
       <ErrorState
@@ -330,7 +347,7 @@ export function CalendarPage() {
           <div className="grid grid-cols-[88px_1fr]">
             {visibleScheduleHours.map((slot) => {
               const slotAppointments = dayAppointments.filter(
-                (appointment) => appointmentHour(appointment.starts_at) === slot.hour
+                (appointment) => appointmentHour(appointment.starts_at, salonTimeZone) === slot.hour
               )
               return (
                 <div className="contents" key={slot.hour}>
@@ -338,13 +355,14 @@ export function CalendarPage() {
                     {slot.label}
                   </div>
                   <div
-                    className="relative min-h-[118px] border-t border-[#eef1f7] px-3 py-2"
+                    className="relative h-[118px] border-t border-[#eef1f7] px-3"
                   >
                     {slotAppointments.map((appointment, index) => (
                       <AppointmentBlock
                         appointment={appointment}
                         index={index}
                         key={appointment.id}
+                        timeZone={salonTimeZone}
                       />
                     ))}
                   </div>
@@ -407,21 +425,28 @@ function CalendarSelect({
 function AppointmentBlock({
   appointment,
   index,
+  timeZone,
 }: {
   appointment: Appointment
   index: number
+  timeZone: string
 }) {
   const status = timedAppointmentStatus(appointment)
   const categoryAsset = appointmentCategoryAsset(appointment)
   const isFinalStatus = status === 'Completed' || status === 'Canceled'
   const StatusIcon = status === 'Canceled' ? XCircle : CheckCircle2
+  const startMinute = appointmentMinute(appointment.starts_at, timeZone)
+  const durationMinutes = appointmentDurationMinutes(appointment)
+  const top = (startMinute / 60) * calendarHourHeight
+  const height = Math.max(42, (durationMinutes / 60) * calendarHourHeight)
 
   return (
     <Link
       className={cn(
-        'mb-2 block min-h-[118px] rounded-[12px] border px-3 py-3 shadow-[0_10px_20px_rgba(16,24,40,0.04)]',
+        'absolute left-3 right-3 z-10 block overflow-hidden rounded-[12px] border px-3 py-2 shadow-[0_10px_20px_rgba(16,24,40,0.04)]',
         appointmentTone(appointment, index)
       )}
+      style={{ top, height }}
       to={`/app/appointments/${appointment.id}`}
     >
       <div className="flex items-center justify-between gap-2">
@@ -449,9 +474,9 @@ function AppointmentBlock({
       <p className="mt-2 truncate text-[11px] leading-4 text-[#667085]">
         with {appointment.client_name ?? 'Client'}
       </p>
-      <div className="mt-3 flex items-center justify-between gap-2">
+      <div className="mt-2 flex items-center justify-between gap-2">
         <span className="text-[11px] font-semibold text-[#7a3fe0]">
-          {formatTime(appointment.starts_at)}
+          {formatZonedTime(appointment.starts_at, timeZone)} - {formatZonedTime(appointment.ends_at, timeZone)}
         </span>
       </div>
     </Link>

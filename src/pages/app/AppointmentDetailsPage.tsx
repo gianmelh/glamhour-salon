@@ -1,28 +1,22 @@
 import { CalendarDays, ChevronLeft, Clock3, DollarSign, Play, UserRound } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Avatar, Badge, Button, Card, DataSourceNotice, ErrorState, LoadingState, MutationError, PageTitle, ScreenSection } from '../../components'
-import { useAppointment, useClients } from '../../hooks/useGlamhourData'
+import { useAppointment, useClients, useSalon } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
-import { appointmentService, formatDate, formatMoney, formatTime, timedAppointmentStatus } from '../../lib/format'
+import { appointmentService, formatMoney, timedAppointmentStatus } from '../../lib/format'
+import { DEFAULT_SALON_TIMEZONE, formatZonedDate, formatZonedTime, zonedDateString } from '../../lib/salon-time'
 import { glamhourApi } from '../../services/glamhour-api'
 import { AppointmentClinicalDetails } from './AppointmentClinicalDetails'
 import { APPOINTMENT_DRAFT_KEY } from './appointment-booking/draft'
 import { formatClientBirthDate } from './appointment-booking/dateMask'
 import type { Client } from '../../types/api'
 
-function displayAppointmentDate(startsAt: string, treatmentDetails: Record<string, unknown>) {
-  const consentDate = typeof treatmentDetails.consentDate === 'string' ? treatmentDetails.consentDate : ''
-  if (!consentDate) return formatDate(startsAt)
-  const [year, month, day] = consentDate.split('-').map(Number)
-  if (!year || !month || !day) return formatDate(startsAt)
-  return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(year, month - 1, day))
+function displayAppointmentDate(startsAt: string, timeZone: string) {
+  return formatZonedDate(startsAt, timeZone)
 }
 
-function displayAppointmentTime(startsAt: string, treatmentDetails: Record<string, unknown>) {
-  const consentTime = typeof treatmentDetails.consentTime === 'string' ? treatmentDetails.consentTime : ''
-  const [hour, minute] = consentTime.split(':').map(Number)
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return formatTime(startsAt)
-  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(2026, 0, 1, hour, minute))
+function displayAppointmentTime(startsAt: string, endsAt: string, timeZone: string) {
+  return `${formatZonedTime(startsAt, timeZone)} - ${formatZonedTime(endsAt, timeZone)}`
 }
 
 function withClientGeneralInformation(
@@ -87,13 +81,15 @@ function detailsForServiceStart(
 export function AppointmentDetailsPage() {
   const navigate = useNavigate()
   const { appointmentId = '' } = useParams()
+  const salon = useSalon()
   const appointment = useAppointment(appointmentId)
   const clients = useClients()
   const mutation = useMutation((status: string) =>
     glamhourApi.updateAppointmentStatus(appointmentId, status),
   )
 
-  if (appointment.loading || clients.loading) return <LoadingState label="Loading booking details..." />
+  if (salon.loading || appointment.loading || clients.loading) return <LoadingState label="Loading booking details..." />
+  const salonTimeZone = salon.data?.timezone ?? DEFAULT_SALON_TIMEZONE
   if (!appointment.data) {
     return <ErrorState description={appointment.error?.message ?? 'Appointment not found'} onRetry={appointment.retry} />
   }
@@ -108,9 +104,7 @@ export function AppointmentDetailsPage() {
   const categoryCode = service?.category_code_snapshot ?? ''
   const treatmentDetails = data.treatment_details_by_category?.[categoryCode] ?? {}
   const terminalStatus = ['completed', 'canceled', 'no_show'].includes(data.status_code)
-  const appointmentDate = typeof treatmentDetails.consentDate === 'string' && treatmentDetails.consentDate
-    ? treatmentDetails.consentDate
-    : data.starts_at.slice(0, 10)
+  const appointmentDate = zonedDateString(data.starts_at, salonTimeZone)
 
   const updateStatus = async (next: string) => {
     const updated = await mutation.mutate(next)
@@ -175,8 +169,8 @@ export function AppointmentDetailsPage() {
       <ScreenSection title="Information">
         <div className="grid min-w-0 grid-cols-2 gap-4">
           <InfoCard icon={<UserRound className="size-4" />} label="Client" value={data.client_name ?? 'Client'} />
-          <InfoCard icon={<CalendarDays className="size-4" />} label="Date" value={displayAppointmentDate(data.starts_at, treatmentDetails)} />
-          <InfoCard icon={<Clock3 className="size-4" />} label="Time" value={displayAppointmentTime(data.starts_at, treatmentDetails)} />
+          <InfoCard icon={<CalendarDays className="size-4" />} label="Date" value={displayAppointmentDate(data.starts_at, salonTimeZone)} />
+          <InfoCard icon={<Clock3 className="size-4" />} label="Time" value={displayAppointmentTime(data.starts_at, data.ends_at, salonTimeZone)} />
           <InfoCard icon={<DollarSign className="size-4" />} label="Cost" value={formatMoney(service?.unit_price_minor ?? 0)} />
         </div>
       </ScreenSection>

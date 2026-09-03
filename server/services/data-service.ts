@@ -1009,20 +1009,83 @@ function minutesToTimeString(totalMinutes: number) {
   return `${hours}:${minutes}`
 }
 
-function localDateStringFromDate(date: Date) {
+const defaultSalonTimezone = 'America/Merida'
+
+function datePartsFromIsoDate(date: string) {
+  const [year, month, day] = date.split('-').map(Number)
+  return { year, month, day }
+}
+
+function normalizeTimeZone(timeZone?: string | null) {
+  const candidate = timeZone || defaultSalonTimezone
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: candidate }).format(new Date())
+    return candidate
+  } catch {
+    return defaultSalonTimezone
+  }
+}
+
+function timeZoneDateParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+    hour: Number(values.hour),
+    minute: Number(values.minute),
+    second: Number(values.second),
+  }
+}
+
+function timeZoneOffsetMs(date: Date, timeZone: string) {
+  const parts = timeZoneDateParts(date, timeZone)
+  const zonedAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)
+  return zonedAsUtc - date.getTime()
+}
+
+function dateAtSalonTime(date: string, time: string, timeZone: string) {
+  const { year, month, day } = datePartsFromIsoDate(date)
+  const [hour, minute] = time.slice(0, 5).split(':').map(Number)
+  const wallTimeAsUtc = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0)
+  const firstPass = new Date(wallTimeAsUtc - timeZoneOffsetMs(new Date(wallTimeAsUtc), timeZone))
+  const secondPass = new Date(wallTimeAsUtc - timeZoneOffsetMs(firstPass, timeZone))
+  return secondPass
+}
+
+function localDateStringFromDate(date: Date, timeZone: string) {
+  const parts = timeZoneDateParts(date, timeZone)
   return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
+    parts.year,
+    String(parts.month).padStart(2, '0'),
+    String(parts.day).padStart(2, '0'),
   ].join('-')
 }
 
-function dateAtLocalTime(date: string, time: string) {
-  return new Date(`${date}T${time}:00`)
+function addDaysToIsoDate(date: string, amount: number) {
+  const { year, month, day } = datePartsFromIsoDate(date)
+  const next = new Date(Date.UTC(year, (month || 1) - 1, day || 1 + amount, 12, 0, 0, 0))
+  return [
+    next.getUTCFullYear(),
+    String(next.getUTCMonth() + 1).padStart(2, '0'),
+    String(next.getUTCDate()).padStart(2, '0'),
+  ].join('-')
 }
 
-function getUtcDayOfWeek(date: string) {
-  return dateAtLocalTime(date, '12:00').getDay()
+function getDayOfWeek(date: string) {
+  const { year, month, day } = datePartsFromIsoDate(date)
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1, 12, 0, 0, 0)).getUTCDay()
 }
 
 const nonBlockingAppointmentStatuses = ['completed', 'canceled', 'no_show']
@@ -1083,10 +1146,53 @@ async function clientHasAppointmentConflict(
   return Boolean(rows[0])
 }
 
+async function appointmentDurationForServices(
+  client: PoolClient,
+  salonId: string,
+  professionalId: string | null | undefined,
+  serviceIds: string[],
+  fallbackServices: Service[] = [],
+) {
+  if (!serviceIds.length) return 60
+  if (professionalId) {
+    const rows = await clientRows<QueryResultRow & { service_id: string; duration_minutes: number; duration_override_minutes: number | null }>(
+      client,
+      `SELECT s.id AS service_id, s.duration_minutes, ps.duration_override_minutes
+       FROM services s
+       LEFT JOIN professional_services ps
+         ON ps.salon_id = s.salon_id
+        AND ps.professional_id = $2
+        AND ps.service_id = s.id
+        AND ps.is_active = true
+       WHERE s.salon_id = $1
+         AND s.id = ANY($3::uuid[])
+         AND s.is_active`,
+      [salonId, professionalId, serviceIds],
+    )
+    const durations = new Map(rows.map((row) => [String(row.service_id), Number(row.duration_override_minutes ?? row.duration_minutes)]))
+    return serviceIds.reduce((total, serviceId) => {
+      const fallback = fallbackServices.find((service) => service.id === serviceId)
+      return total + Math.max(1, durations.get(serviceId) ?? Number(fallback?.duration_minutes ?? 0))
+    }, 0) || 60
+  }
+
+  return serviceIds.reduce((total, serviceId) => {
+    const fallback = fallbackServices.find((service) => service.id === serviceId)
+    return total + Math.max(1, Number(fallback?.duration_minutes ?? 0))
+  }, 0) || 60
+}
+
+function endDateTimeFromDuration(startsAt: string, durationMinutes: number) {
+  const start = new Date(startsAt)
+  if (Number.isNaN(start.getTime())) throw new ApiError(400, 'Invalid appointment start time.')
+  return new Date(start.getTime() + durationMinutes * 60_000).toISOString()
+}
+
 async function findNextClientSafeAvailabilitySlot(input: {
   salonId: string
   clientId: string
   requestedStartsAt: string
+  timeZone: string
   excludeAppointmentId?: string
   getProviderAvailability: (date: string) => Promise<Record<string, unknown>>
 }) {
@@ -1096,7 +1202,7 @@ async function findNextClientSafeAvailabilitySlot(input: {
   for (let dayOffset = 0; dayOffset < 14; dayOffset += 1) {
     const date = new Date(requestedStart)
     date.setDate(requestedStart.getDate() + dayOffset)
-    const availabilityDate = localDateStringFromDate(date)
+    const availabilityDate = localDateStringFromDate(date, input.timeZone)
     const availability = await input.getProviderAvailability(availabilityDate).catch(() => null)
     const slots = Array.isArray(availability?.slots)
       ? availability.slots as Array<{ time: string; label: string; startsAt: string; endsAt: string; available: boolean }>
@@ -1138,11 +1244,17 @@ async function buildClientConflictDetails(input: {
   conflict: ClientAppointmentConflictRow
   getProviderAvailability: (date: string) => Promise<Record<string, unknown>>
 }): Promise<ClientConflictDetails> {
+  const salonRows = await query<{ timezone: string | null }>(
+    'SELECT timezone FROM salons WHERE id = $1 AND deleted_at IS NULL',
+    [input.salonId],
+  )
+  const timeZone = normalizeTimeZone(salonRows[0]?.timezone)
   const nextAvailableSlot = input.providerId && input.serviceId
     ? await findNextClientSafeAvailabilitySlot({
       salonId: input.salonId,
       clientId: input.clientId,
       requestedStartsAt: input.requestedStartsAt,
+      timeZone,
       excludeAppointmentId: input.excludeAppointmentId,
       getProviderAvailability: input.getProviderAvailability,
     })
@@ -3319,10 +3431,38 @@ export const dataService = {
            FROM services s
            WHERE s.salon_id = $1 AND s.id = ANY($3::uuid[]) AND s.is_active
            ON CONFLICT (professional_id, service_id)
-           DO UPDATE SET is_active = true, duration_override_minutes = EXCLUDED.duration_override_minutes, updated_at = now()`,
+           DO UPDATE SET is_active = true, updated_at = now()`,
           [input.salonId, input.professionalId, input.serviceIds],
         )
+      }
 
+      const durationMinutes = await appointmentDurationForServices(
+        client,
+        input.salonId,
+        input.professionalId,
+        input.serviceIds,
+        services,
+      )
+      const endsAt = endDateTimeFromDuration(input.startsAt, durationMinutes)
+      const serviceDurationRows = input.professionalId
+        ? await clientRows<QueryResultRow & { service_id: string; duration_minutes: number }>(
+          client,
+          `SELECT s.id AS service_id, COALESCE(ps.duration_override_minutes, s.duration_minutes) AS duration_minutes
+           FROM services s
+           LEFT JOIN professional_services ps
+             ON ps.salon_id = s.salon_id
+            AND ps.professional_id = $2
+            AND ps.service_id = s.id
+            AND ps.is_active = true
+           WHERE s.salon_id = $1
+             AND s.id = ANY($3::uuid[])
+             AND s.is_active`,
+          [input.salonId, input.professionalId, input.serviceIds],
+        )
+        : []
+      const serviceDurations = new Map(serviceDurationRows.map((row) => [String(row.service_id), Number(row.duration_minutes)]))
+
+      if (input.professionalId) {
         const conflicts = await clientRows<QueryResultRow>(
           client,
           `SELECT 1
@@ -3333,7 +3473,7 @@ export const dataService = {
              AND starts_at < $4::timestamptz
              AND ends_at > $3::timestamptz
            LIMIT 1`,
-          [input.salonId, input.professionalId, input.startsAt, input.endsAt],
+          [input.salonId, input.professionalId, input.startsAt, endsAt],
         )
         if (conflicts[0]) {
           throw new ApiError(409, 'The professional is unavailable for that time.')
@@ -3345,7 +3485,7 @@ export const dataService = {
         input.salonId,
         input.clientId,
         input.startsAt,
-        input.endsAt,
+        endsAt,
       )
       if (clientConflict) {
         const details = await buildClientConflictDetails({
@@ -3377,7 +3517,7 @@ export const dataService = {
           input.professionalId ?? null,
           input.source,
           input.startsAt,
-          input.endsAt,
+          endsAt,
           input.customerNotes ?? null,
           input.internalNotes ?? null,
           input.createdByUserId ?? null,
@@ -3578,7 +3718,7 @@ export const dataService = {
             service.id,
             service.name,
             service.category_code,
-            service.duration_minutes,
+            serviceDurations.get(service.id) ?? service.duration_minutes,
             input.priceOverrideMinor ?? service.price_minor,
           ],
         )
@@ -3832,6 +3972,8 @@ export const dataService = {
         [salonId, appointmentId],
       )
       const serviceIds = serviceRows.map((row) => String(row.service_id)).filter(Boolean)
+      const durationMinutes = await appointmentDurationForServices(client, salonId, input.professionalId, serviceIds)
+      const endsAt = endDateTimeFromDuration(input.startsAt, durationMinutes)
       if (serviceIds.length) {
         const assignments = await clientRows<QueryResultRow>(
           client,
@@ -3858,8 +4000,8 @@ export const dataService = {
            AND status_code NOT IN ('completed', 'canceled', 'no_show')
            AND starts_at < $5::timestamptz
            AND ends_at > $4::timestamptz
-         LIMIT 1`,
-        [salonId, appointmentId, input.professionalId, input.startsAt, input.endsAt],
+           LIMIT 1`,
+        [salonId, appointmentId, input.professionalId, input.startsAt, endsAt],
       )
       if (conflicts[0]) {
         throw new ApiError(409, 'The professional is unavailable for that time.')
@@ -3870,7 +4012,7 @@ export const dataService = {
         salonId,
         current.client_id,
         input.startsAt,
-        input.endsAt,
+        endsAt,
         appointmentId,
       )
       if (clientConflict) {
@@ -3902,7 +4044,7 @@ export const dataService = {
            canceled_by_user_id = NULL
          WHERE salon_id = $1 AND id = $2
          RETURNING *`,
-        [salonId, appointmentId, input.professionalId, input.startsAt, input.endsAt],
+        [salonId, appointmentId, input.professionalId, input.startsAt, endsAt],
       )
       const updated = rows[0]
       if (!updated) throw new ApiError(500, 'Appointment could not be rescheduled.')
@@ -4165,9 +4307,12 @@ export const dataService = {
       duration_minutes: number
       duration_override_minutes: number | null
       professional_name: string
+      timezone: string | null
     }>(
-      `SELECT s.duration_minutes, ps.duration_override_minutes, p.full_name AS professional_name
+      `SELECT s.duration_minutes, ps.duration_override_minutes, p.full_name AS professional_name, sal.timezone
        FROM services s
+       JOIN salons sal
+         ON sal.id = s.salon_id AND sal.deleted_at IS NULL
        JOIN professional_services ps
          ON ps.salon_id = s.salon_id AND ps.service_id = s.id
        JOIN professionals p
@@ -4188,7 +4333,8 @@ export const dataService = {
     }
 
     const durationMinutes = Number(service.duration_override_minutes ?? service.duration_minutes)
-    const dayOfWeek = getUtcDayOfWeek(filters.date)
+    const timeZone = normalizeTimeZone(service.timezone ?? filters.timezone)
+    const dayOfWeek = getDayOfWeek(filters.date)
     const providerHours = await query<QueryResultRow & { starts_at: string | null; ends_at: string | null; is_working: boolean }>(
       `SELECT starts_at, ends_at, is_working
        FROM professional_working_hours
@@ -4224,8 +4370,8 @@ export const dataService = {
       }
     }
 
-    const dayStart = dateAtLocalTime(filters.date, '00:00').toISOString()
-    const dayEnd = dateAtLocalTime(filters.date, '23:59').toISOString()
+    const dayStart = dateAtSalonTime(filters.date, '00:00', timeZone).toISOString()
+    const dayEnd = dateAtSalonTime(addDaysToIsoDate(filters.date, 1), '00:00', timeZone).toISOString()
     const [appointments, exceptions] = await Promise.all([
       query<QueryResultRow & { starts_at: string; ends_at: string }>(
         `SELECT starts_at, ends_at
@@ -4257,14 +4403,14 @@ export const dataService = {
     const slots = []
     for (let minute = openMinutes; minute + durationMinutes <= closeMinutes; minute += 30) {
       const time = minutesToTimeString(minute)
-      const start = dateAtLocalTime(filters.date, time)
+      const start = dateAtSalonTime(filters.date, time, timeZone)
       const end = new Date(start.getTime() + durationMinutes * 60_000)
       const available = !blocked.some((block) => start.getTime() < block.end && end.getTime() > block.start)
       slots.push({
         time,
         startsAt: start.toISOString(),
         endsAt: end.toISOString(),
-        label: start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        label: new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(start),
         available,
       })
     }
@@ -4274,7 +4420,7 @@ export const dataService = {
       serviceId: filters.serviceId,
       date: filters.date,
       durationMinutes,
-      timezone: filters.timezone ?? 'America/Merida',
+      timezone: timeZone,
       workingWindow: {
         open: minutesToTimeString(openMinutes),
         close: minutesToTimeString(closeMinutes),

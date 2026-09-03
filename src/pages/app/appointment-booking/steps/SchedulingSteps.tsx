@@ -89,7 +89,7 @@ export function TimeStep({ service, date, selectedStartsAt, slots, loading, onDa
   )
 }
 
-export function ReviewStep({ category, service, client, provider, startsAt, details, notes, loading, error, conflictAlert, onConfirm }: {
+export function ReviewStep({ category, service, client, provider, startsAt, details, notes, timeZone, loading, error, conflictAlert, onConfirm }: {
   category: ServiceCategory
   service: Service
   client: Client
@@ -97,12 +97,13 @@ export function ReviewStep({ category, service, client, provider, startsAt, deta
   startsAt: string
   details: Record<string, unknown>
   notes: string
+  timeZone: string
   loading: boolean
   error: Error | null
   conflictAlert?: ReactNode
   onConfirm: () => void
 }) {
-  const sections = buildReviewSections(category, service, client, provider, startsAt, details, notes)
+  const sections = buildReviewSections(category, service, client, provider, startsAt, details, notes, timeZone)
 
   return (
     <StepShell subtitle="Confirm the details before saving." title="Review appointment">

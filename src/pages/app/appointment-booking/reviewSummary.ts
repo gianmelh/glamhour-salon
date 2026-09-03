@@ -1,4 +1,5 @@
 import type { Client, EligibleProvider, Service, ServiceCategory } from '../../../types/api'
+import { DEFAULT_SALON_TIMEZONE, formatZonedDate, formatZonedTime } from '../../../lib/salon-time'
 import { buildLashesTreatmentReviewRows } from '../lashes-booking/buildLashesReviewSections'
 import { healthQuestionnaires } from './health-questionnaires'
 import type { BookingCategoryCode, FingerName } from './types'
@@ -177,6 +178,7 @@ export function buildReviewSections(
   startsAt: string,
   details: Record<string, unknown>,
   notes: string,
+  timeZone = DEFAULT_SALON_TIMEZONE,
 ): ReviewSection[] {
   const sections: ReviewSection[] = [
     {
@@ -187,7 +189,7 @@ export function buildReviewSections(
         { label: 'Client', value: client.full_name },
         { label: 'Amount', value: new Intl.NumberFormat('en-US', { style: 'currency', currency: service.currency_code }).format(service.price_minor / 100) },
         ...(provider ? [{ label: 'Provider', value: provider.full_name }] : []),
-        ...(startsAt ? [{ label: 'Scheduled', value: new Date(startsAt).toLocaleString() }] : []),
+        ...(startsAt ? [{ label: 'Scheduled', value: `${formatZonedDate(startsAt, timeZone)}, ${formatZonedTime(startsAt, timeZone)}` }] : []),
       ],
     },
   ]

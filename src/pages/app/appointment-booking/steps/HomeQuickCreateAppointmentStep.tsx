@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Calendar, Clock, Plus, UserRound } from 'lucide-react'
 import { Button, Card, Input, MutationError } from '../../../../components'
 import { formatMoney, formatShortDate } from '../../../../lib/format'
+import { addMinutesIso, zonedDateTimeToIso } from '../../../../lib/salon-time'
 import { glamhourApi } from '../../../../services/glamhour-api'
 import { useMutation } from '../../../../hooks/useMutation'
 import type { AvailabilitySlot, Client, EligibleProvider, Service } from '../../../../types/api'
@@ -30,12 +31,6 @@ function compactDisplayDate(date: string) {
   }).format(new Date(year, month - 1, day)).replace('.', '')
 }
 
-function localIsoDateTime(date: string, time: string) {
-  const [year, month, day] = date.split('-').map(Number)
-  const [hour, minute] = time.split(':').map(Number)
-  return new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0).toISOString()
-}
-
 function fallbackTimeOptions() {
   const options: Array<{ label: string; value: string }> = []
   for (let minutes = 9 * 60; minutes <= 17 * 60; minutes += 30) {
@@ -55,11 +50,9 @@ function timeLabel(value: string) {
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(2026, 0, 1, hour, minute))
 }
 
-export function quickAppointmentTimes(date: string, time: string, durationMinutes: number) {
-  const startsAt = localIsoDateTime(date, time)
-  const ends = new Date(startsAt)
-  ends.setMinutes(ends.getMinutes() + durationMinutes)
-  return { startsAt, endsAt: ends.toISOString() }
+export function quickAppointmentTimes(date: string, time: string, durationMinutes: number, timeZone: string) {
+  const startsAt = zonedDateTimeToIso(date, time, timeZone)
+  return { startsAt, endsAt: addMinutesIso(startsAt, durationMinutes) }
 }
 
 export function HomeQuickCreateAppointmentStep({
