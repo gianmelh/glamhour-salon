@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '../../../../../lib/cn'
 import type { ServiceCategory } from '../../../../../types/api'
@@ -89,6 +89,75 @@ function FormCard({ title, children, optional, required, error }: {
       <FieldError message={error} />
       {children}
     </section>
+  )
+}
+
+function CollapsibleSection({
+  title,
+  children,
+  optional,
+  required,
+  error,
+  expanded,
+  onToggle,
+  contentId,
+  detachedContent,
+}: {
+  title: string
+  children: ReactNode
+  optional?: boolean
+  required?: boolean
+  error?: string
+  expanded: boolean
+  onToggle: () => void
+  contentId: string
+  detachedContent?: boolean
+}) {
+  const header = (
+    <section
+      aria-invalid={Boolean(error)}
+      className={cn(
+        'flex w-full flex-col gap-4 rounded-[20px] border bg-[#fcfcfd] px-5 py-6',
+        error ? 'border-[#f04438]' : 'border-[#d0d5dd]',
+      )}
+    >
+      <button
+        aria-controls={contentId}
+        aria-expanded={expanded}
+        className="flex w-full items-center justify-between gap-4 text-left"
+        onClick={onToggle}
+        type="button"
+      >
+        <span className="flex items-baseline gap-1.5">
+          <BookingSectionTitle>{title}</BookingSectionTitle>
+          {required && <RequirementBadge required />}
+          {optional && <RequirementBadge />}
+        </span>
+        <ChevronRight
+          aria-hidden="true"
+          className={cn('size-5 shrink-0 text-[#101828] transition-transform', expanded && 'rotate-90')}
+        />
+      </button>
+      <FieldError message={error} />
+      {!detachedContent && expanded && (
+        <div className="flex w-full flex-col gap-4" id={contentId}>
+          {children}
+        </div>
+      )}
+    </section>
+  )
+
+  if (!detachedContent) return header
+
+  return (
+    <div className="flex w-full flex-col gap-4">
+      {header}
+      {expanded && (
+        <div className="flex w-full flex-col gap-4" id={contentId}>
+          {children}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -395,6 +464,12 @@ export function CosmetologyDetailsStep({
   const [stage, setStage] = useState<'form' | 'face-map'>('form')
   const [serviceError, setServiceError] = useState('')
   const [serviceCreating, setServiceCreating] = useState(false)
+  const [expandedSections, setExpandedSections] = useState({
+    healthHistory: false,
+    skinDiagnosis: true,
+    alterations: false,
+    treatmentEquipment: false,
+  })
   const set = (key: string, value: unknown) => onChange({ details: { ...details, [key]: value } })
   const fieldErrors = getCosmetologyFieldErrors(details)
   const missingItems = getCosmetologyDetailsMissingItems(details)
@@ -408,6 +483,18 @@ export function CosmetologyDetailsStep({
   const validationSummary = missingItems.length
     ? `Please complete: ${missingItems.join(' ')}`
     : undefined
+  const skinDiagnosisHasError = Boolean(fieldErrors.skin_type || fieldErrors.phototype)
+
+  useEffect(() => {
+    if (!skinDiagnosisHasError || expandedSections.skinDiagnosis) return
+    setExpandedSections((current) => (
+      current.skinDiagnosis ? current : { ...current, skinDiagnosis: true }
+    ))
+  }, [expandedSections.skinDiagnosis, skinDiagnosisHasError])
+
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections((current) => ({ ...current, [section]: !current[section] }))
+  }
 
   const selectServiceType = (nextType: string) => {
     const normalizedType = normalizeCosmetologyHistoryLabel(nextType)
@@ -540,7 +627,13 @@ export function CosmetologyDetailsStep({
           <p className="text-[12px] leading-[1.44] text-[#b42318]">{serviceError}</p>
         )}
 
-        <FormCard optional title="Health History">
+        <CollapsibleSection
+          contentId="cosmetology-health-history"
+          expanded={expandedSections.healthHistory}
+          onToggle={() => toggleSection('healthHistory')}
+          optional
+          title="Health History"
+        >
           <FormSubtitle>
             Do you currently have or have you ever had any of the following conditions?
           </FormSubtitle>
@@ -563,7 +656,7 @@ export function CosmetologyDetailsStep({
             placeholder="Swelling or itching"
             value={String(details.allergyReactionNotes ?? '')}
           />
-        </FormCard>
+        </CollapsibleSection>
 
         <FormCard error={fieldErrors.negativeExperience} required title="Patient Safety">
           <RadioRow
@@ -628,7 +721,14 @@ export function CosmetologyDetailsStep({
           />
         </FormCard>
 
-        <FormCard error={fieldErrors.skin_type ?? fieldErrors.phototype} required title="Skin Diagnosis">
+        <CollapsibleSection
+          contentId="cosmetology-skin-diagnosis"
+          error={fieldErrors.skin_type ?? fieldErrors.phototype}
+          expanded={expandedSections.skinDiagnosis}
+          onToggle={() => toggleSection('skinDiagnosis')}
+          required
+          title="Skin Diagnosis"
+        >
           <RadioRow
             error={fieldErrors.skin_type}
             label="Skin type"
@@ -639,9 +739,15 @@ export function CosmetologyDetailsStep({
             vertical
           />
           <PhototypeRow error={fieldErrors.phototype} onChange={(value) => set('phototype', value)} value={String(details.phototype ?? '')} />
-        </FormCard>
+        </CollapsibleSection>
 
-        <FormCard optional title="Alterations and Conditions">
+        <CollapsibleSection
+          contentId="cosmetology-alterations"
+          expanded={expandedSections.alterations}
+          onToggle={() => toggleSection('alterations')}
+          optional
+          title="Alterations and Conditions"
+        >
           {cosmetologyAlterationGroups.map((group) => (
             <CheckboxGroup
               key={group.key}
@@ -665,13 +771,19 @@ export function CosmetologyDetailsStep({
             placeholder="e.g., redness concentrated on cheeks, dry patches near the jawline, no open lesions observed"
             value={String(details.treatmentNotes ?? details.skinAlterationNotes ?? '')}
           />
-        </FormCard>
+        </CollapsibleSection>
 
-        <FormCard optional title="Treatment and Equipment">
+        <CollapsibleSection
+          contentId="cosmetology-treatment-equipment"
+          detachedContent
+          expanded={expandedSections.treatmentEquipment}
+          onToggle={() => toggleSection('treatmentEquipment')}
+          optional
+          title="Treatment and Equipment"
+        >
           <p className="text-[16px] leading-[1.4] text-[#475467]">
             To be completed by the professional during or after the session for progress tracking
           </p>
-        </FormCard>
 
         <FormCard optional title="Hygiene and preparation equipment">
           <EquipmentBlock title="Ozone Steam">
@@ -921,6 +1033,7 @@ export function CosmetologyDetailsStep({
             </ul>
           </FormCard>
         ))}
+        </CollapsibleSection>
 
         <FormCard error={fieldErrors.professionalSignature ?? fieldErrors.consentDate} required title="Professional">
           <div className="rounded-[12px] bg-[#f2f5ff] p-4">
