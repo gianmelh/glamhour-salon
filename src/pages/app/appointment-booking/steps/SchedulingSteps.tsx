@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Check, UserRound } from 'lucide-react'
 import { Button, Card, Input, LoadingState } from '../../../../components'
 import { MutationError } from '../../../../components/screen/MutationError'
@@ -88,7 +89,7 @@ export function TimeStep({ service, date, selectedStartsAt, slots, loading, onDa
   )
 }
 
-export function ReviewStep({ category, service, client, provider, startsAt, details, notes, loading, error, onConfirm }: {
+export function ReviewStep({ category, service, client, provider, startsAt, details, notes, loading, error, conflictAlert, onConfirm }: {
   category: ServiceCategory
   service: Service
   client: Client
@@ -98,6 +99,7 @@ export function ReviewStep({ category, service, client, provider, startsAt, deta
   notes: string
   loading: boolean
   error: Error | null
+  conflictAlert?: ReactNode
   onConfirm: () => void
 }) {
   const sections = buildReviewSections(category, service, client, provider, startsAt, details, notes)
@@ -112,7 +114,8 @@ export function ReviewStep({ category, service, client, provider, startsAt, deta
           ))}
         </Card>
       ))}
-      <MutationError error={error} />
+      {conflictAlert}
+      <MutationError error={conflictAlert ? null : error} />
       <Button fullWidth loading={loading} onClick={onConfirm}>Confirm appointment</Button>
     </StepShell>
   )

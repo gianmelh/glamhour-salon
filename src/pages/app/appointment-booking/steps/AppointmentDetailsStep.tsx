@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Calendar, CircleAlert, Clock, Hand, Phone, UserRound, X } from 'lucide-react'
 import { Button, Card, MutationError } from '../../../../components'
 import { cn } from '../../../../lib/cn'
@@ -174,7 +174,7 @@ function HighlightChip({ children, tone = 'warning' }: { children: string; tone?
   )
 }
 
-export function AppointmentDetailsStep({ category, service, client, date, time, details, notes, loading, error, onDateChange, onTimeChange, onDetailsChange, onEdit, onNext }: {
+export function AppointmentDetailsStep({ category, service, client, date, time, details, notes, loading, error, conflictAlert, onDateChange, onTimeChange, onDetailsChange, onEdit, onNext }: {
   category: ServiceCategory
   service: Service
   client: Client
@@ -184,6 +184,7 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
   notes: string
   loading?: boolean
   error?: Error | null
+  conflictAlert?: ReactNode
   onDateChange?: (date: string) => void
   onTimeChange?: (time: string) => void
   onDetailsChange?: (details: Record<string, unknown>) => void
@@ -351,7 +352,8 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
       </section>
 
       <div className="mt-9 grid gap-3">
-        <MutationError error={error ?? null} />
+        {conflictAlert}
+        <MutationError error={conflictAlert ? null : error ?? null} />
         <Button className="min-h-[62px] rounded-[15px] text-[18px] font-medium shadow-[0_12px_18px_rgba(75,38,138,0.3)]" fullWidth loading={loading} onClick={onNext}>
           Confirm
         </Button>

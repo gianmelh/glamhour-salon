@@ -53,6 +53,13 @@ export const errorHandler: ErrorRequestHandler = (error, _request, response, _ne
   if (typeof error === 'object' && error !== null && 'code' in error) {
     const databaseError = error as { code?: string; detail?: string }
 
+    if (databaseError.code === '23P01' && 'constraint' in databaseError && databaseError.constraint === 'appointments_no_client_overlap') {
+      response.status(409).json({
+        error: { code: 'CLIENT_APPOINTMENT_CONFLICT', message: 'This client already has an appointment during this time.' },
+      })
+      return
+    }
+
     if (databaseError.code === '23P01') {
       response.status(409).json({
         error: { code: 'APPOINTMENT_CONFLICT', message: 'The professional is unavailable for that time.' },

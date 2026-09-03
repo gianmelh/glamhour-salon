@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Calendar, Clock, Plus, UserRound } from 'lucide-react'
 import { Button, Card, Input, MutationError } from '../../../../components'
 import { formatMoney, formatShortDate } from '../../../../lib/format'
@@ -74,6 +74,7 @@ export function HomeQuickCreateAppointmentStep({
   slots,
   loading,
   error,
+  conflictAlert,
   onClientCreated,
   onClientSelect,
   onDateChange,
@@ -92,6 +93,7 @@ export function HomeQuickCreateAppointmentStep({
   slots: AvailabilitySlot[]
   loading?: boolean
   error?: Error | null
+  conflictAlert?: ReactNode
   onClientCreated: (client: Client) => void
   onClientSelect: (id: string) => void
   onDateChange: (date: string) => void
@@ -267,7 +269,8 @@ export function HomeQuickCreateAppointmentStep({
         </label>
       </Card>
 
-      <MutationError error={error ?? null} />
+      {conflictAlert}
+      <MutationError error={conflictAlert ? null : error ?? null} />
       <Button
         className="min-h-[58px] rounded-[16px] text-[17px]"
         fullWidth

@@ -97,6 +97,28 @@ interface RescheduleAppointmentInput {
   endsAt: string
 }
 
+interface ClientAppointmentConflictRow extends QueryResultRow {
+  id: string
+  service_name_snapshot: string | null
+  starts_at: string
+  ends_at: string
+}
+
+interface ClientConflictDetails {
+  conflictingAppointment: {
+    id: string
+    serviceName: string
+    startsAt: string
+    endsAt: string
+  }
+  nextAvailableSlot: {
+    time: string
+    label: string
+    startsAt: string
+    endsAt: string
+  } | null
+}
+
 interface CreateClientInput {
   fullName: string
   email?: string
@@ -987,12 +1009,154 @@ function minutesToTimeString(totalMinutes: number) {
   return `${hours}:${minutes}`
 }
 
+function localDateStringFromDate(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
 function dateAtLocalTime(date: string, time: string) {
   return new Date(`${date}T${time}:00`)
 }
 
 function getUtcDayOfWeek(date: string) {
   return dateAtLocalTime(date, '12:00').getDay()
+}
+
+const nonBlockingAppointmentStatuses = ['completed', 'canceled', 'no_show']
+
+async function findClientAppointmentConflict(
+  client: PoolClient,
+  salonId: string,
+  clientId: string,
+  startsAt: string,
+  endsAt: string,
+  excludeAppointmentId?: string,
+) {
+  const rows = await clientRows<ClientAppointmentConflictRow>(
+    client,
+    `SELECT a.id, a.starts_at, a.ends_at, aps.service_name_snapshot
+     FROM appointments a
+     LEFT JOIN LATERAL (
+       SELECT service_name_snapshot
+       FROM appointment_services
+       WHERE salon_id = a.salon_id AND appointment_id = a.id
+       ORDER BY created_at
+       LIMIT 1
+     ) aps ON true
+     WHERE a.salon_id = $1
+       AND a.client_id = $2
+       AND a.status_code <> ALL($5::text[])
+       AND starts_at < $4::timestamptz
+       AND ends_at > $3::timestamptz
+       AND ($6::uuid IS NULL OR a.id <> $6)
+     ORDER BY a.starts_at
+     LIMIT 1`,
+    [salonId, clientId, startsAt, endsAt, nonBlockingAppointmentStatuses, excludeAppointmentId ?? null],
+  )
+
+  return rows[0] ?? null
+}
+
+async function clientHasAppointmentConflict(
+  salonId: string,
+  clientId: string,
+  startsAt: string,
+  endsAt: string,
+  excludeAppointmentId?: string,
+) {
+  const rows = await query<QueryResultRow>(
+    `SELECT 1
+     FROM appointments
+     WHERE salon_id = $1
+       AND client_id = $2
+       AND status_code <> ALL($5::text[])
+       AND starts_at < $4::timestamptz
+       AND ends_at > $3::timestamptz
+       AND ($6::uuid IS NULL OR id <> $6)
+     LIMIT 1`,
+    [salonId, clientId, startsAt, endsAt, nonBlockingAppointmentStatuses, excludeAppointmentId ?? null],
+  )
+
+  return Boolean(rows[0])
+}
+
+async function findNextClientSafeAvailabilitySlot(input: {
+  salonId: string
+  clientId: string
+  requestedStartsAt: string
+  excludeAppointmentId?: string
+  getProviderAvailability: (date: string) => Promise<Record<string, unknown>>
+}) {
+  const requestedStart = new Date(input.requestedStartsAt)
+  if (Number.isNaN(requestedStart.getTime())) return null
+
+  for (let dayOffset = 0; dayOffset < 14; dayOffset += 1) {
+    const date = new Date(requestedStart)
+    date.setDate(requestedStart.getDate() + dayOffset)
+    const availabilityDate = localDateStringFromDate(date)
+    const availability = await input.getProviderAvailability(availabilityDate).catch(() => null)
+    const slots = Array.isArray(availability?.slots)
+      ? availability.slots as Array<{ time: string; label: string; startsAt: string; endsAt: string; available: boolean }>
+      : []
+
+    for (const slot of slots) {
+      if (!slot.available) continue
+      const slotStart = new Date(slot.startsAt).getTime()
+      if (!Number.isFinite(slotStart)) continue
+      if (dayOffset === 0 && slotStart < requestedStart.getTime()) continue
+      const hasClientConflict = await clientHasAppointmentConflict(
+        input.salonId,
+        input.clientId,
+        slot.startsAt,
+        slot.endsAt,
+        input.excludeAppointmentId,
+      )
+      if (!hasClientConflict) {
+        return {
+          time: slot.time,
+          label: slot.label,
+          startsAt: slot.startsAt,
+          endsAt: slot.endsAt,
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+async function buildClientConflictDetails(input: {
+  salonId: string
+  clientId: string
+  providerId?: string | null
+  serviceId?: string
+  requestedStartsAt: string
+  excludeAppointmentId?: string
+  conflict: ClientAppointmentConflictRow
+  getProviderAvailability: (date: string) => Promise<Record<string, unknown>>
+}): Promise<ClientConflictDetails> {
+  const nextAvailableSlot = input.providerId && input.serviceId
+    ? await findNextClientSafeAvailabilitySlot({
+      salonId: input.salonId,
+      clientId: input.clientId,
+      requestedStartsAt: input.requestedStartsAt,
+      excludeAppointmentId: input.excludeAppointmentId,
+      getProviderAvailability: input.getProviderAvailability,
+    })
+    : null
+
+  return {
+    conflictingAppointment: {
+      id: input.conflict.id,
+      serviceName: input.conflict.service_name_snapshot ?? 'Appointment',
+      startsAt: input.conflict.starts_at,
+      endsAt: input.conflict.ends_at,
+    },
+    nextAvailableSlot,
+  }
 }
 
 async function ensureSalonCategoriesForAssignments(
@@ -3176,6 +3340,30 @@ export const dataService = {
         }
       }
 
+      const clientConflict = await findClientAppointmentConflict(
+        client,
+        input.salonId,
+        input.clientId,
+        input.startsAt,
+        input.endsAt,
+      )
+      if (clientConflict) {
+        const details = await buildClientConflictDetails({
+          salonId: input.salonId,
+          clientId: input.clientId,
+          providerId: input.professionalId,
+          serviceId: services[0]?.id,
+          requestedStartsAt: input.startsAt,
+          conflict: clientConflict,
+          getProviderAvailability: (date) => this.getAppointmentAvailability(input.salonId, {
+            providerId: input.professionalId!,
+            serviceId: services[0]!.id,
+            date,
+          }),
+        })
+        throw new ApiError(409, 'This client already has an appointment during this time.', details)
+      }
+
       const appointments = await clientRows<Appointment>(
         client,
         `INSERT INTO appointments (
@@ -3675,6 +3863,32 @@ export const dataService = {
       )
       if (conflicts[0]) {
         throw new ApiError(409, 'The professional is unavailable for that time.')
+      }
+
+      const clientConflict = await findClientAppointmentConflict(
+        client,
+        salonId,
+        current.client_id,
+        input.startsAt,
+        input.endsAt,
+        appointmentId,
+      )
+      if (clientConflict) {
+        const details = await buildClientConflictDetails({
+          salonId,
+          clientId: current.client_id,
+          providerId: input.professionalId,
+          serviceId: serviceIds[0],
+          requestedStartsAt: input.startsAt,
+          excludeAppointmentId: appointmentId,
+          conflict: clientConflict,
+          getProviderAvailability: (date) => this.getAppointmentAvailability(salonId, {
+            providerId: input.professionalId,
+            serviceId: serviceIds[0]!,
+            date,
+          }),
+        })
+        throw new ApiError(409, 'This client already has an appointment during this time.', details)
       }
 
       const rows = await clientRows<Appointment>(

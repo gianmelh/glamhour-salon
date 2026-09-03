@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { ErrorState, LoadingState } from '../../../components'
+import { Button, ErrorState, LoadingState } from '../../../components'
 import { useAppointments, useClients, useProfessionals, useServiceCategories, useServices } from '../../../hooks/useGlamhourData'
 import { useMutation } from '../../../hooks/useMutation'
+import { ApiClientError } from '../../../lib/api'
 import { cn } from '../../../lib/cn'
 import { clampToToday, localDateString } from '../../../lib/date'
 import { deferTask, scrollMainToTop } from '../../../lib/defer'
@@ -40,8 +41,85 @@ import type { Client } from '../../../types/api'
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+interface AppointmentConflictErrorDetails {
+  conflictingAppointment: {
+    id: string
+    serviceName: string
+    startsAt: string
+    endsAt: string
+  }
+  nextAvailableSlot: {
+    time: string
+    label: string
+    startsAt: string
+    endsAt: string
+  } | null
+}
+
 function optionalUuid(value: string) {
   return uuidPattern.test(value) ? value : undefined
+}
+
+function isAppointmentConflictDetails(value: unknown): value is AppointmentConflictErrorDetails {
+  if (!value || typeof value !== 'object') return false
+  const details = value as AppointmentConflictErrorDetails
+  return Boolean(
+    details.conflictingAppointment
+    && typeof details.conflictingAppointment.serviceName === 'string'
+    && typeof details.conflictingAppointment.startsAt === 'string'
+    && typeof details.conflictingAppointment.endsAt === 'string',
+  )
+}
+
+function appointmentConflictDetails(error: Error | null | undefined) {
+  if (!(error instanceof ApiClientError)) return null
+  if (error.status !== 409) return null
+  return isAppointmentConflictDetails(error.details) ? error.details : null
+}
+
+function formatConflictDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date)
+}
+
+function formatConflictTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(date)
+}
+
+function AppointmentConflictAlert({ error, serviceName, onSelectSlot }: {
+  error: Error | null | undefined
+  serviceName: string
+  onSelectSlot: (slot: NonNullable<AppointmentConflictErrorDetails['nextAvailableSlot']>) => void
+}) {
+  const details = appointmentConflictDetails(error)
+  if (!details) return null
+  const conflict = details.conflictingAppointment
+  const nextSlot = details.nextAvailableSlot
+
+  return (
+    <div className="rounded-[16px] border border-[#fda29b] bg-[#fff4f2] p-4 text-sm text-[#7a271a]">
+      <p className="font-bold">This client already has an appointment during this time.</p>
+      <div className="mt-3 space-y-1">
+        <p className="text-xs font-semibold uppercase text-[#b42318]">Current appointment</p>
+        <p className="font-bold text-[#111827]">{conflict.serviceName}</p>
+        <p>{formatConflictDate(conflict.startsAt)}</p>
+        <p>{formatConflictTime(conflict.startsAt)} - {formatConflictTime(conflict.endsAt)}</p>
+      </div>
+      <div className="mt-3 space-y-2">
+        <p className="text-xs font-semibold uppercase text-[#b42318]">Next available time for {serviceName}</p>
+        {nextSlot ? (
+          <Button className="min-h-10 rounded-[10px]" onClick={() => onSelectSlot(nextSlot)} type="button" variant="outline">
+            Select {nextSlot.label}
+          </Button>
+        ) : (
+          <p>No available slot was found for this provider in the next 14 days.</p>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function resolveCategoryServiceId(
@@ -408,6 +486,20 @@ export function NewAppointmentPage() {
     else setStep(order[index - 1])
   }
 
+  const selectSuggestedSlot = (slot: NonNullable<AppointmentConflictErrorDetails['nextAvailableSlot']>) => {
+    setConfirmError(null)
+    setDraft((current) => ({
+      ...current,
+      date: localDateString(new Date(slot.startsAt)),
+      startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+      details: sanitizeDetailsForCategory(current.categoryCode, {
+        ...current.details,
+        consentTime: slot.time,
+      }),
+    }))
+  }
+
   const defaultAppointmentTimes = () => {
     const [year, month, day] = appointmentDraftDate(draft).split('-').map(Number)
     const { hour, minute } = parseDraftTime(draft.details)
@@ -671,6 +763,11 @@ export function NewAppointmentPage() {
   const usesCategoryDetailsLayout = step === 'service' && usesCategoryStepLayout(draft.categoryCode)
 
   const exitBooking = () => navigate('/app/home')
+  const conflictAlertForService = (serviceName: string) => (
+    appointmentConflictDetails(confirmError)
+      ? <AppointmentConflictAlert error={confirmError} serviceName={serviceName} onSelectSlot={selectSuggestedSlot} />
+      : null
+  )
 
   return (
     <div className={cn(
@@ -809,8 +906,9 @@ export function NewAppointmentPage() {
         <HomeQuickCreateAppointmentStep
           clientVisitByClientId={clientVisitByClientId}
           clients={clients.data}
+          conflictAlert={conflictAlertForService(selectedService.name)}
           date={draft.date}
-          error={confirmError ?? mutation.error}
+          error={confirmError}
           loading={confirmLoading || mutation.loading}
           onClientCreated={(client) => clients.setData((current) => [client, ...(current ?? []).filter((item) => item.id !== client.id)])}
           onClientSelect={(clientId) => setDraft((current) => ({
@@ -862,7 +960,8 @@ export function NewAppointmentPage() {
           client={selectedClient}
           date={appointmentDraftDate(draft)}
           details={draft.details}
-          error={confirmError ?? mutation.error}
+          conflictAlert={conflictAlertForService(selectedService.name)}
+          error={confirmError}
           loading={confirmLoading || mutation.loading}
           notes={draft.notes}
           onDateChange={(date) => setDraft((current) => ({
@@ -920,8 +1019,9 @@ export function NewAppointmentPage() {
         <ReviewStep
           category={selectedCategory}
           client={selectedClient}
+          conflictAlert={conflictAlertForService(selectedService.name)}
           details={draft.details}
-          error={mutation.error}
+          error={confirmError}
           loading={mutation.loading}
           notes={draft.notes}
           onConfirm={confirm}
