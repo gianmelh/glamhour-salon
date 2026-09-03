@@ -27,3 +27,45 @@
   filter: none;
   mix-blend-mode: normal;
 }
+
+.lash-preview-transform-handle {
+  position: absolute;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #7344cd;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgb(16 24 40 / 0.18);
+  touch-action: none;
+}
+
+.lash-preview-transform-handle::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
+}
+
+.lash-preview-resize-handle {
+  right: -12px;
+  bottom: -12px;
+  cursor: nwse-resize;
+}
+
+.lash-preview-rotate-handle {
+  top: -38px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: grab;
+}
+
+.lash-preview-rotate-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  width: 2px;
+  height: 20px;
+  background: #7344cd;
+  transform: translateX(-50%);
+}

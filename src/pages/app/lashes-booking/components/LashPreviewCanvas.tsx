@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
@@ -51,7 +52,25 @@ type PinchSession = {
   startRotation: number;
 };
 
-type GestureSession = DragSession | PinchSession;
+type ResizeSession = {
+  mode: "resize";
+  id: StickerId;
+  pointerId: number;
+  center: { x: number; y: number };
+  startDistance: number;
+  startScale: number;
+};
+
+type RotateSession = {
+  mode: "rotate";
+  id: StickerId;
+  pointerId: number;
+  center: { x: number; y: number };
+  startAngle: number;
+  startRotation: number;
+};
+
+type GestureSession = DragSession | PinchSession | ResizeSession | RotateSession;
 
 const DEFAULT_STICKERS: StickersState = {
   a: {
@@ -93,6 +112,11 @@ function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
 
 function angleDeg(a: { x: number; y: number }, b: { x: number; y: number }) {
   return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+}
+
+function normalizeRotation(rotationDeg: number) {
+  if (!Number.isFinite(rotationDeg)) return 0;
+  return ((rotationDeg + 180) % 360 + 360) % 360 - 180;
 }
 
 function createDefaultStickers(): StickersState {
@@ -255,7 +279,12 @@ export function LashPreviewCanvas({
     };
   };
 
-  const updateSticker = (id: StickerId, patch: Partial<StickerState>) => {
+  const persistCurrentStickers = () => {
+    onStickersChangeRef.current?.(stickersRef.current);
+  };
+
+  const updateSticker = (id: StickerId, patch: Partial<StickerState>, options: { persist?: boolean } = {}) => {
+    const shouldPersist = options.persist ?? true;
     setStickers((current) => {
       const merged = { ...current[id], ...patch };
       const clampedPos = clampCenter(merged.xPct, merged.yPct, merged.scale);
@@ -265,17 +294,18 @@ export function LashPreviewCanvas({
           ...merged,
           ...clampedPos,
           scale: clampScale(merged.scale),
+          rotationDeg: normalizeRotation(merged.rotationDeg),
         },
       };
       stickersRef.current = next;
-      onStickersChangeRef.current?.(next);
+      if (shouldPersist) onStickersChangeRef.current?.(next);
       return next;
     });
   };
 
   const beginDrag = (
     id: StickerId,
-    event: ReactPointerEvent<HTMLButtonElement>,
+    event: ReactPointerEvent<HTMLElement>,
   ) => {
     const point = clientToPct(event.clientX, event.clientY);
     if (!point) return;
@@ -294,7 +324,7 @@ export function LashPreviewCanvas({
 
   const onPointerDown = (
     id: StickerId,
-    event: ReactPointerEvent<HTMLButtonElement>,
+    event: ReactPointerEvent<HTMLElement>,
   ) => {
     event.preventDefault();
     event.stopPropagation();
@@ -344,7 +374,61 @@ export function LashPreviewCanvas({
     beginDrag(id, event);
   };
 
-  const onPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const beginResize = (
+    id: StickerId,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const sticker = stickersRef.current[id];
+    const center = {
+      x: rect.left + (sticker.xPct / 100) * rect.width,
+      y: rect.top + (sticker.yPct / 100) * rect.height,
+    };
+    gestureRef.current = {
+      mode: "resize",
+      id,
+      pointerId: event.pointerId,
+      center,
+      startDistance: Math.max(distance(center, { x: event.clientX, y: event.clientY }), 1),
+      startScale: sticker.scale,
+    };
+    selectSticker(id);
+    setActiveId(id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const beginRotate = (
+    id: StickerId,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const sticker = stickersRef.current[id];
+    const center = {
+      x: rect.left + (sticker.xPct / 100) * rect.width,
+      y: rect.top + (sticker.yPct / 100) * rect.height,
+    };
+    gestureRef.current = {
+      mode: "rotate",
+      id,
+      pointerId: event.pointerId,
+      center,
+      startAngle: angleDeg(center, { x: event.clientX, y: event.clientY }),
+      startRotation: sticker.rotationDeg,
+    };
+    selectSticker(id);
+    setActiveId(id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     if (canvasPinchRef.current) return;
     const gesture = gestureRef.current;
     if (!gesture) return;
@@ -359,7 +443,25 @@ export function LashPreviewCanvas({
         point.yPct - gesture.offsetYPct,
         scale,
       );
-      updateSticker(gesture.id, next);
+      updateSticker(gesture.id, next, { persist: false });
+      return;
+    }
+
+    if (gesture.mode === "resize") {
+      if (gesture.pointerId !== event.pointerId) return;
+      const nextDistance = Math.max(distance(gesture.center, { x: event.clientX, y: event.clientY }), 1);
+      updateSticker(gesture.id, {
+        scale: clampScale(gesture.startScale * (nextDistance / gesture.startDistance)),
+      }, { persist: false });
+      return;
+    }
+
+    if (gesture.mode === "rotate") {
+      if (gesture.pointerId !== event.pointerId) return;
+      const nextAngle = angleDeg(gesture.center, { x: event.clientX, y: event.clientY });
+      updateSticker(gesture.id, {
+        rotationDeg: normalizeRotation(gesture.startRotation + (nextAngle - gesture.startAngle)),
+      }, { persist: false });
       return;
     }
 
@@ -379,10 +481,10 @@ export function LashPreviewCanvas({
     updateSticker(gesture.id, {
       scale: nextScale,
       rotationDeg: nextRotation,
-    });
+    }, { persist: false });
   };
 
-  const endPointer = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const endPointer = (event: ReactPointerEvent<HTMLElement>) => {
     if (canvasPinchRef.current) return;
     const gesture = gestureRef.current;
     if (!gesture) return;
@@ -408,6 +510,7 @@ export function LashPreviewCanvas({
       }
       gestureRef.current = null;
       setActiveId(null);
+      persistCurrentStickers();
       return;
     }
 
@@ -417,11 +520,12 @@ export function LashPreviewCanvas({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    persistCurrentStickers();
   };
 
   const onWheel = (
     id: StickerId,
-    event: ReactWheelEvent<HTMLButtonElement>,
+    event: ReactWheelEvent<HTMLElement>,
   ) => {
     if (selectedId !== id) return;
     event.preventDefault();
@@ -436,6 +540,53 @@ export function LashPreviewCanvas({
     updateSticker(id, {
       scale: clampScale(stickersRef.current[id].scale + delta),
     });
+  };
+
+  const rotateSticker = (id: StickerId, delta: number) => {
+    updateSticker(id, {
+      rotationDeg: normalizeRotation(stickersRef.current[id].rotationDeg + delta),
+    });
+  };
+
+  const onStickerKeyDown = (id: StickerId, event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const smallStep = event.shiftKey ? 0.5 : 1.5;
+    const scaleStep = event.shiftKey ? 0.03 : 0.08;
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectSticker(id);
+      return;
+    }
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      const state = stickersRef.current[id];
+      updateSticker(id, { xPct: state.xPct - smallStep });
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      const state = stickersRef.current[id];
+      updateSticker(id, { xPct: state.xPct + smallStep });
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      const state = stickersRef.current[id];
+      updateSticker(id, { yPct: state.yPct - smallStep });
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      const state = stickersRef.current[id];
+      updateSticker(id, { yPct: state.yPct + smallStep });
+    } else if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      nudgeScale(id, scaleStep);
+    } else if (event.key === "-" || event.key === "_") {
+      event.preventDefault();
+      nudgeScale(id, -scaleStep);
+    } else if (event.key === "[" || event.key === "{") {
+      event.preventDefault();
+      rotateSticker(id, -3);
+    } else if (event.key === "]" || event.key === "}") {
+      event.preventDefault();
+      rotateSticker(id, 3);
+    }
   };
 
   const beginCanvasPinch = () => {
@@ -467,7 +618,7 @@ export function LashPreviewCanvas({
     updateSticker(gesture.id, {
       scale: clampScale(gesture.startScale * (dist / gesture.startDistance)),
       rotationDeg: gesture.startRotation + (ang - gesture.startAngle),
-    });
+    }, { persist: false });
   };
 
   const onCanvasPointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -498,6 +649,7 @@ export function LashPreviewCanvas({
     if (canvasPointersRef.current.size < 2) {
       canvasPinchRef.current = null;
       setActiveId(null);
+      persistCurrentStickers();
     }
   };
 
@@ -552,7 +704,7 @@ export function LashPreviewCanvas({
             zIndex: activeId === id || isSelected ? 4 : 2,
           };
           return (
-            <button
+            <div
               aria-label={`${state.assetSide} eye lash sticker`}
               className={cn(
                 // Reset UA button face + avoid Tailwind ring-offset (defaults to white fill).
@@ -563,11 +715,13 @@ export function LashPreviewCanvas({
                   "outline outline-2 outline-[#7344cd]/70 outline-offset-2",
               )}
               key={id}
+              onKeyDown={(event) => onStickerKeyDown(id, event)}
               onPointerCancel={endPointer}
               onPointerDown={(event) => onPointerDown(id, event)}
               onPointerMove={onPointerMove}
               onPointerUp={endPointer}
               onWheel={(event) => onWheel(id, event)}
+              role="button"
               style={{
                 ...stylePos,
                 background: "transparent",
@@ -576,7 +730,7 @@ export function LashPreviewCanvas({
                 WebkitAppearance: "none",
                 appearance: "none",
               }}
-              type="button"
+              tabIndex={0}
             >
               <img
                 alt=""
@@ -589,7 +743,29 @@ export function LashPreviewCanvas({
                   boxShadow: "none",
                 }}
               />
-            </button>
+              {isSelected && (
+                <>
+                  <button
+                    aria-label={`Resize ${state.assetSide} eye lash sticker`}
+                    className="lash-preview-transform-handle lash-preview-resize-handle"
+                    onPointerCancel={endPointer}
+                    onPointerDown={(event) => beginResize(id, event)}
+                    onPointerMove={onPointerMove}
+                    onPointerUp={endPointer}
+                    type="button"
+                  />
+                  <button
+                    aria-label={`Rotate ${state.assetSide} eye lash sticker`}
+                    className="lash-preview-transform-handle lash-preview-rotate-handle"
+                    onPointerCancel={endPointer}
+                    onPointerDown={(event) => beginRotate(id, event)}
+                    onPointerMove={onPointerMove}
+                    onPointerUp={endPointer}
+                    type="button"
+                  />
+                </>
+              )}
+            </div>
           );
         })}
       </div>
@@ -619,6 +795,22 @@ export function LashPreviewCanvas({
               type="button"
             >
               +
+            </button>
+            <button
+              aria-label="Rotate lash counterclockwise"
+              className="flex size-8 items-center justify-center rounded-full bg-white text-[15px] text-[#0c111d]"
+              onClick={() => rotateSticker(selectedId, -5)}
+              type="button"
+            >
+              ↺
+            </button>
+            <button
+              aria-label="Rotate lash clockwise"
+              className="flex size-8 items-center justify-center rounded-full bg-white text-[15px] text-[#0c111d]"
+              onClick={() => rotateSticker(selectedId, 5)}
+              type="button"
+            >
+              ↻
             </button>
           </div>
         </div>
