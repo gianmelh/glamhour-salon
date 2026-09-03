@@ -30,6 +30,7 @@ import {
   cosmetologyServiceTypes,
   cosmetologySkinTypes,
   cosmetologyUltrasonicModes,
+  getCosmetologyFieldErrors,
   getCosmetologyDetailsMissingItems,
   matchCosmetologyService,
   normalizeCosmetologyHistoryLabel,
@@ -44,10 +45,48 @@ function optionalUuid(value: string) {
   return uuidPattern.test(value) ? value : undefined
 }
 
-function FormCard({ title, children }: { title?: string; children: ReactNode }) {
+function RequirementBadge({ required }: { required?: boolean }) {
+  if (required) return <span className="text-[#b42318]" aria-hidden="true">*</span>
+  return <span className="text-[12px] font-medium text-[#667085]">(Optional)</span>
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null
+  return <p className="text-[12px] leading-[1.44] text-[#b42318]">{message}</p>
+}
+
+function FieldLabel({ children, required }: { children: ReactNode; required?: boolean }) {
   return (
-    <section className="flex w-full flex-col gap-4 rounded-[20px] border border-[#d0d5dd] bg-[#fcfcfd] px-5 py-6">
-      {title && <BookingSectionTitle>{title}</BookingSectionTitle>}
+    <span className="inline-flex items-baseline gap-1">
+      {children}
+      {required && <span className="text-[#b42318]" aria-hidden="true">*</span>}
+    </span>
+  )
+}
+
+function FormCard({ title, children, optional, required, error }: {
+  title?: string
+  children: ReactNode
+  optional?: boolean
+  required?: boolean
+  error?: string
+}) {
+  return (
+    <section
+      aria-invalid={Boolean(error)}
+      className={cn(
+        'flex w-full flex-col gap-4 rounded-[20px] border bg-[#fcfcfd] px-5 py-6',
+        error ? 'border-[#f04438]' : 'border-[#d0d5dd]',
+      )}
+    >
+      {title && (
+        <div className="flex items-baseline gap-1.5">
+          <BookingSectionTitle>{title}</BookingSectionTitle>
+          {required && <RequirementBadge required />}
+          {optional && <RequirementBadge />}
+        </div>
+      )}
+      <FieldError message={error} />
       {children}
     </section>
   )
@@ -57,87 +96,117 @@ function FormSubtitle({ children }: { children: ReactNode }) {
   return <p className="text-[16px] font-normal leading-6 text-black">{children}</p>
 }
 
-function SectionHeading({ children }: { children: ReactNode }) {
-  return <p className="text-[21px] font-bold leading-[31.5px] tracking-[-0.42px] text-[#0a0a0a]">{children}</p>
+function SectionHeading({ children, optional, required }: { children: ReactNode; optional?: boolean; required?: boolean }) {
+  return (
+    <p className="flex items-baseline gap-1.5 text-[21px] font-bold leading-[31.5px] tracking-[-0.42px] text-[#0a0a0a]">
+      <span>{children}</span>
+      {required && <RequirementBadge required />}
+      {optional && <RequirementBadge />}
+    </p>
+  )
 }
 
 function TextField({
+  error,
   label,
   onChange,
   placeholder,
+  required,
   suffix,
   type = 'text',
   value,
 }: {
+  error?: string
   label: string
   onChange: (value: string) => void
   placeholder?: string
+  required?: boolean
   suffix?: string
   type?: string
   value: string
 }) {
   return (
     <label className="flex min-w-0 flex-col gap-1">
-      <span className="text-[16px] leading-[1.4] text-black">{label}</span>
-      <span className="flex min-h-12 items-center gap-2 rounded-[16px] border border-[#d0d5dd] bg-white px-3">
+      <span className="text-[16px] leading-[1.4] text-black"><FieldLabel required={required}>{label}</FieldLabel></span>
+      <span className={cn(
+        'flex min-h-12 items-center gap-2 rounded-[16px] border bg-white px-3',
+        error ? 'border-[#f04438]' : 'border-[#d0d5dd]',
+      )}>
         <input
+          aria-invalid={Boolean(error)}
+          aria-required={required}
           className="min-w-0 flex-1 bg-transparent text-[16px] leading-[1.4] text-[#101828] outline-none placeholder:text-[#667085]"
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
+          required={required}
           type={type}
           value={value}
         />
         {suffix && <span className="shrink-0 text-[16px] text-black">{suffix}</span>}
       </span>
+      <FieldError message={error} />
     </label>
   )
 }
 
 function TextAreaField({
+  error,
   label,
   onChange,
   placeholder,
+  required,
   value,
   minHeightClass = 'min-h-[139px]',
 }: {
+  error?: string
   label: string
   onChange: (value: string) => void
   placeholder?: string
+  required?: boolean
   value: string
   minHeightClass?: string
 }) {
   return (
     <label className="flex flex-col gap-2">
-      <span className="text-[14px] font-medium leading-[21px] tracking-[-0.28px] text-[#666]">{label}</span>
+      <span className="text-[14px] font-medium leading-[21px] tracking-[-0.28px] text-[#666]"><FieldLabel required={required}>{label}</FieldLabel></span>
       <textarea
+        aria-invalid={Boolean(error)}
+        aria-required={required}
         className={cn(
-          'rounded-[12px] border border-[#d0d5dd] bg-[#fcfcfd] p-[14px] text-[15px] leading-[22.5px] tracking-[-0.3px] text-[#101828] outline-none placeholder:text-[#999]',
+          'rounded-[12px] border bg-[#fcfcfd] p-[14px] text-[15px] leading-[22.5px] tracking-[-0.3px] text-[#101828] outline-none placeholder:text-[#999]',
           minHeightClass,
+          error ? 'border-[#f04438]' : 'border-[#d0d5dd]',
         )}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        required={required}
         value={value}
       />
+      <FieldError message={error} />
     </label>
   )
 }
 
 function RadioRow({
+  error,
   label,
   onChange,
   options,
+  required,
   value,
   vertical,
 }: {
+  error?: string
   label: string
   onChange: (value: string) => void
   options: readonly string[]
+  required?: boolean
   value: string
   vertical?: boolean
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-[14px] font-medium leading-[21px] text-[#666]">{label}</span>
+    <div aria-invalid={Boolean(error)} aria-required={required} className="flex flex-col gap-2" role="radiogroup">
+      <span className="text-[14px] font-medium leading-[21px] text-[#666]"><FieldLabel required={required}>{label}</FieldLabel></span>
       <div className={cn(vertical ? 'flex flex-col gap-4' : 'flex flex-wrap gap-4')}>
         {options.map((option) => (
           <button
@@ -158,6 +227,7 @@ function RadioRow({
           </button>
         ))}
       </div>
+      <FieldError message={error} />
     </div>
   )
 }
@@ -202,10 +272,10 @@ function CheckboxGroup({
   )
 }
 
-function PhototypeRow({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function PhototypeRow({ error, value, onChange }: { error?: string; value: string; onChange: (value: string) => void }) {
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-[14px] font-medium leading-[21px] text-[#666]">Skin phototype</span>
+    <div aria-invalid={Boolean(error)} aria-required="true" className="flex flex-col gap-2" role="radiogroup">
+      <span className="text-[14px] font-medium leading-[21px] text-[#666]"><FieldLabel required>Skin phototype</FieldLabel></span>
       <div className="flex items-start justify-between gap-1">
         {cosmetologyPhototypes.map((option) => {
           const image = cosmetologyBookingAssets.phototypeSwatches[option.value]
@@ -233,6 +303,7 @@ function PhototypeRow({ value, onChange }: { value: string; onChange: (value: st
           )
         })}
       </div>
+      <FieldError message={error} />
     </div>
   )
 }
@@ -270,15 +341,17 @@ function FaceMapPreview({ count, onClick }: { count: number; onClick: () => void
 }
 
 function ServiceTypeCards({
+  error,
   value,
   onChange,
 }: {
+  error?: string
   value: string
   onChange: (value: string) => void
 }) {
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-[28px] font-bold leading-[1.2] text-black">Service type</p>
+    <div aria-invalid={Boolean(error)} aria-required="true" className="flex flex-col gap-3" role="radiogroup">
+      <p className="text-[28px] font-bold leading-[1.2] text-black"><FieldLabel required>Service type</FieldLabel></p>
       <p className="text-[21px] font-bold leading-[1.2] text-black">Face</p>
       <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {cosmetologyServiceTypes.map((option) => (
@@ -295,6 +368,7 @@ function ServiceTypeCards({
           </button>
         ))}
       </div>
+      <FieldError message={error} />
     </div>
   )
 }
@@ -322,6 +396,7 @@ export function CosmetologyDetailsStep({
   const [serviceError, setServiceError] = useState('')
   const [serviceCreating, setServiceCreating] = useState(false)
   const set = (key: string, value: unknown) => onChange({ details: { ...details, [key]: value } })
+  const fieldErrors = getCosmetologyFieldErrors(details)
   const missingItems = getCosmetologyDetailsMissingItems(details)
   const selectedHealthHistory = ((details.healthHistory as string[] | undefined) ?? [])
     .map(normalizeCosmetologyHistoryLabel)
@@ -330,6 +405,9 @@ export function CosmetologyDetailsStep({
   const faceAnnotationCount = ((details.faceAnnotations as unknown[] | undefined) ?? []).length
   const serviceType = normalizeCosmetologyHistoryLabel(String(details.serviceType ?? ''))
   const canContinue = Boolean(serviceType) && missingItems.length === 0 && !serviceCreating
+  const validationSummary = missingItems.length
+    ? `Please complete: ${missingItems.join(' ')}`
+    : undefined
 
   const selectServiceType = (nextType: string) => {
     const normalizedType = normalizeCosmetologyHistoryLabel(nextType)
@@ -680,7 +758,7 @@ export function CosmetologyDetailsStep({
               !serviceType
                 ? 'Select a service type to continue'
                 : missingItems.length
-                    ? `To continue, complete: ${missingItems.join(' · ')}`
+                    ? validationSummary
                     : serviceCreating
                       ? `Creating ${cosmetologyServiceDisplayName(serviceType)}...`
                     : undefined
@@ -708,24 +786,34 @@ export function CosmetologyDetailsStep({
       title="Aesthetic treatment clinical form"
     >
       <div className="mx-auto flex w-full max-w-[393px] flex-col gap-5">
-        <FormCard title="General Information">
+        <FormCard
+          error={fieldErrors.generalFullName ?? fieldErrors.generalPhone ?? fieldErrors.generalDateOfBirth ?? fieldErrors.isFirstTime}
+          required
+          title="General Information"
+        >
           <TextField
+            error={fieldErrors.generalFullName}
             label="Full name"
             onChange={(value) => set('generalFullName', value)}
             placeholder="e.g. John Doe"
+            required
             value={String(details.generalFullName ?? '')}
           />
           <TextField
+            error={fieldErrors.generalPhone}
             label="Phone number"
             onChange={(value) => set('generalPhone', value)}
             placeholder="e.g. 111 222 333"
+            required
             type="tel"
             value={String(details.generalPhone ?? '')}
           />
           <TextField
+            error={fieldErrors.generalDateOfBirth}
             label="Date of birth"
             onChange={(value) => set('generalDateOfBirth', formatBirthDateInput(value))}
             placeholder="MM/DD/YYYY"
+            required
             type="text"
             value={String(details.generalDateOfBirth ?? '')}
           />
@@ -737,19 +825,21 @@ export function CosmetologyDetailsStep({
             value={String(details.generalEmail ?? '')}
           />
           <RadioRow
+            error={fieldErrors.isFirstTime}
             label="Is this your first time?"
             onChange={(value) => set('isFirstTime', value)}
             options={yesNoOptions}
+            required
             value={String(details.isFirstTime ?? '')}
           />
         </FormCard>
 
-        <ServiceTypeCards onChange={selectServiceType} value={serviceType} />
+        <ServiceTypeCards error={fieldErrors.serviceType} onChange={selectServiceType} value={serviceType} />
         {serviceError && (
           <p className="text-[12px] leading-[1.44] text-[#b42318]">{serviceError}</p>
         )}
 
-        <FormCard title="Health history">
+        <FormCard optional title="Health History">
           <FormSubtitle>
             Do you currently have or have you ever had any of the following conditions?
           </FormSubtitle>
@@ -772,12 +862,15 @@ export function CosmetologyDetailsStep({
             placeholder="Swelling or itching"
             value={String(details.allergyReactionNotes ?? '')}
           />
+        </FormCard>
 
-          <SectionHeading>Patient safety</SectionHeading>
+        <FormCard error={fieldErrors.negativeExperience} required title="Patient Safety">
           <RadioRow
+            error={fieldErrors.negativeExperience}
             label="Have you ever had a negative experience or unusual reaction after a facial or body treatment in the past?"
             onChange={(value) => set('negativeExperience', value)}
             options={yesNoOptions}
+            required
             value={String(details.negativeExperience ?? '')}
           />
           <TextAreaField
@@ -786,19 +879,28 @@ export function CosmetologyDetailsStep({
             placeholder="e.g., chemical peel with glycolic acid, lasted 2 days"
             value={String(details.negativeExperienceDetails ?? '')}
           />
+        </FormCard>
 
-          <SectionHeading>Lifestyle and medication</SectionHeading>
+        <FormCard
+          error={fieldErrors.currentMedications ?? fieldErrors.smoking ?? fieldErrors.alcohol}
+          required
+          title="Lifestyle and Medication"
+        >
           <TextAreaField
+            error={fieldErrors.currentMedications}
             label="Current medications"
             onChange={(value) => set('currentMedications', value)}
             placeholder="List any medications you're currently taking (e.g., ibuprofen, metformin)"
+            required
             value={String(details.currentMedications ?? '')}
           />
           <FormSubtitle>Consumption habits:</FormSubtitle>
           <RadioRow
+            error={fieldErrors.smoking}
             label="Smoking"
             onChange={(value) => set('smoking', value)}
             options={yesNoOptions}
+            required
             value={String(details.smoking ?? '')}
           />
           <TextAreaField
@@ -809,9 +911,11 @@ export function CosmetologyDetailsStep({
             value={String(details.smokingFrequency ?? '')}
           />
           <RadioRow
+            error={fieldErrors.alcohol}
             label="Alcohol"
             onChange={(value) => set('alcohol', value)}
             options={cosmetologyAlcoholOptions}
+            required
             value={String(details.alcohol ?? '')}
             vertical
           />
@@ -823,18 +927,20 @@ export function CosmetologyDetailsStep({
           />
         </FormCard>
 
-        <FormCard title="Skin diagnosis">
+        <FormCard error={fieldErrors.skin_type ?? fieldErrors.phototype} required title="Skin Diagnosis">
           <RadioRow
+            error={fieldErrors.skin_type}
             label="Skin type"
             onChange={(value) => set('skin_type', value)}
             options={cosmetologySkinTypes}
+            required
             value={String(details.skin_type ?? '')}
             vertical
           />
-          <PhototypeRow onChange={(value) => set('phototype', value)} value={String(details.phototype ?? '')} />
+          <PhototypeRow error={fieldErrors.phototype} onChange={(value) => set('phototype', value)} value={String(details.phototype ?? '')} />
         </FormCard>
 
-        <FormCard title="Alterations and conditions">
+        <FormCard optional title="Alterations and Conditions">
           {cosmetologyAlterationGroups.map((group) => (
             <CheckboxGroup
               key={group.key}
@@ -860,18 +966,23 @@ export function CosmetologyDetailsStep({
           />
         </FormCard>
 
-        <FormCard>
+        <FormCard error={fieldErrors.professionalSignature ?? fieldErrors.consentDate} required title="Professional">
           <div className="rounded-[12px] bg-[#f2f5ff] p-4">
+            <SectionHeading required>Signature</SectionHeading>
             <TextField
+              error={fieldErrors.professionalSignature}
               label="Professional signature"
               onChange={(value) => set('professionalSignature', value)}
               placeholder="e.g. John Doe"
+              required
               value={String(details.professionalSignature ?? '')}
             />
             <div className="mt-4">
               <TextField
+                error={fieldErrors.consentDate}
                 label="Date"
                 onChange={(value) => set('consentDate', value)}
+                required
                 type="date"
                 value={String(details.consentDate ?? '')}
               />
@@ -885,7 +996,7 @@ export function CosmetologyDetailsStep({
             !serviceType
               ? 'Select a service type to continue'
               : missingItems.length
-                  ? `To continue, complete: ${missingItems.join(' · ')}`
+                  ? validationSummary
                   : serviceCreating
                     ? `Creating ${cosmetologyServiceDisplayName(serviceType)}...`
                   : undefined
