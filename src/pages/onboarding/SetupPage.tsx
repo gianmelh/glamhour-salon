@@ -76,6 +76,7 @@ type ServiceSetupSection = {
   subtitle: string
   servicesLabel: string
   materialsLabel: string
+  materialItemLabel: string
   serviceItems: readonly string[]
   materialItems: readonly string[]
 }
@@ -99,6 +100,7 @@ const serviceSetupSections: Record<string, ServiceSetupSection> = {
     subtitle: 'Main treatments and services',
     servicesLabel: 'Services',
     materialsLabel: 'Materials',
+    materialItemLabel: 'material',
     serviceItems: nailServiceSetupItems,
     materialItems: nailMaterialSetupItems.map((material) => material.name),
   },
@@ -106,7 +108,8 @@ const serviceSetupSections: Record<string, ServiceSetupSection> = {
     title: 'Lash Services',
     subtitle: 'Extensions, lifts, tinting, and lash styling',
     servicesLabel: 'Services',
-    materialsLabel: 'Materials',
+    materialsLabel: 'Style',
+    materialItemLabel: 'style',
     serviceItems: [
       ...lashVariantOptions.map((option) => option.title),
       'Lash Lift',
@@ -127,6 +130,7 @@ const serviceSetupSections: Record<string, ServiceSetupSection> = {
     subtitle: 'Facials, skincare treatments, and beauty enhancements',
     servicesLabel: 'Services',
     materialsLabel: 'Materials',
+    materialItemLabel: 'material',
     serviceItems: [...cosmetologyServiceTypes, 'Hydrating Facial', 'Radiofrequency', 'Other'],
     materialItems: ['Serums', 'Peels', 'Masks', 'LED Therapy', 'Ozone Steam', 'Other'],
   },
@@ -135,6 +139,7 @@ const serviceSetupSections: Record<string, ServiceSetupSection> = {
     subtitle: 'Brows, lips, eyes, removal, and enhancement procedures',
     servicesLabel: 'Services',
     materialsLabel: 'Materials',
+    materialItemLabel: 'material',
     serviceItems: [...Object.values(micropigmentationProcedureGroups).flat(), 'Other'],
     materialItems: ['Pigments', 'Needles', 'Anesthetics', 'Aftercare', 'Other'],
   },
@@ -846,6 +851,7 @@ function CategoryServicesSetup({ category, draft, updateDraft }: { category: Ser
   const services = draft.services.filter((service) => service.categoryId === category.id)
   const serviceItems = setupSection?.serviceItems ?? []
   const materialItems = setupSection?.materialItems ?? []
+  const materialItemLabel = setupSection?.materialItemLabel ?? 'material'
   const otherService = serviceItems.includes('Other')
     ? services.find((service) => service.name.toLowerCase() === 'other' && (service.section ?? 'service') === 'service' && !isCustomServiceDraft(service))
     : undefined
@@ -1042,13 +1048,14 @@ function CategoryServicesSetup({ category, draft, updateDraft }: { category: Ser
                 autoFocusName={service.id === focusedCustomMaterialId}
                 editableName={isCustomServiceDraft(service)}
                 key={service.id}
+                itemLabel={materialItemLabel}
                 onRemove={isCustomServiceDraft(service) ? () => removeCustomMaterial(service.id) : undefined}
                 service={service}
                 updateDraft={updateDraft}
               />
             ))}
             {otherMaterial && (
-              <OtherMaterialRow onSelect={selectOtherMaterial} />
+              <OtherMaterialRow itemLabel={materialItemLabel} onSelect={selectOtherMaterial} />
             )}
             <button
               className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[#c7cede] bg-[#fbfcff] px-4 text-[14px] font-medium text-[#6734c7] transition hover:border-[#bda9f6] hover:bg-[#f7f3ff]"
@@ -1056,7 +1063,7 @@ function CategoryServicesSetup({ category, draft, updateDraft }: { category: Ser
               type="button"
             >
               <Plus className="size-4" />
-              Add material
+              Add {materialItemLabel}
             </button>
           </div>
         )}
@@ -1185,16 +1192,20 @@ function OtherServiceRow({ onSelect }: { onSelect: () => void }) {
 function MaterialRow({
   autoFocusName = false,
   editableName = false,
+  itemLabel = 'material',
   onRemove,
   service,
   updateDraft,
 }: {
   autoFocusName?: boolean
   editableName?: boolean
+  itemLabel?: string
   onRemove?: () => void
   service: DraftService
   updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void
 }) {
+  const capitalizedItemLabel = itemLabel.charAt(0).toUpperCase() + itemLabel.slice(1)
+
   function toggleService() {
     updateDraft((current) => ({
       ...current,
@@ -1222,7 +1233,7 @@ function MaterialRow({
       )}>
         <button
           aria-checked={service.selected}
-          aria-label={`${service.selected ? 'Disable' : 'Enable'} ${service.name || 'custom material'}`}
+          aria-label={`${service.selected ? 'Disable' : 'Enable'} ${service.name || `custom ${itemLabel}`}`}
           className={cn(
             'grid size-4 shrink-0 place-items-center rounded-[4px] border shadow-[0_2px_5px_rgb(24_32_50_/_0.08)] transition',
             service.selected ? 'border-[#cbb9ff] bg-white text-[#7a3fe0]' : 'border-[#d5dce8] bg-[#f6f9ff] text-transparent',
@@ -1235,11 +1246,11 @@ function MaterialRow({
         </button>
         {editableName ? (
           <input
-            aria-label={`${service.name || 'Custom material'} name`}
+            aria-label={`${service.name || `Custom ${itemLabel}`} name`}
             autoFocus={autoFocusName}
             className="min-h-[40px] min-w-0 flex-1 cursor-text bg-transparent text-[15px] font-medium leading-5 text-[#1b2133] outline-none placeholder:text-[#8b92a1]"
             onChange={(event) => updateMaterialName(event.target.value)}
-            placeholder="Material name"
+            placeholder={`${capitalizedItemLabel} name`}
             value={service.name}
           />
         ) : (
@@ -1254,7 +1265,7 @@ function MaterialRow({
       </div>
       {onRemove && (
         <button
-          aria-label={`Remove ${service.name || 'custom material'}`}
+          aria-label={`Remove ${service.name || `custom ${itemLabel}`}`}
           className="grid size-8 place-items-center rounded-md text-[#8b92a1] transition hover:bg-[#fff0f0] hover:text-[#e05252]"
           onClick={onRemove}
           type="button"
@@ -1266,10 +1277,10 @@ function MaterialRow({
   )
 }
 
-function OtherMaterialRow({ onSelect }: { onSelect: () => void }) {
+function OtherMaterialRow({ itemLabel = 'material', onSelect }: { itemLabel?: string; onSelect: () => void }) {
   return (
     <button
-      aria-label="Add custom material"
+      aria-label={`Add custom ${itemLabel}`}
       className="flex min-h-[53px] w-full min-w-0 items-center gap-3 rounded-2xl border border-[#d7dce8] bg-white px-4 text-left transition hover:border-[#cbb9ff] hover:bg-[#fbf9ff]"
       onClick={onSelect}
       type="button"
