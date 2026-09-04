@@ -377,34 +377,51 @@ function PhototypeRow({ error, value, onChange }: { error?: string; value: strin
   )
 }
 
-function FaceMapPreview({ count, onClick }: { count: number; onClick: () => void }) {
+function FaceMapPreview({ count, onClick, onContinue }: { count: number; onClick: () => void; onContinue: () => void }) {
+  const hasMarks = count > 0
+
   return (
     <div className="flex flex-col gap-2">
       <span className="text-[14px] font-medium leading-[21px] text-[#666]">Mark what is detected</span>
-      <button
-        className="flex min-h-[73px] w-full items-center justify-between gap-3 rounded-[16px] border-[1.35px] border-[#d0d5dd] bg-[#fcfcfd] px-[17px] text-left"
-        onClick={onClick}
-        type="button"
-      >
-        <span className="flex min-w-0 items-center gap-2.5">
-          <img
-            alt=""
-            className="h-12 w-10 shrink-0 object-contain"
-            src={cosmetologyBookingAssets.faceDiagram}
-          />
-          <span className="min-w-0">
-            <span className="block truncate text-[16px] leading-6 tracking-[-0.32px] text-[#101828]">
-              Face mapping preview
-            </span>
-            <span className="block text-[11px] leading-[16.5px] tracking-[-0.32px] text-[#667085]">
-              {count
-                ? `${count} mark${count === 1 ? '' : 's'} added`
-                : 'Mark the client alterations in a visual way'}
+      <div className="rounded-[16px] border-[1.35px] border-[#d0d5dd] bg-[#fcfcfd] px-[17px] py-3">
+        <div className="flex min-h-[47px] w-full items-center justify-between gap-3 text-left">
+          <span className="flex min-w-0 items-center gap-2.5">
+            <img
+              alt=""
+              className="h-12 w-10 shrink-0 object-contain"
+              src={cosmetologyBookingAssets.faceDiagram}
+            />
+            <span className="min-w-0">
+              <span className="block truncate text-[16px] leading-6 tracking-[-0.32px] text-[#101828]">
+                {hasMarks ? 'Mark is detected' : 'Face mapping preview'}
+              </span>
+              <span className="block text-[11px] leading-[16.5px] tracking-[-0.32px] text-[#667085]">
+                {hasMarks
+                  ? `${count} mark${count === 1 ? '' : 's'} added`
+                  : 'Mark the client alterations in a visual way'}
+              </span>
             </span>
           </span>
-        </span>
-        <ChevronRight className="size-4 shrink-0 text-[#98a2b3]" />
-      </button>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
+          <button
+            className="min-h-10 rounded-[12px] border border-[#d0d5dd] bg-white px-3 text-[13px] font-semibold text-[#475467]"
+            onClick={onClick}
+            type="button"
+          >
+            {hasMarks ? 'Edit annotations' : 'Add annotations'}
+          </button>
+          {hasMarks && (
+            <button
+              className="min-h-10 rounded-[12px] bg-[#7344cd] px-3 text-[13px] font-semibold text-white"
+              onClick={onContinue}
+              type="button"
+            >
+              Continue
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -764,6 +781,11 @@ export function CosmetologyDetailsStep({
           <FaceMapPreview
             count={faceAnnotationCount}
             onClick={() => setStage('face-map')}
+            onContinue={() => {
+              document
+                .getElementById('cosmetology-professional-section')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }}
           />
           <TextAreaField
             label="Treatment notes"
@@ -1036,6 +1058,7 @@ export function CosmetologyDetailsStep({
         </CollapsibleSection>
 
         <FormCard error={fieldErrors.professionalSignature ?? fieldErrors.consentDate} required title="Professional">
+          <span id="cosmetology-professional-section" className="-mt-2 block" />
           <div className="rounded-[12px] bg-[#f2f5ff] p-4">
             <SectionHeading required>Signature</SectionHeading>
             <TextField

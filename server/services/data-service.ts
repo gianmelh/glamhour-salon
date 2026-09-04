@@ -100,6 +100,8 @@ interface RescheduleAppointmentInput {
 interface ClientAppointmentConflictRow extends QueryResultRow {
   id: string
   service_name_snapshot: string | null
+  category_name_snapshot: string | null
+  category_code_snapshot: string | null
   starts_at: string
   ends_at: string
 }
@@ -1100,15 +1102,23 @@ async function findClientAppointmentConflict(
 ) {
   const rows = await clientRows<ClientAppointmentConflictRow>(
     client,
-    `SELECT a.id, a.starts_at, a.ends_at, aps.service_name_snapshot
+    `SELECT
+       a.id,
+       a.starts_at,
+       a.ends_at,
+       aps.service_name_snapshot,
+       aps.category_code_snapshot,
+       COALESCE(sc.name, initcap(replace(aps.category_code_snapshot, '_', ' '))) AS category_name_snapshot
      FROM appointments a
      LEFT JOIN LATERAL (
-       SELECT service_name_snapshot
+       SELECT service_name_snapshot, category_code_snapshot
        FROM appointment_services
        WHERE salon_id = a.salon_id AND appointment_id = a.id
        ORDER BY created_at
        LIMIT 1
      ) aps ON true
+     LEFT JOIN service_categories sc
+       ON sc.code = aps.category_code_snapshot
      WHERE a.salon_id = $1
        AND a.client_id = $2
        AND a.status_code <> ALL($5::text[])
@@ -1121,6 +1131,16 @@ async function findClientAppointmentConflict(
   )
 
   return rows[0] ?? null
+}
+
+function appointmentConflictServiceLabel(conflict: ClientAppointmentConflictRow) {
+  const serviceName = conflict.service_name_snapshot?.trim() || 'Appointment'
+  const categoryName = conflict.category_name_snapshot?.trim()
+    || conflict.category_code_snapshot?.trim()
+  if (!categoryName) return serviceName
+  return serviceName.toLowerCase().startsWith(`${categoryName.toLowerCase()} - `)
+    ? serviceName
+    : `${categoryName} - ${serviceName}`
 }
 
 async function clientHasAppointmentConflict(
@@ -1263,7 +1283,7 @@ async function buildClientConflictDetails(input: {
   return {
     conflictingAppointment: {
       id: input.conflict.id,
-      serviceName: input.conflict.service_name_snapshot ?? 'Appointment',
+      serviceName: appointmentConflictServiceLabel(input.conflict),
       startsAt: input.conflict.starts_at,
       endsAt: input.conflict.ends_at,
     },

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Calendar, CircleAlert, Clock, Hand, Phone, UserRound, X } from 'lucide-react'
 import { Button, Card, MutationError } from '../../../../components'
 import { cn } from '../../../../lib/cn'
+import { localDateString } from '../../../../lib/date'
 import type { Client, Service, ServiceCategory } from '../../../../types/api'
 import { healthQuestionnaires } from '../health-questionnaires'
 
@@ -197,6 +198,7 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
   const priceIsEditable = service.price_minor <= 0
   const manualPriceMinor = typeof details.appointmentPriceMinor === 'number' ? details.appointmentPriceMinor : service.price_minor
   const amountValue = priceIsEditable ? formatAmount(manualPriceMinor) : formatAmount(service.price_minor)
+  const minDate = localDateString()
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-[393px] flex-col pb-8">
@@ -249,7 +251,7 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
               </span>
               <input
                 className="absolute inset-0 size-full cursor-pointer opacity-0"
-                min={new Date().toISOString().slice(0, 10)}
+                min={minDate}
                 onChange={(event) => onDateChange?.(event.target.value)}
                 type="date"
                 value={date}

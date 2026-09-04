@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Calendar, Clock, Plus, UserRound } from 'lucide-react'
 import { Button, Card, Input, MutationError } from '../../../../components'
 import { formatMoney, formatShortDate } from '../../../../lib/format'
+import { localDateString } from '../../../../lib/date'
 import { addMinutesIso, zonedDateTimeToIso } from '../../../../lib/salon-time'
 import { glamhourApi } from '../../../../services/glamhour-api'
 import { useMutation } from '../../../../hooks/useMutation'
@@ -101,6 +102,7 @@ export function HomeQuickCreateAppointmentStep({
   const [newPhone, setNewPhone] = useState('')
   const [clientErrors, setClientErrors] = useState({ name: '', phone: '' })
   const [submitted, setSubmitted] = useState(false)
+  const minDate = localDateString()
 
   const selectedClient = clients.find((client) => client.id === selectedClientId)
   const selectedProvider = providers.find((provider) => provider.id === providerId)
@@ -219,6 +221,7 @@ export function HomeQuickCreateAppointmentStep({
             </span>
             <input
               className="absolute inset-0 h-full w-full min-w-0 cursor-pointer opacity-0"
+              min={minDate}
               onChange={(event) => onDateChange(event.target.value)}
               type="date"
               value={date}

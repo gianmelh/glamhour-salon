@@ -5,16 +5,17 @@ import { getLashEyeProgress } from '../lashesDetailsValidation'
 import type { LashEyeName } from '../types'
 import { LashesSectionTitle } from './lashesUi'
 
-/** Label positions from Figma 650:6335–6341 (361px-wide map). */
-const lashMapHotspots = [
-  { position: 8, left: '8%', top: '69%' },
-  { position: 9, left: '14%', top: '52%' },
-  { position: 10, left: '22%', top: '38%' },
-  { position: 11, left: '33%', top: '27%' },
-  { position: 12, left: '49%', top: '20%' },
-  { position: 13, left: '68%', top: '24%' },
-  { position: 14, left: '88%', top: '39%' },
-] as const
+/** Zone anchors follow the lash arc while keeping a minimum horizontal gutter for every label. */
+const lashMapZoneCount: number = lashMapPositions
+const lashMapHotspots = Array.from({ length: lashMapZoneCount }, (_, index) => {
+  const progress = lashMapZoneCount === 1 ? 0.5 : index / (lashMapZoneCount - 1)
+  const arc = Math.sin(progress * Math.PI)
+  return {
+    position: 8 + index,
+    left: `${12 + progress * 76}%`,
+    top: `${68 - arc * 48}%`,
+  }
+})
 
 type LashMapState = Partial<Record<LashEyeName, Array<{ position: number; length: number }>>>
 

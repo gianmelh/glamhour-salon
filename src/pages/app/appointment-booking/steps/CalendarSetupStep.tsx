@@ -54,7 +54,7 @@ function displayProviderName(name: string) {
   return name.split(' ')[0] || name
 }
 
-export function CalendarSetupStep({ providers, selectedProviderId, date, selectedStartsAt, slots, providerLoading, availabilityLoading, serviceName, onSelectProvider, onDateChange, onSelectSlot, onBack, onExit, onNext }: {
+export function CalendarSetupStep({ providers, selectedProviderId, date, selectedStartsAt, slots, providerLoading, availabilityLoading, serviceName, serviceCategoryName, onSelectProvider, onDateChange, onSelectSlot, onBack, onExit, onNext }: {
   providers: EligibleProvider[]
   selectedProviderId: string
   date: string
@@ -63,6 +63,7 @@ export function CalendarSetupStep({ providers, selectedProviderId, date, selecte
   providerLoading: boolean
   availabilityLoading: boolean
   serviceName?: string
+  serviceCategoryName?: string
   onSelectProvider: (id: string) => void
   onDateChange: (date: string) => void
   onSelectSlot: (slot: AvailabilitySlot) => void
@@ -194,8 +195,8 @@ export function CalendarSetupStep({ providers, selectedProviderId, date, selecte
                         onClick={() => onSelectSlot(slot)}
                         type="button"
                       >
-                        <span className="mb-3 inline-flex rounded-[6px] bg-[#efe6ff] px-2 py-1 text-[11px] text-[#7047c7]">Nails</span>
-                        <span className="block text-[14px] font-bold text-[#101828]">{serviceName || 'Nail service'}</span>
+                        <span className="mb-3 inline-flex rounded-[6px] bg-[#efe6ff] px-2 py-1 text-[11px] text-[#7047c7]">{serviceCategoryName || 'Service'}</span>
+                        <span className="block text-[14px] font-bold text-[#101828]">{serviceName || 'Salon service'}</span>
                         <span className="mt-2 block text-[11px] text-[#667085]">with {provider.full_name}</span>
                         <span className="mt-2 block text-[11px] font-semibold text-[#7a3fe0]">{slot.label}</span>
                       </button>

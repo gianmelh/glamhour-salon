@@ -499,6 +499,11 @@ export function NewAppointmentPage() {
     provider?.durationMinutes ?? service?.duration_minutes ?? 60
   )
 
+  const appointmentTimesFromStart = (startsAt: string, service: Service, provider?: EligibleProvider) => ({
+    startsAt,
+    endsAt: addMinutesIso(startsAt, appointmentDurationMinutes(service, provider)),
+  })
+
   const selectSuggestedSlot = (slot: NonNullable<AppointmentConflictErrorDetails['nextAvailableSlot']>) => {
     setConfirmError(null)
     setDraft((current) => ({
@@ -628,7 +633,7 @@ export function NewAppointmentPage() {
   }
 
   const resolveAppointmentTimes = async (service: Service, provider: EligibleProvider) => {
-    if (draft.startsAt && draft.endsAt) return { startsAt: draft.startsAt, endsAt: draft.endsAt }
+    if (draft.startsAt) return appointmentTimesFromStart(draft.startsAt, service, provider)
     if (typeof draft.details.consentTime === 'string' && draft.details.consentTime) {
       return defaultAppointmentTimes(appointmentDurationMinutes(service, provider))
     }
@@ -671,7 +676,7 @@ export function NewAppointmentPage() {
       const durationMinutes = appointmentDurationMinutes(selectedService, selectedProvider)
       const slot = draft.providerId ? availability.find((item) => item.time === time && item.available) : undefined
       const appointmentTimes = slot
-        ? { startsAt: slot.startsAt, endsAt: slot.endsAt }
+        ? appointmentTimesFromStart(slot.startsAt, selectedService, selectedProvider)
         : quickAppointmentTimes(draft.date, time, durationMinutes, salonTimeZone)
       const appointment = await mutation.mutate({
         clientId: selectedClient.id,
@@ -1024,6 +1029,7 @@ export function NewAppointmentPage() {
           providers={scheduleProviders}
           selectedProviderId={draft.providerId}
           selectedStartsAt={draft.startsAt}
+          serviceCategoryName={selectedCategory?.name}
           serviceName={selectedService?.name}
           slots={availability}
         />
