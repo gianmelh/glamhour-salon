@@ -18,7 +18,7 @@ function backgroundSpaceX(sourceX: number) {
  * the arc that already matches the working zones.
  */
 const lashMapZoneCount: number = lashMapPositions
-const lashMapSourceXAnchors = [88, 122, 150, 180, 211, 242, 274]
+const lashMapSourceXAnchors = [88, 122, 142, 180, 211, 242, 274]
 const lashMapHotspots = lashMapSourceXAnchors.map((sourceX, index) => {
   const progress = lashMapZoneCount === 1 ? 0.5 : index / (lashMapZoneCount - 1)
   const arc = Math.sin(progress * Math.PI)
