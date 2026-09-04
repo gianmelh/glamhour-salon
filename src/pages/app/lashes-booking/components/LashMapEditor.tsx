@@ -5,26 +5,25 @@ import { getLashEyeProgress } from '../lashesDetailsValidation'
 import type { LashEyeName } from '../types'
 import { LashesSectionTitle } from './lashesUi'
 
+const lashMapAssetWidth = 361
+const lashMapBackgroundScale = 1.48
+
+function backgroundSpaceX(sourceX: number) {
+  return 50 + ((sourceX / lashMapAssetWidth) - 0.5) * 100 * lashMapBackgroundScale
+}
+
 /**
  * Label anchors are independent from the mirrored artwork so length text stays
  * horizontal while the map geometry flips for each eye.
  */
 const lashMapZoneCount: number = lashMapPositions
-const lashMapHotspots = [
-  { position: 8, left: '24.4%', top: '68%' },
-  { position: 9, left: '33.8%', top: '44%' },
-  { position: 10, left: '39.3%', top: '26.4%' },
-  { position: 11, left: '49.9%', top: '20%' },
-  { position: 12, left: '58.4%', top: '26.4%' },
-  { position: 13, left: '67%', top: '44%' },
-  { position: 14, left: '75.9%', top: '68%' },
-] as const
-const lashMapEmptyHotspots = Array.from({ length: lashMapZoneCount }, (_, index) => {
+const lashMapLabelXAnchors = [88, 122, 142, 180, 211, 242, 274]
+const lashMapHotspots = lashMapLabelXAnchors.map((sourceX, index) => {
   const progress = lashMapZoneCount === 1 ? 0.5 : index / (lashMapZoneCount - 1)
   const arc = Math.sin(progress * Math.PI)
   return {
     position: 8 + index,
-    left: `${12 + progress * 76}%`,
+    left: `${backgroundSpaceX(sourceX)}%`,
     top: `${68 - arc * 48}%`,
   }
 })
@@ -39,14 +38,6 @@ function mirroredPercent(value: string) {
 function hotspotsForEye(eye: LashEyeName) {
   if (eye === 'rightEye') return lashMapHotspots
   return lashMapHotspots.map((hotspot) => ({
-    ...hotspot,
-    left: mirroredPercent(hotspot.left),
-  }))
-}
-
-function emptyHotspotsForEye(eye: LashEyeName) {
-  if (eye === 'rightEye') return lashMapEmptyHotspots
-  return lashMapEmptyHotspots.map((hotspot) => ({
     ...hotspot,
     left: mirroredPercent(hotspot.left),
   }))
@@ -70,7 +61,6 @@ export function LashMapEditor({ details, onChange }: {
   const { eye, map, length, current } = readLashMapEditorState(details)
   const eyeLabel = eye === 'rightEye' ? 'Right side' : 'Left side'
   const activeHotspots = hotspotsForEye(eye)
-  const emptyHotspots = emptyHotspotsForEye(eye)
   const progress = getLashEyeProgress(map)
   const rightCompleted = progress.find((item) => item.eye === 'rightEye')?.completed ?? 0
   const leftCompleted = progress.find((item) => item.eye === 'leftEye')?.completed ?? 0
@@ -178,44 +168,35 @@ export function LashMapEditor({ details, onChange }: {
       </div>
 
       <div className="relative aspect-[361/179] w-full min-w-0 overflow-hidden">
-        <img
-          alt=""
+        <div
           aria-hidden
           className={cn(
-            'absolute inset-0 size-full object-contain',
+            'absolute inset-0 bg-no-repeat',
             eye === 'leftEye' && '-scale-x-100',
           )}
-          src={lashesBookingAssets.lashMap.clean}
+          style={{
+            backgroundImage: `url("${String(details.style ?? '').toLowerCase().includes('cat') ? lashesBookingAssets.lashMap.catEye : lashesBookingAssets.lashMap.clean}")`,
+            backgroundPosition: '50% 58%',
+            backgroundSize: '148% auto',
+          }}
         />
-        {emptyHotspots.map(({ position, left, top }) => {
-          const assigned = current.find((item) => item.position === position)
-          if (assigned) return null
-          return (
-            <button
-              aria-label={`Lash map position ${position}`}
-              className="absolute grid size-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-dashed border-[#7444cf]/55 bg-white/45 text-[#7444cf]/70 transition"
-              key={position}
-              onClick={() => assign(position)}
-              style={{ left, top }}
-              type="button"
-            >
-              <span className="text-[11px] font-semibold">{position}</span>
-            </button>
-          )
-        })}
         {activeHotspots.map(({ position, left, top }) => {
           const assigned = current.find((item) => item.position === position)
-          if (!assigned) return null
           return (
             <button
-              aria-label={`Lash map position ${position}, length ${assigned.length}`}
-              className="absolute grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-transparent text-center text-[16px] font-semibold leading-none text-[#7444cf] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7444cf]/65"
+              aria-label={`Lash map position ${position}${assigned ? `, length ${assigned.length}` : ''}`}
+              className={cn(
+                'absolute grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full transition',
+                assigned
+                  ? 'size-8 border-0 bg-transparent text-center text-[16px] font-semibold leading-none text-[#7444cf] shadow-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7444cf]/65'
+                  : 'size-11 border border-dashed border-[#7444cf]/55 bg-white/45 text-[#7444cf]/70',
+              )}
               key={position}
               onClick={() => assign(position)}
               style={{ left, top }}
               type="button"
             >
-              {assigned.length}
+              {assigned ? assigned.length : <span className="text-[11px] font-semibold">{position}</span>}
             </button>
           )
         })}

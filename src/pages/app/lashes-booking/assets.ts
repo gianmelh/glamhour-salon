@@ -11,7 +11,7 @@ export const lashesBookingAssets = {
   },
   lashMap: {
     catEye: `${lashesBase}/lash-map-cat-eye.png`,
-    clean: `${lashesBase}/lash-map-clean.svg`,
+    clean: `${lashesBase}/lashmap.png`,
     diagram: `${lashesBase}/lash-map-diagram.svg`,
   },
   variants: {
