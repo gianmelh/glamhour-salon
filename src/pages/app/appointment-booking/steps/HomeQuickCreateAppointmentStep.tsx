@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Calendar, Clock, Plus, UserRound } from 'lucide-react'
 import { Button, Card, Input, MutationError } from '../../../../components'
 import { formatMoney, formatShortDate } from '../../../../lib/format'
@@ -102,6 +102,7 @@ export function HomeQuickCreateAppointmentStep({
   const [newPhone, setNewPhone] = useState('')
   const [clientErrors, setClientErrors] = useState({ name: '', phone: '' })
   const [submitted, setSubmitted] = useState(false)
+  const dateInputRef = useRef<HTMLInputElement>(null)
   const minDate = localDateString()
 
   const selectedClient = clients.find((client) => client.id === selectedClientId)
@@ -134,6 +135,21 @@ export function HomeQuickCreateAppointmentStep({
     return visit.kind === 'upcoming'
       ? `Upcoming ${formatShortDate(visit.date)}`
       : `Last visit ${formatShortDate(visit.date)}`
+  }
+
+  const openDatePicker = () => {
+    const input = dateInputRef.current
+    if (!input) return
+    input.focus()
+    if (typeof input.showPicker === 'function') {
+      input.showPicker()
+    }
+  }
+
+  const openDatePickerFromKeyboard = (event: React.KeyboardEvent<HTMLSpanElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    openDatePicker()
   }
 
   const saveClient = async () => {
@@ -213,13 +229,28 @@ export function HomeQuickCreateAppointmentStep({
       <Card className="space-y-4 rounded-[20px] border-[#d0d5dd] bg-white p-4">
         <label className="grid min-w-0 gap-2 text-[14px] font-semibold text-[#101828]">
           Day *
-          <span className="text-[16px] font-bold text-[#0c111d]">{displayDate(date)}</span>
-          <span className="relative block min-w-0 overflow-hidden rounded-[14px] border border-[#d0d5dd] bg-white">
+          <span
+            className="cursor-pointer text-[16px] font-bold text-[#0c111d]"
+            onClick={openDatePicker}
+            onKeyDown={openDatePickerFromKeyboard}
+            role="button"
+            tabIndex={0}
+          >
+            {displayDate(date)}
+          </span>
+          <span
+            className="relative block min-w-0 overflow-hidden rounded-[14px] border border-[#d0d5dd] bg-white"
+            onClick={openDatePicker}
+            onKeyDown={openDatePickerFromKeyboard}
+            role="button"
+            tabIndex={0}
+          >
             <span className="pointer-events-none flex min-h-[50px] min-w-0 items-center gap-3 pl-10 pr-3 text-[15px] font-bold text-[#101828]">
               <Calendar className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#7344cd]" />
               <span className="min-w-0 truncate">{compactDisplayDate(date)}</span>
             </span>
             <input
+              ref={dateInputRef}
               className="absolute inset-0 h-full w-full min-w-0 cursor-pointer opacity-0"
               min={minDate}
               onChange={(event) => onDateChange(event.target.value)}
