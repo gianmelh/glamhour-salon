@@ -97,7 +97,7 @@ interface RescheduleAppointmentInput {
   endsAt: string
 }
 
-interface ClientAppointmentConflictRow extends QueryResultRow {
+interface AppointmentConflictRow extends QueryResultRow {
   id: string
   service_name_snapshot: string | null
   category_name_snapshot: string | null
@@ -106,7 +106,7 @@ interface ClientAppointmentConflictRow extends QueryResultRow {
   ends_at: string
 }
 
-interface ClientConflictDetails {
+interface AppointmentConflictDetails {
   conflictingAppointment: {
     id: string
     serviceName: string
@@ -1100,7 +1100,7 @@ async function findClientAppointmentConflict(
   endsAt: string,
   excludeAppointmentId?: string,
 ) {
-  const rows = await clientRows<ClientAppointmentConflictRow>(
+  const rows = await clientRows<AppointmentConflictRow>(
     client,
     `SELECT
        a.id,
@@ -1133,7 +1133,48 @@ async function findClientAppointmentConflict(
   return rows[0] ?? null
 }
 
-function appointmentConflictServiceLabel(conflict: ClientAppointmentConflictRow) {
+async function findProfessionalAppointmentConflict(
+  client: PoolClient,
+  salonId: string,
+  professionalId: string,
+  startsAt: string,
+  endsAt: string,
+  excludeAppointmentId?: string,
+) {
+  const rows = await clientRows<AppointmentConflictRow>(
+    client,
+    `SELECT
+       a.id,
+       a.starts_at,
+       a.ends_at,
+       aps.service_name_snapshot,
+       aps.category_code_snapshot,
+       COALESCE(sc.name, initcap(replace(aps.category_code_snapshot, '_', ' '))) AS category_name_snapshot
+     FROM appointments a
+     LEFT JOIN LATERAL (
+       SELECT service_name_snapshot, category_code_snapshot
+       FROM appointment_services
+       WHERE salon_id = a.salon_id AND appointment_id = a.id
+       ORDER BY created_at
+       LIMIT 1
+     ) aps ON true
+     LEFT JOIN service_categories sc
+       ON sc.code = aps.category_code_snapshot
+     WHERE a.salon_id = $1
+       AND a.professional_id = $2
+       AND a.status_code <> ALL($5::text[])
+       AND starts_at < $4::timestamptz
+       AND ends_at > $3::timestamptz
+       AND ($6::uuid IS NULL OR a.id <> $6)
+     ORDER BY a.starts_at
+     LIMIT 1`,
+    [salonId, professionalId, startsAt, endsAt, nonBlockingAppointmentStatuses, excludeAppointmentId ?? null],
+  )
+
+  return rows[0] ?? null
+}
+
+function appointmentConflictServiceLabel(conflict: AppointmentConflictRow) {
   const serviceName = conflict.service_name_snapshot?.trim() || 'Appointment'
   const categoryName = conflict.category_name_snapshot?.trim()
     || conflict.category_code_snapshot?.trim()
@@ -1208,13 +1249,11 @@ function endDateTimeFromDuration(startsAt: string, durationMinutes: number) {
   return new Date(start.getTime() + durationMinutes * 60_000).toISOString()
 }
 
-async function findNextClientSafeAvailabilitySlot(input: {
-  salonId: string
-  clientId: string
+async function findNextProviderAvailabilitySlot(input: {
   requestedStartsAt: string
   timeZone: string
-  excludeAppointmentId?: string
   getProviderAvailability: (date: string) => Promise<Record<string, unknown>>
+  isSlotAllowed?: (slot: { startsAt: string; endsAt: string }) => Promise<boolean>
 }) {
   const requestedStart = new Date(input.requestedStartsAt)
   if (Number.isNaN(requestedStart.getTime())) return null
@@ -1233,14 +1272,8 @@ async function findNextClientSafeAvailabilitySlot(input: {
       const slotStart = new Date(slot.startsAt).getTime()
       if (!Number.isFinite(slotStart)) continue
       if (dayOffset === 0 && slotStart < requestedStart.getTime()) continue
-      const hasClientConflict = await clientHasAppointmentConflict(
-        input.salonId,
-        input.clientId,
-        slot.startsAt,
-        slot.endsAt,
-        input.excludeAppointmentId,
-      )
-      if (!hasClientConflict) {
+      const isSlotAllowed = input.isSlotAllowed ? await input.isSlotAllowed(slot) : true
+      if (isSlotAllowed) {
         return {
           time: slot.time,
           label: slot.label,
@@ -1254,6 +1287,31 @@ async function findNextClientSafeAvailabilitySlot(input: {
   return null
 }
 
+async function findNextClientSafeAvailabilitySlot(input: {
+  salonId: string
+  clientId: string
+  requestedStartsAt: string
+  timeZone: string
+  excludeAppointmentId?: string
+  getProviderAvailability: (date: string) => Promise<Record<string, unknown>>
+}) {
+  return findNextProviderAvailabilitySlot({
+    requestedStartsAt: input.requestedStartsAt,
+    timeZone: input.timeZone,
+    getProviderAvailability: input.getProviderAvailability,
+    isSlotAllowed: async (slot) => {
+      const hasClientConflict = await clientHasAppointmentConflict(
+        input.salonId,
+        input.clientId,
+        slot.startsAt,
+        slot.endsAt,
+        input.excludeAppointmentId,
+      )
+      return !hasClientConflict
+    },
+  })
+}
+
 async function buildClientConflictDetails(input: {
   salonId: string
   clientId: string
@@ -1261,9 +1319,9 @@ async function buildClientConflictDetails(input: {
   serviceId?: string
   requestedStartsAt: string
   excludeAppointmentId?: string
-  conflict: ClientAppointmentConflictRow
+  conflict: AppointmentConflictRow
   getProviderAvailability: (date: string) => Promise<Record<string, unknown>>
-}): Promise<ClientConflictDetails> {
+}): Promise<AppointmentConflictDetails> {
   const salonRows = await query<{ timezone: string | null }>(
     'SELECT timezone FROM salons WHERE id = $1 AND deleted_at IS NULL',
     [input.salonId],
@@ -1276,6 +1334,37 @@ async function buildClientConflictDetails(input: {
       requestedStartsAt: input.requestedStartsAt,
       timeZone,
       excludeAppointmentId: input.excludeAppointmentId,
+      getProviderAvailability: input.getProviderAvailability,
+    })
+    : null
+
+  return {
+    conflictingAppointment: {
+      id: input.conflict.id,
+      serviceName: appointmentConflictServiceLabel(input.conflict),
+      startsAt: input.conflict.starts_at,
+      endsAt: input.conflict.ends_at,
+    },
+    nextAvailableSlot,
+  }
+}
+
+async function buildProfessionalConflictDetails(input: {
+  salonId: string
+  serviceId?: string
+  requestedStartsAt: string
+  conflict: AppointmentConflictRow
+  getProviderAvailability: (date: string) => Promise<Record<string, unknown>>
+}): Promise<AppointmentConflictDetails> {
+  const salonRows = await query<{ timezone: string | null }>(
+    'SELECT timezone FROM salons WHERE id = $1 AND deleted_at IS NULL',
+    [input.salonId],
+  )
+  const timeZone = normalizeTimeZone(salonRows[0]?.timezone)
+  const nextAvailableSlot = input.serviceId
+    ? await findNextProviderAvailabilitySlot({
+      requestedStartsAt: input.requestedStartsAt,
+      timeZone,
       getProviderAvailability: input.getProviderAvailability,
     })
     : null
@@ -3483,20 +3572,26 @@ export const dataService = {
       const serviceDurations = new Map(serviceDurationRows.map((row) => [String(row.service_id), Number(row.duration_minutes)]))
 
       if (input.professionalId) {
-        const conflicts = await clientRows<QueryResultRow>(
+        const professionalConflict = await findProfessionalAppointmentConflict(
           client,
-          `SELECT 1
-           FROM appointments
-           WHERE salon_id = $1
-             AND professional_id = $2
-             AND status_code NOT IN ('completed', 'canceled', 'no_show')
-             AND starts_at < $4::timestamptz
-             AND ends_at > $3::timestamptz
-           LIMIT 1`,
-          [input.salonId, input.professionalId, input.startsAt, endsAt],
+          input.salonId,
+          input.professionalId,
+          input.startsAt,
+          endsAt,
         )
-        if (conflicts[0]) {
-          throw new ApiError(409, 'The professional is unavailable for that time.')
+        if (professionalConflict) {
+          const details = await buildProfessionalConflictDetails({
+            salonId: input.salonId,
+            serviceId: services[0]?.id,
+            requestedStartsAt: input.startsAt,
+            conflict: professionalConflict,
+            getProviderAvailability: (date) => this.getAppointmentAvailability(input.salonId, {
+              providerId: input.professionalId!,
+              serviceId: services[0]!.id,
+              date,
+            }),
+          })
+          throw new ApiError(409, 'The professional is unavailable for that time.', details)
         }
       }
 
@@ -4010,21 +4105,27 @@ export const dataService = {
         }
       }
 
-      const conflicts = await clientRows<QueryResultRow>(
+      const professionalConflict = await findProfessionalAppointmentConflict(
         client,
-        `SELECT 1
-         FROM appointments
-         WHERE salon_id = $1
-           AND id <> $2
-           AND professional_id = $3
-           AND status_code NOT IN ('completed', 'canceled', 'no_show')
-           AND starts_at < $5::timestamptz
-           AND ends_at > $4::timestamptz
-           LIMIT 1`,
-        [salonId, appointmentId, input.professionalId, input.startsAt, endsAt],
+        salonId,
+        input.professionalId,
+        input.startsAt,
+        endsAt,
+        appointmentId,
       )
-      if (conflicts[0]) {
-        throw new ApiError(409, 'The professional is unavailable for that time.')
+      if (professionalConflict) {
+        const details = await buildProfessionalConflictDetails({
+          salonId,
+          serviceId: serviceIds[0],
+          requestedStartsAt: input.startsAt,
+          conflict: professionalConflict,
+          getProviderAvailability: (date) => this.getAppointmentAvailability(salonId, {
+            providerId: input.professionalId,
+            serviceId: serviceIds[0]!,
+            date,
+          }),
+        })
+        throw new ApiError(409, 'The professional is unavailable for that time.', details)
       }
 
       const clientConflict = await findClientAppointmentConflict(

@@ -104,7 +104,7 @@ function AppointmentConflictAlert({ error, serviceName, timeZone, onSelectSlot }
 
   return (
     <div className="rounded-[16px] border border-[#fda29b] bg-[#fff4f2] p-4 text-sm text-[#7a271a]">
-      <p className="font-bold">This client already has an appointment during this time.</p>
+      <p className="font-bold">This time is unavailable for the selected appointment.</p>
       <div className="mt-3 space-y-1">
         <p className="text-xs font-semibold uppercase text-[#b42318]">Current appointment</p>
         <p className="font-bold text-[#111827]">{conflict.serviceName}</p>

@@ -5,14 +5,26 @@ import { getLashEyeProgress } from '../lashesDetailsValidation'
 import type { LashEyeName } from '../types'
 import { LashesSectionTitle } from './lashesUi'
 
-/** Zone anchors follow the lash arc while keeping a minimum horizontal gutter for every label. */
+const lashMapAssetWidth = 361
+const lashMapBackgroundScale = 1.48
+
+function backgroundSpaceX(sourceX: number) {
+  return 50 + ((sourceX / lashMapAssetWidth) - 0.5) * 100 * lashMapBackgroundScale
+}
+
+/**
+ * Horizontal anchors come from the source lash-map geometry, then are projected
+ * through the same background scale used by the artwork. Vertical placement keeps
+ * the arc that already matches the working zones.
+ */
 const lashMapZoneCount: number = lashMapPositions
-const lashMapHotspots = Array.from({ length: lashMapZoneCount }, (_, index) => {
+const lashMapSourceXAnchors = [88, 122, 150, 180, 211, 242, 274]
+const lashMapHotspots = lashMapSourceXAnchors.map((sourceX, index) => {
   const progress = lashMapZoneCount === 1 ? 0.5 : index / (lashMapZoneCount - 1)
   const arc = Math.sin(progress * Math.PI)
   return {
     position: 8 + index,
-    left: `${12 + progress * 76}%`,
+    left: `${backgroundSpaceX(sourceX)}%`,
     top: `${68 - arc * 48}%`,
   }
 })
