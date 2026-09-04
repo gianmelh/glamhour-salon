@@ -5,42 +5,38 @@ import { getLashEyeProgress } from '../lashesDetailsValidation'
 import type { LashEyeName } from '../types'
 import { LashesSectionTitle } from './lashesUi'
 
-const lashMapAssetWidth = 361
-const lashMapBackgroundScale = 1.48
-
-function backgroundSpaceX(sourceX: number) {
-  return 50 + ((sourceX / lashMapAssetWidth) - 0.5) * 100 * lashMapBackgroundScale
-}
-
 /**
- * Label anchors are independent from the mirrored artwork so length text stays
- * horizontal while the map geometry flips for each eye.
+ * Separator coordinates match the visible lash-map artwork in percent space.
+ * Labels are calculated from each line midpoint, then offset to the visual left
+ * so text/circles never inherit the mirrored geometry transform.
  */
-const lashMapZoneCount: number = lashMapPositions
-const lashMapLabelXAnchors = [88, 122, 142, 180, 211, 242, 274]
-const lashMapHotspots = lashMapLabelXAnchors.map((sourceX, index) => {
-  const progress = lashMapZoneCount === 1 ? 0.5 : index / (lashMapZoneCount - 1)
-  const arc = Math.sin(progress * Math.PI)
+const lashMapLabelGapPercent = 6
+const lashMapSeparatorLines = [
+  { position: 8, x1: 18, y1: 74, x2: 23, y2: 62 },
+  { position: 9, x1: 31, y1: 57, x2: 36, y2: 45 },
+  { position: 10, x1: 40, y1: 45, x2: 45, y2: 31 },
+  { position: 11, x1: 53, y1: 40, x2: 49, y2: 18 },
+  { position: 12, x1: 63, y1: 40, x2: 63, y2: 16 },
+  { position: 13, x1: 76, y1: 42, x2: 81, y2: 18 },
+  { position: 14, x1: 91, y1: 57, x2: 97, y2: 34 },
+] as const
+
+function hotspotFromSeparatorLine(line: (typeof lashMapSeparatorLines)[number], mirror = false) {
+  const lineMidpointX = ((mirror ? 100 - line.x1 : line.x1) + (mirror ? 100 - line.x2 : line.x2)) / 2
+  const lineMidpointY = (line.y1 + line.y2) / 2
   return {
-    position: 8 + index,
-    left: `${backgroundSpaceX(sourceX)}%`,
-    top: `${68 - arc * 48}%`,
+    position: line.position,
+    left: `${lineMidpointX - lashMapLabelGapPercent}%`,
+    top: `${lineMidpointY}%`,
   }
-})
+}
+const lashMapHotspots = lashMapSeparatorLines.map((line) => hotspotFromSeparatorLine(line))
 
 type LashMapState = Partial<Record<LashEyeName, Array<{ position: number; length: number }>>>
 
-function mirroredPercent(value: string) {
-  const numeric = Number(value.replace('%', ''))
-  return Number.isFinite(numeric) ? `${100 - numeric}%` : value
-}
-
 function hotspotsForEye(eye: LashEyeName) {
   if (eye === 'rightEye') return lashMapHotspots
-  return lashMapHotspots.map((hotspot) => ({
-    ...hotspot,
-    left: mirroredPercent(hotspot.left),
-  }))
+  return lashMapSeparatorLines.map((line) => hotspotFromSeparatorLine(line, true))
 }
 
 function readLashMapEditorState(details: Record<string, unknown>) {
