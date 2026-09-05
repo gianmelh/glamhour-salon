@@ -5,6 +5,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type SyntheticEvent as ReactSyntheticEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { cn } from "../../../../lib/cn";
@@ -14,13 +15,27 @@ import {
 } from "../lashPreviewStickers";
 import "./LashPreviewCanvas.css";
 
-/** Base width as % of photo — eye-sized, much smaller than prior 22.8%. */
-const BASE_WIDTH_PCT = 12;
+/** Base width as % of photo — large enough for direct curve editing on mobile. */
+const BASE_WIDTH_PCT = 18;
 const MIN_SCALE = 0.55;
 const MAX_SCALE = 2.4;
 const DEFAULT_SCALE = 1;
 /** Approximate height budget for clamping (relative to base width). */
 const BASE_HEIGHT_PCT = 5;
+const WARP_POINT_COUNT = 7;
+const WARP_INFLUENCE_RADIUS_PCT = 22;
+const MAX_WARP_X_DELTA_PCT = 28;
+const MAX_WARP_Y_DELTA_PCT = 36;
+const MAX_MOUSE_WARP_POINTER_DISTANCE_PX = 7;
+const MAX_TOUCH_WARP_POINTER_DISTANCE_PX = 18;
+const MIN_WARP_NEIGHBOR_GAP_PCT = 4;
+
+type LashWarpPoint = {
+  xPct: number;
+  yPct: number;
+  /** Compatibility with the previous vertical-offset draft. */
+  yOffsetPct?: number;
+};
 
 type StickerId = "a" | "b";
 
@@ -30,6 +45,7 @@ type StickerState = {
   yPct: number;
   scale: number;
   rotationDeg: number;
+  warpPoints?: LashWarpPoint[];
 };
 
 type StickersState = Record<StickerId, StickerState>;
@@ -70,7 +86,34 @@ type RotateSession = {
   startRotation: number;
 };
 
-type GestureSession = DragSession | PinchSession | ResizeSession | RotateSession;
+type WarpSession = {
+  mode: "warp";
+  id: StickerId;
+  pointIndex: number;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  stickerRect: DOMRect;
+  startPoints: LashWarpPoint[];
+  startRotation: number;
+};
+
+type GestureSession =
+  | DragSession
+  | PinchSession
+  | ResizeSession
+  | RotateSession
+  | WarpSession;
+
+const DEFAULT_WARP_POINTS: LashWarpPoint[] = [
+  { xPct: 4, yPct: 54 },
+  { xPct: 19, yPct: 48 },
+  { xPct: 35, yPct: 43 },
+  { xPct: 50, yPct: 41 },
+  { xPct: 65, yPct: 43 },
+  { xPct: 81, yPct: 48 },
+  { xPct: 96, yPct: 54 },
+];
 
 const DEFAULT_STICKERS: StickersState = {
   a: {
@@ -106,6 +149,88 @@ function clampCenter(xPct: number, yPct: number, scale: number) {
   };
 }
 
+function createDefaultWarpPoints(): LashWarpPoint[] {
+  return DEFAULT_WARP_POINTS.map((point) => ({ ...point }));
+}
+
+function normalizeWarpPoints(
+  points: unknown,
+  fallbackPoints: LashWarpPoint[] = DEFAULT_WARP_POINTS,
+): LashWarpPoint[] {
+  if (!Array.isArray(points) || points.length !== WARP_POINT_COUNT) {
+    return fallbackPoints.map((point) => ({ ...point }));
+  }
+
+  return fallbackPoints.map((fallback, index) => {
+    const point = points[index] as Partial<LashWarpPoint> | undefined;
+    const legacyYPct = Number.isFinite(point?.yOffsetPct)
+      ? 50 + Number(point?.yOffsetPct)
+      : fallback.yPct;
+    return {
+      xPct: clamp(
+        Number.isFinite(point?.xPct) ? Number(point?.xPct) : fallback.xPct,
+        0,
+        100,
+      ),
+      yPct: clamp(
+        Number.isFinite(point?.yPct) ? Number(point?.yPct) : legacyYPct,
+        0,
+        100,
+      ),
+    };
+  });
+}
+
+function clampWarpPoint(
+  index: number,
+  point: LashWarpPoint,
+  anchor: LashWarpPoint,
+  points: LashWarpPoint[],
+) {
+  const previous = points[index - 1];
+  const next = points[index + 1];
+  const minX = Math.max(
+    0,
+    anchor.xPct - MAX_WARP_X_DELTA_PCT,
+    previous ? previous.xPct + MIN_WARP_NEIGHBOR_GAP_PCT : 0,
+  );
+  const maxX = Math.min(
+    100,
+    anchor.xPct + MAX_WARP_X_DELTA_PCT,
+    next ? next.xPct - MIN_WARP_NEIGHBOR_GAP_PCT : 100,
+  );
+
+  return {
+    xPct: clamp(
+      point.xPct,
+      minX,
+      Math.max(minX, maxX),
+    ),
+    yPct: clamp(
+      point.yPct,
+      Math.max(0, anchor.yPct - MAX_WARP_Y_DELTA_PCT),
+      Math.min(100, anchor.yPct + MAX_WARP_Y_DELTA_PCT),
+    ),
+  };
+}
+
+function clientDeltaToStickerPct(
+  rotationDeg: number,
+  rect: DOMRect,
+  deltaX: number,
+  deltaY: number,
+) {
+  const radians = (-rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const localX = deltaX * cos - deltaY * sin;
+  const localY = deltaX * sin + deltaY * cos;
+  return {
+    xPct: (localX / Math.max(rect.width, 1)) * 100,
+    yPct: (localY / Math.max(rect.height, 1)) * 100,
+  };
+}
+
 function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -130,6 +255,258 @@ function isStickersState(value: unknown): value is StickersState {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   return Boolean(record.a && record.b);
+}
+
+type MeshPoint = {
+  x: number;
+  y: number;
+};
+
+function pointPctToPx(point: LashWarpPoint, width: number, height: number) {
+  return {
+    x: (point.xPct / 100) * width,
+    y: (point.yPct / 100) * height,
+  };
+}
+
+function detectLashControlPoints(image: HTMLImageElement): LashWarpPoint[] {
+  const width = image.naturalWidth;
+  const height = image.naturalHeight;
+  if (width <= 0 || height <= 0) return createDefaultWarpPoints();
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return createDefaultWarpPoints();
+
+  context.drawImage(image, 0, 0);
+  const { data } = context.getImageData(0, 0, width, height);
+  let minX = width - 1;
+  let maxX = 0;
+  let hasPixels = false;
+
+  for (let x = 0; x < width; x += 1) {
+    for (let y = 0; y < height; y += 1) {
+      const alpha = data[(y * width + x) * 4 + 3];
+      if (alpha < 24) continue;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      hasPixels = true;
+      break;
+    }
+  }
+
+  if (!hasPixels || maxX <= minX) return createDefaultWarpPoints();
+
+  const pathPoints: MeshPoint[] = [];
+  const step = Math.max(1, Math.floor((maxX - minX) / 90));
+  const sampleWindow = Math.max(3, Math.floor(width / 80));
+
+  for (let targetX = minX; targetX <= maxX; targetX += step) {
+    const sampleMinX = Math.max(0, targetX - sampleWindow);
+    const sampleMaxX = Math.min(width - 1, targetX + sampleWindow);
+    let alphaTotal = 0;
+    let weightedX = 0;
+    let weightedY = 0;
+
+    for (let x = sampleMinX; x <= sampleMaxX; x += 1) {
+      for (let y = 0; y < height; y += 1) {
+        const alpha = data[(y * width + x) * 4 + 3];
+        if (alpha < 24) continue;
+        alphaTotal += alpha;
+        weightedX += x * alpha;
+        weightedY += y * alpha;
+      }
+    }
+
+    if (alphaTotal <= 0) continue;
+    pathPoints.push({
+      x: weightedX / alphaTotal,
+      y: weightedY / alphaTotal,
+    });
+  }
+
+  if (pathPoints.length < 2) return createDefaultWarpPoints();
+
+  const distances = [0];
+  for (let index = 1; index < pathPoints.length; index += 1) {
+    distances[index] =
+      distances[index - 1] + distance(pathPoints[index - 1], pathPoints[index]);
+  }
+  const totalDistance = distances[distances.length - 1];
+  if (totalDistance <= 0) return createDefaultWarpPoints();
+
+  return Array.from({ length: WARP_POINT_COUNT }, (_, pointIndex) => {
+    const targetDistance =
+      (pointIndex / Math.max(WARP_POINT_COUNT - 1, 1)) * totalDistance;
+    let segmentIndex = 1;
+    while (
+      segmentIndex < distances.length - 1 &&
+      distances[segmentIndex] < targetDistance
+    ) {
+      segmentIndex += 1;
+    }
+
+    const start = pathPoints[segmentIndex - 1];
+    const end = pathPoints[segmentIndex];
+    const startDistance = distances[segmentIndex - 1];
+    const segmentLength = Math.max(distances[segmentIndex] - startDistance, 1);
+    const progress = clamp(
+      (targetDistance - startDistance) / segmentLength,
+      0,
+      1,
+    );
+    const x = start.x + (end.x - start.x) * progress;
+    const y = start.y + (end.y - start.y) * progress;
+
+    return {
+      xPct: clamp((x / width) * 100, 0, 100),
+      yPct: clamp((y / height) * 100, 0, 100),
+    };
+  });
+}
+
+function drawWarpedImage(
+  canvas: HTMLCanvasElement,
+  image: HTMLImageElement,
+  anchors: LashWarpPoint[],
+  controlPoints: LashWarpPoint[],
+) {
+  const width = image.naturalWidth;
+  const height = image.naturalHeight;
+  if (width <= 0 || height <= 0) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = width;
+  sourceCanvas.height = height;
+  const sourceContext = sourceCanvas.getContext("2d", {
+    willReadFrequently: true,
+  });
+  if (!sourceContext) return;
+  sourceContext.drawImage(image, 0, 0);
+
+  const source = sourceContext.getImageData(0, 0, width, height);
+  const output = context.createImageData(canvas.width, canvas.height);
+  const maxSourceX = width - 1;
+  const maxSourceY = height - 1;
+
+  for (let destY = 0; destY < canvas.height; destY += 1) {
+    for (let destX = 0; destX < canvas.width; destX += 1) {
+      const logicalX = destX / dpr;
+      const logicalY = destY / dpr;
+      let inverseDx = 0;
+      let inverseDy = 0;
+
+      anchors.forEach((anchor, index) => {
+        const control = controlPoints[index];
+        if (!control) return;
+        const anchorPx = pointPctToPx(anchor, width, height);
+        const controlPx = pointPctToPx(control, width, height);
+        const dx = controlPx.x - anchorPx.x;
+        const dy = controlPx.y - anchorPx.y;
+        if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
+
+        const distancePct = Math.hypot(
+          ((logicalX - controlPx.x) / width) * 100,
+          ((logicalY - controlPx.y) / height) * 100,
+        );
+        const influence = Math.exp(
+          -(distancePct * distancePct) /
+            (2 * WARP_INFLUENCE_RADIUS_PCT * WARP_INFLUENCE_RADIUS_PCT),
+        );
+        inverseDx += dx * influence;
+        inverseDy += dy * influence;
+      });
+
+      const sourceX = clamp(logicalX - inverseDx, 0, maxSourceX);
+      const sourceY = clamp(logicalY - inverseDy, 0, maxSourceY);
+      const x0 = Math.floor(sourceX);
+      const y0 = Math.floor(sourceY);
+      const x1 = Math.min(x0 + 1, maxSourceX);
+      const y1 = Math.min(y0 + 1, maxSourceY);
+      const tx = sourceX - x0;
+      const ty = sourceY - y0;
+      const destIndex = (destY * canvas.width + destX) * 4;
+
+      for (let channel = 0; channel < 4; channel += 1) {
+        const topLeft = source.data[(y0 * width + x0) * 4 + channel];
+        const topRight = source.data[(y0 * width + x1) * 4 + channel];
+        const bottomLeft = source.data[(y1 * width + x0) * 4 + channel];
+        const bottomRight = source.data[(y1 * width + x1) * 4 + channel];
+        const top = topLeft + (topRight - topLeft) * tx;
+        const bottom = bottomLeft + (bottomRight - bottomLeft) * tx;
+        output.data[destIndex + channel] = top + (bottom - top) * ty;
+      }
+    }
+  }
+
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.putImageData(output, 0, 0);
+}
+
+function LashStickerMesh({
+  src,
+  anchors,
+  controlPoints,
+  onAnchorsChange,
+}: {
+  src: string;
+  anchors: LashWarpPoint[];
+  controlPoints: LashWarpPoint[];
+  onAnchorsChange: (next: LashWarpPoint[]) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const pointsKey = controlPoints
+    .map((point) => `${point.xPct.toFixed(2)},${point.yPct.toFixed(2)}`)
+    .join("|");
+  const anchorsKey = anchors
+    .map((point) => `${point.xPct.toFixed(2)},${point.yPct.toFixed(2)}`)
+    .join("|");
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const image = imageRef.current;
+    if (!canvas || !image || !image.complete) return;
+    drawWarpedImage(canvas, image, anchors, controlPoints);
+  }, [src, pointsKey, anchorsKey, anchors, controlPoints]);
+
+  const onImageLoad = (event: ReactSyntheticEvent<HTMLImageElement>) => {
+    const image = event.currentTarget;
+    const nextAnchors = detectLashControlPoints(image);
+    onAnchorsChange(nextAnchors);
+    const canvas = canvasRef.current;
+    if (canvas) {
+      drawWarpedImage(
+        canvas,
+        image,
+        nextAnchors,
+        normalizeWarpPoints(controlPoints, nextAnchors),
+      );
+    }
+  };
+
+  return (
+    <div className="lash-preview-sticker-mesh" aria-hidden="true">
+      <img
+        alt=""
+        className="lash-preview-sticker-mesh-base"
+        draggable={false}
+        onLoad={onImageLoad}
+        ref={imageRef}
+        src={src}
+      />
+      <canvas className="lash-preview-sticker-canvas" ref={canvasRef} />
+    </div>
+  );
 }
 
 export function LashPreviewCanvas({
@@ -166,8 +543,13 @@ export function LashPreviewCanvas({
   const [stickers, setStickers] = useState<StickersState>(() =>
     isStickersState(initialStickers) ? initialStickers : createDefaultStickers(),
   );
+  const [stickerAnchors, setStickerAnchors] = useState<Record<StickerId, LashWarpPoint[]>>({
+    a: createDefaultWarpPoints(),
+    b: createDefaultWarpPoints(),
+  });
   const [selectedId, setSelectedId] = useState<StickerId | null>(null);
   const [activeId, setActiveId] = useState<StickerId | null>(null);
+  const stickerAnchorsRef = useRef(stickerAnchors);
 
   const assets = getLashPreviewStickerSet(style, variant);
 
@@ -200,6 +582,10 @@ export function LashPreviewCanvas({
   }, [stickers]);
 
   useEffect(() => {
+    stickerAnchorsRef.current = stickerAnchors;
+  }, [stickerAnchors]);
+
+  useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
@@ -208,6 +594,10 @@ export function LashPreviewCanvas({
     if (combo === lastCombo.current) return;
     lastCombo.current = combo;
     const next = createDefaultStickers();
+    setStickerAnchors({
+      a: createDefaultWarpPoints(),
+      b: createDefaultWarpPoints(),
+    });
     commitStickers(next);
     clearSelection();
   }, [style, variant]);
@@ -222,33 +612,38 @@ export function LashPreviewCanvas({
     if (swapNonce === lastSwapNonce.current) return;
     lastSwapNonce.current = swapNonce;
     clearSelection();
-    setStickers((current) => {
-      const flip = (side: LashPreviewSide): LashPreviewSide =>
-        side === "left" ? "right" : "left";
-      // Mirror across the photo and exchange left↔right assets, scales, and
-      // rotations without resetting to the default layout.
-      const posA = clampCenter(100 - current.a.xPct, current.a.yPct, current.b.scale);
-      const posB = clampCenter(100 - current.b.xPct, current.b.yPct, current.a.scale);
-      const next: StickersState = {
-        a: {
-          assetSide: flip(current.a.assetSide),
-          xPct: posA.xPct,
-          yPct: posA.yPct,
-          scale: current.b.scale,
-          rotationDeg: -current.b.rotationDeg,
-        },
-        b: {
-          assetSide: flip(current.b.assetSide),
-          xPct: posB.xPct,
-          yPct: posB.yPct,
-          scale: current.a.scale,
-          rotationDeg: -current.a.rotationDeg,
-        },
-      };
-      stickersRef.current = next;
-      onStickersChangeRef.current?.(next);
-      return next;
-    });
+    const current = stickersRef.current;
+    const flip = (side: LashPreviewSide): LashPreviewSide =>
+      side === "left" ? "right" : "left";
+    // Mirror across the photo and exchange left↔right assets, scales, and
+    // rotations without resetting to the default layout.
+    const posA = clampCenter(100 - current.a.xPct, current.a.yPct, current.b.scale);
+    const posB = clampCenter(100 - current.b.xPct, current.b.yPct, current.a.scale);
+    const next: StickersState = {
+      a: {
+        assetSide: flip(current.a.assetSide),
+        xPct: posA.xPct,
+        yPct: posA.yPct,
+        scale: current.b.scale,
+        rotationDeg: -current.b.rotationDeg,
+        warpPoints: current.b.warpPoints
+          ? normalizeWarpPoints(current.b.warpPoints, stickerAnchorsRef.current.b)
+          : undefined,
+      },
+      b: {
+        assetSide: flip(current.b.assetSide),
+        xPct: posB.xPct,
+        yPct: posB.yPct,
+        scale: current.a.scale,
+        rotationDeg: -current.a.rotationDeg,
+        warpPoints: current.a.warpPoints
+          ? normalizeWarpPoints(current.a.warpPoints, stickerAnchorsRef.current.a)
+          : undefined,
+      },
+    };
+    stickersRef.current = next;
+    setStickers(next);
+    onStickersChangeRef.current?.(next);
   }, [swapNonce]);
 
   // Tap/click outside the preview editor (photo + size controls) clears selection.
@@ -285,22 +680,26 @@ export function LashPreviewCanvas({
 
   const updateSticker = (id: StickerId, patch: Partial<StickerState>, options: { persist?: boolean } = {}) => {
     const shouldPersist = options.persist ?? true;
-    setStickers((current) => {
-      const merged = { ...current[id], ...patch };
-      const clampedPos = clampCenter(merged.xPct, merged.yPct, merged.scale);
-      const next = {
-        ...current,
-        [id]: {
-          ...merged,
-          ...clampedPos,
-          scale: clampScale(merged.scale),
-          rotationDeg: normalizeRotation(merged.rotationDeg),
-        },
-      };
-      stickersRef.current = next;
-      if (shouldPersist) onStickersChangeRef.current?.(next);
-      return next;
-    });
+    const current = stickersRef.current;
+    const merged = { ...current[id], ...patch };
+    const clampedScale = clampScale(merged.scale);
+    const clampedPos = clampCenter(merged.xPct, merged.yPct, clampedScale);
+    const normalizedWarpPoints = merged.warpPoints
+      ? normalizeWarpPoints(merged.warpPoints, stickerAnchorsRef.current[id])
+      : undefined;
+    const next: StickersState = {
+      ...current,
+      [id]: {
+        ...merged,
+        ...clampedPos,
+        scale: clampedScale,
+        rotationDeg: normalizeRotation(merged.rotationDeg),
+        warpPoints: normalizedWarpPoints,
+      },
+    };
+    stickersRef.current = next;
+    setStickers(next);
+    if (shouldPersist) onStickersChangeRef.current?.(next);
   };
 
   const beginDrag = (
@@ -428,6 +827,59 @@ export function LashPreviewCanvas({
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
+  const beginWarpPoint = (
+    id: StickerId,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const stickerEl = event.currentTarget.closest(".lash-preview-sticker");
+    if (!(stickerEl instanceof HTMLElement)) return;
+    const state = stickersRef.current[id];
+    const anchors = stickerAnchorsRef.current[id];
+    const points = normalizeWarpPoints(state.warpPoints, anchors);
+    const rect = stickerEl.getBoundingClientRect();
+    const nearest = points.reduce(
+      (best, point, index) => {
+        const x = rect.left + (point.xPct / 100) * rect.width;
+        const y = rect.top + (point.yPct / 100) * rect.height;
+        const distanceFromPointer = Math.hypot(
+          event.clientX - x,
+          event.clientY - y,
+        );
+        return distanceFromPointer < best.distance
+          ? { index, distance: distanceFromPointer }
+          : best;
+      },
+      { index: -1, distance: Number.POSITIVE_INFINITY },
+    );
+
+    const maxPointerDistance =
+      event.pointerType === "touch"
+        ? MAX_TOUCH_WARP_POINTER_DISTANCE_PX
+        : MAX_MOUSE_WARP_POINTER_DISTANCE_PX;
+
+    if (nearest.index < 0 || nearest.distance > maxPointerDistance) {
+      beginDrag(id, event);
+      return;
+    }
+
+    gestureRef.current = {
+      mode: "warp",
+      id,
+      pointIndex: nearest.index,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      stickerRect: rect,
+      startPoints: points,
+      startRotation: state.rotationDeg,
+    };
+    selectSticker(id);
+    setActiveId(id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
   const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     if (canvasPinchRef.current) return;
     const gesture = gestureRef.current;
@@ -462,6 +914,27 @@ export function LashPreviewCanvas({
       updateSticker(gesture.id, {
         rotationDeg: normalizeRotation(gesture.startRotation + (nextAngle - gesture.startAngle)),
       }, { persist: false });
+      return;
+    }
+
+    if (gesture.mode === "warp") {
+      if (gesture.pointerId !== event.pointerId) return;
+      const delta = clientDeltaToStickerPct(
+        gesture.startRotation,
+        gesture.stickerRect,
+        event.clientX - gesture.startClientX,
+        event.clientY - gesture.startClientY,
+      );
+      const anchors = stickerAnchorsRef.current[gesture.id];
+      const nextPoints = gesture.startPoints.map((point, index) =>
+        index === gesture.pointIndex
+          ? clampWarpPoint(index, {
+              xPct: point.xPct + delta.xPct,
+              yPct: point.yPct + delta.yPct,
+            }, anchors[index] ?? point, gesture.startPoints)
+          : point,
+      );
+      updateSticker(gesture.id, { warpPoints: nextPoints }, { persist: false });
       return;
     }
 
@@ -694,6 +1167,8 @@ export function LashPreviewCanvas({
         />
         {(["a", "b"] as const).map((id) => {
           const state = stickers[id];
+          const anchorPoints = stickerAnchors[id] ?? DEFAULT_WARP_POINTS;
+          const warpPoints = normalizeWarpPoints(state.warpPoints, anchorPoints);
           const widthPct = BASE_WIDTH_PCT * state.scale;
           const isSelected = selectedId === id;
           const stylePos: CSSProperties = {
@@ -732,19 +1207,37 @@ export function LashPreviewCanvas({
               }}
               tabIndex={0}
             >
-              <img
-                alt=""
-                className="pointer-events-none h-auto w-full select-none bg-transparent object-contain"
-                draggable={false}
-                src={assets[state.assetSide]}
-                style={{
-                  background: "transparent",
-                  backgroundColor: "transparent",
-                  boxShadow: "none",
+              <LashStickerMesh
+                anchors={anchorPoints}
+                controlPoints={warpPoints}
+                onAnchorsChange={(nextAnchors) => {
+                  setStickerAnchors((current) => ({
+                    ...current,
+                    [id]: nextAnchors,
+                  }));
                 }}
+                src={assets[state.assetSide]}
               />
               {isSelected && (
                 <>
+                  <div
+                    className="lash-preview-warp-points"
+                    onPointerCancel={endPointer}
+                    onPointerDown={(event) => beginWarpPoint(id, event)}
+                    onPointerMove={onPointerMove}
+                    onPointerUp={endPointer}
+                  >
+                    {warpPoints.map((point, pointIndex) => (
+                      <span
+                        className="lash-preview-warp-point"
+                        key={pointIndex}
+                        style={{
+                          left: `${point.xPct}%`,
+                          top: `${point.yPct}%`,
+                        }}
+                      />
+                    ))}
+                  </div>
                   <button
                     aria-label={`Resize ${state.assetSide} eye lash sticker`}
                     className="lash-preview-transform-handle lash-preview-resize-handle"

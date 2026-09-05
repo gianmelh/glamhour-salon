@@ -11,6 +11,10 @@ export type LashPreviewStickerTransform = {
   yPct: number
   scale: number
   rotationDeg: number
+  warpPoints?: Array<{
+    xPct: number
+    yPct: number
+  }>
 }
 
 /** Persisted Preview try-on transforms (shared Lashes details state). */
