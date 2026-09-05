@@ -40,33 +40,56 @@ const lashMapSeparatorCenters = [
   { position: 14, x: 84.5, y: 57, offsetX: -6 },
 ] as const;
 
-function hotspotFromSeparator(
-  separator: (typeof lashMapSeparatorCenters)[number],
-  mirror = false,
-) {
+const leftLashMapSeparatorCenters = [
+  // 8: un poco más arriba y un poco más a la derecha
+  { position: 8, x: 6.5, y: 51, offsetX: 4 },
+
+  // 9: ligeramente más a la derecha
+  { position: 9, x: 10.5, y: 40, offsetX: 10 },
+
+  // 10: MUCHO más a la derecha para separarlo del 11
+  { position: 10, x: 29.5, y: 30, offsetX: -18 },
+
+  // 11: mantener a la derecha de la línea central,
+  // pero más cerca de ella
+  { position: 11, x: 42.5, y: 24, offsetX: -8 },
+
+  // 12: está bien; solo bajar mínimamente
+  { position: 12, x: 54.0, y: 27, offsetX: -8 },
+
+  // 13: casi bien; acercarlo apenas a su línea
+  { position: 13, x: 69.5, y: 37, offsetX: 0 },
+
+  // 14: acercarlo un poco más y bajar apenas
+  { position: 14, x: 84.5, y: 53, offsetX: -2 },
+] as const;
+
+type LashMapSeparator = {
+  position: number;
+  x: number;
+  y: number;
+  offsetX: number;
+};
+
+function hotspotFromSeparator(separator: LashMapSeparator, mirror = false) {
   const centerX = mirror ? 100 - separator.x : separator.x;
 
   return {
     position: separator.position,
-
-    // Always place the circle on the VISUAL LEFT
-    // of its corresponding separator line.
     left: `calc(${centerX}% - ${separator.offsetX}px)`,
-
     top: `${separator.y}%`,
   };
 }
-
-const lashMapHotspots = lashMapSeparatorCenters.map((separator) =>
+const rightLashMapHotspots = lashMapSeparatorCenters.map((separator) =>
   hotspotFromSeparator(separator),
 );
 
-function hotspotsForEye(eye: LashEyeName) {
-  if (eye === "rightEye") return lashMapHotspots;
+const leftLashMapHotspots = leftLashMapSeparatorCenters.map((separator) =>
+  hotspotFromSeparator(separator, true),
+);
 
-  return lashMapSeparatorCenters.map((separator) =>
-    hotspotFromSeparator(separator, true),
-  );
+function hotspotsForEye(eye: LashEyeName) {
+  return eye === "rightEye" ? rightLashMapHotspots : leftLashMapHotspots;
 }
 
 type LashMapState = Partial<
