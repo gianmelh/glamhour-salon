@@ -11,7 +11,7 @@ function useResolvedSalonId(salonId?: string) {
 }
 
 function fallbackForSalon<T>(resolvedSalonId: string, fallback: T) {
-  return resolvedSalonId === fallbackSalon.id ? fallback : undefined
+  return resolvedSalonId === fallbackSalon.id || resolvedSalonId.startsWith('local-salon-') ? fallback : undefined
 }
 
 export const useSalon = (salonId?: string) => {

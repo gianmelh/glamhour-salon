@@ -37,6 +37,58 @@ type RegistrationState = {
 
 const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim();
 
+function canUseManualLocationFallback() {
+  return (
+    import.meta.env.DEV ||
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1" ||
+    window.location.hostname === "::1"
+  );
+}
+
+function isLocalNetworkFailure(error: unknown) {
+  return (
+    canUseManualLocationFallback() &&
+    error instanceof TypeError &&
+    error.message.toLowerCase().includes("fetch")
+  );
+}
+
+function createLocalRegistrationResult(draft: SignUpForm): RegisterSalonResult {
+  const now = new Date().toISOString();
+  const localSalonId = `local-salon-${Date.now()}`;
+
+  return {
+    user: {
+      id: `local-user-${Date.now()}`,
+      email: draft.email.trim() || "local@gianmelh.dev",
+      full_name: draft.ownerFullName || draft.salonName.trim(),
+    },
+    salon: {
+      id: localSalonId,
+      name: draft.salonName.trim(),
+      slug: draft.salonName
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "") || localSalonId,
+      email: draft.email.trim() || null,
+      phone: null,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      currency_code: "USD",
+      locale: "en-US",
+      city: null,
+      region: null,
+      verification_status: "local",
+      onboarding_status: "pending",
+      booking_enabled: false,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    },
+  };
+}
+
 function getAccountErrors(draft: SignUpForm) {
   const errors: RegistrationErrors = {};
 
@@ -79,7 +131,8 @@ export function RegistrationPage() {
   const [salonLocation, setSalonLocation] = useState("");
   const [selectedPlaceId, setSelectedPlaceId] = useState("");
   const [mapsError, setMapsError] = useState("");
-  const [mapsLoading, setMapsLoading] = useState(Boolean(googleMapsApiKey));
+  const useGoogleMapsLocation = Boolean(googleMapsApiKey) && !canUseManualLocationFallback();
+  const [mapsLoading, setMapsLoading] = useState(useGoogleMapsLocation);
   const [submitted, setSubmitted] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [registrationError, setRegistrationError] = useState("");
@@ -136,8 +189,14 @@ export function RegistrationPage() {
   ]);
 
   useEffect(() => {
+    if (!useGoogleMapsLocation) {
+      setMapsLoading(false);
+      setMapsError("");
+      return;
+    }
+
     const container = locationAutocompleteRef.current;
-    if (!container || !googleMapsApiKey) {
+    if (!container || !googleMapsApiKey || !useGoogleMapsLocation) {
       return;
     }
 
@@ -178,7 +237,7 @@ export function RegistrationPage() {
       isMounted = false;
       cleanupAutocomplete?.();
     };
-  }, []);
+  }, [useGoogleMapsLocation]);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0] ?? null;
@@ -313,6 +372,19 @@ export function RegistrationPage() {
       setCreatedAccount(result);
       setCreated(true);
     } catch (error) {
+      if (isLocalNetworkFailure(error)) {
+        const result = createLocalRegistrationResult(nextDraft);
+
+        window.sessionStorage.setItem(
+          "glamhour:active-salon-id",
+          result.salon.id
+        );
+        clearSignUpDraft();
+        setCreatedAccount(result);
+        setCreated(true);
+        return;
+      }
+
       setRegistrationError(
         error instanceof ApiClientError
           ? error.message
@@ -496,7 +568,7 @@ export function RegistrationPage() {
 
               <label className="block text-[11px] font-medium text-[#242a39]">
                 Salon Location
-                {googleMapsApiKey && !mapsError ? (
+                {useGoogleMapsLocation && !mapsError ? (
                   <span
                     className={[
                       "relative mt-1 block rounded-lg border bg-white pl-9 text-[12px] text-[#1b2133] shadow-sm transition",
@@ -530,6 +602,7 @@ export function RegistrationPage() {
                       onChange={(event) => {
                         setSalonLocation(event.target.value);
                         setSelectedPlaceId("");
+                        setMapsError("");
                       }}
                       placeholder="Search salon location..."
                       value={salonLocation}
@@ -538,11 +611,11 @@ export function RegistrationPage() {
                 )}
               </label>
               <p className="-mt-2 text-[10px] text-[#8b92a1]">
-                {googleMapsApiKey
+                {useGoogleMapsLocation
                   ? "We use Google Maps to verify your salon's location."
                   : "Google Maps verification is temporarily disabled."}
               </p>
-              {mapsError && (
+              {useGoogleMapsLocation && mapsError && (
                 <p className="-mt-2 text-[11px] text-[#ff3b4f]">{mapsError}</p>
               )}
               {errors.location && (

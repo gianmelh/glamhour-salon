@@ -200,6 +200,10 @@ function storageKey(salonId?: string) {
   return `glamhour:onboarding:${salonId ?? 'draft'}`
 }
 
+function isLocalSalonId(salonId?: string) {
+  return Boolean(salonId?.startsWith('local-salon-'))
+}
+
 function readStoredDraft(salonId?: string) {
   try {
     const savedDraft = window.localStorage.getItem(storageKey(salonId))
@@ -549,11 +553,15 @@ export function SetupPage() {
     setIsSaving(true)
     setSaveError('')
     try {
-      await glamhourApi.saveOnboarding({
-        step: persistedOnboardingStep(nextStep),
-        completed,
-        draft,
-      }, salonId)
+      if (isLocalSalonId(salonId)) {
+        window.localStorage.setItem(storageKey(salonId), JSON.stringify(draft))
+      } else {
+        await glamhourApi.saveOnboarding({
+          step: persistedOnboardingStep(nextStep),
+          completed,
+          draft,
+        }, salonId)
+      }
     } catch (error) {
       setSaveError(
         error instanceof ApiClientError
