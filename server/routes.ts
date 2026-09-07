@@ -166,6 +166,11 @@ router.get('/salons/by-slug/:slug', asyncHandler(async (request, response) => {
   response.json({ data: await dataService.getSalonBySlug(slug) })
 }))
 
+router.get('/public-booking/:slug', asyncHandler(async (request, response) => {
+  const { slug } = validate(z.object({ slug: z.string().min(1) }), request.params)
+  response.json({ data: await dataService.getPublicBooking(slug) })
+}))
+
 router.get('/salons/:salonId', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
   response.json({ data: await dataService.getSalon(salonId) })

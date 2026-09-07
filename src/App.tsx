@@ -6,6 +6,7 @@ import { LegalPage } from './pages/auth/LegalPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegistrationPage } from './pages/auth/RegistrationPage'
 import { SignUpPage } from './pages/auth/SignUpPage'
+import { PublicBookingPage } from './pages/public/PublicBookingPage'
 import { AppointmentDetailsPage } from './pages/app/AppointmentDetailsPage'
 import { AppointmentsPage } from './pages/app/AppointmentsPage'
 import { CalendarPage } from './pages/app/CalendarPage'
@@ -56,6 +57,9 @@ function App() {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/services/nails" element={<NailSettingsPage />} />
       </Route>
+
+      <Route path="book/:salonSlug" element={<PublicBookingPage />} />
+      <Route path=":salonSlug" element={<PublicBookingPage />} />
 
       <Route path="*" element={<Navigate replace to="/" />} />
     </Routes>

@@ -7,9 +7,11 @@ import type {
   RequestPasswordResetInput, RequestPasswordResetResult, RescheduleAppointmentInput, Salon, SalonSettings,
   SalesHistoryItem, SalesHistoryResponse, SaveOnboardingInput, Service, ServiceCategory, UpdateSettingsInput, VerifyPasswordResetCodeInput,
   VerifyPasswordResetCodeResult,
+  PublicBookingPayload,
 } from '../types/api'
 
 export const SALON_ID = import.meta.env.VITE_SALON_ID ?? '10000000-0000-0000-0000-000000000001'
+export const PUBLIC_BOOKING_BASE_URL = (import.meta.env.VITE_PUBLIC_BOOKING_BASE_URL ?? 'https://glamhour.app').replace(/\/+$/, '')
 
 const activeSalonSessionKey = 'glamhour:active-salon-id'
 
@@ -57,12 +59,13 @@ export const glamhourApi = {
   registerGoogleSalon: (input: RegisterGoogleSalonInput) => apiRequest<RegisterSalonResult>('/auth/google/register', { method: 'POST', body: JSON.stringify(input) }),
   registerFacebookSalon: (input: RegisterFacebookSalonInput) => apiRequest<RegisterSalonResult>('/auth/facebook/register', { method: 'POST', body: JSON.stringify(input) }),
   registerAppleSalon: (input: RegisterAppleSalonInput) => apiRequest<RegisterSalonResult>('/auth/apple/register', { method: 'POST', body: JSON.stringify(input) }),
+  publicBooking: (slug: string) => apiRequest<PublicBookingPayload>(`/public-booking/${encodeURIComponent(slug)}`),
   salon: (salonId?: string) => apiRequest<Salon>(`/salons/${resolveSalonId(salonId)}`),
   dashboard: (salonId?: string, date?: string) => apiRequest<DashboardSummary>(`/salons/${resolveSalonId(salonId)}/dashboard${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   appointments: (salonId?: string) => apiRequest<Appointment[]>(`/salons/${resolveSalonId(salonId)}/appointments?limit=100`),
   appointment: (id: string, salonId?: string) => apiRequest<Appointment>(`/salons/${resolveSalonId(salonId)}/appointments/${id}`),
   clients: (salonId?: string) => apiRequest<Client[]>(`/salons/${resolveSalonId(salonId)}/clients?limit=100`),
-  services: (salonId?: string) => apiRequest<Service[]>(`/salons/${resolveSalonId(salonId)}/services?limit=100`),
+  services: (salonId?: string, options?: { publicOnly?: boolean }) => apiRequest<Service[]>(`/salons/${resolveSalonId(salonId)}/services${queryString({ limit: 100, publicOnly: options?.publicOnly ? 'true' : undefined })}`),
   categories: (salonId?: string, options?: { includeAll?: boolean }) => apiRequest<ServiceCategory[]>(`/service-categories${queryString({ salonId: resolveSalonId(salonId), includeAll: options?.includeAll ? 'true' : undefined })}`),
   appointmentCategories: (salonId?: string) => apiRequest<AppointmentCategory[]>(`/salons/${resolveSalonId(salonId)}/appointment-categories`),
   healthProfile: (clientId: string, category: string, salonId?: string) => apiRequest<HealthProfileVersion | null>(`/salons/${resolveSalonId(salonId)}/clients/${clientId}/health-profiles/${category}`),

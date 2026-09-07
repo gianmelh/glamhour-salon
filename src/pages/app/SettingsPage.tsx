@@ -1,14 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarDays, ChevronRight, CreditCard, LogOut, Plus, Save, Scissors, UsersRound } from 'lucide-react'
-import { Avatar, Badge, Button, Card, DataSourceNotice, ErrorState, LoadingState, PageTitle } from '../../components'
+import { CalendarDays, ChevronRight, CreditCard, LogOut, MessageCircle, MessageSquare, Plus, Save, Scissors, UsersRound } from 'lucide-react'
+import { Avatar, Badge, Button, Card, DataSourceNotice, ErrorState, Input, LoadingState, PageTitle } from '../../components'
 import { ScreenSection } from '../../components/screen/ScreenSection'
 import { MutationError } from '../../components/screen/MutationError'
 import { useNailSettings, useNotifications, useProfessionals, useSalon, useServiceCategories, useServices, useSettings } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { glamhourApi } from '../../services/glamhour-api'
 import { cn } from '../../lib/cn'
+import { mergePublicBookingShareSettings, publicBookingShareSettings } from '../../lib/public-booking-settings'
 
 const categoryDescriptions: Record<string, string> = {
   nails: 'Manicures, pedicures, acrylics, and nail art.',
@@ -18,7 +19,12 @@ const categoryDescriptions: Record<string, string> = {
 }
 
 export function SettingsPage() {
-  const [tab, setTab] = useState<'account' | 'salon'>('salon')
+  const [tab, setTab] = useState<'account' | 'salon'>(() => (
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('publicBooking') === '1'
+      ? 'account'
+      : 'salon'
+  ))
+  const [shareForm, setShareForm] = useState(publicBookingShareSettings(undefined))
   const salon = useSalon()
   const settings = useSettings()
   const professionals = useProfessionals()
@@ -28,6 +34,11 @@ export function SettingsPage() {
   const services = useServices()
   const mutation = useMutation(glamhourApi.updateSettings)
 
+  useEffect(() => {
+    if (!settings.data) return
+    setShareForm(publicBookingShareSettings(settings.data.settings_json))
+  }, [settings.data])
+
   if (salon.loading || settings.loading || categories.loading || services.loading) return <LoadingState label="Loading settings..." />
   if (!salon.data || !settings.data || !categories.data || !services.data) return <ErrorState description="Settings could not be loaded." onRetry={() => { salon.retry(); settings.retry(); categories.retry(); services.retry() }} />
 
@@ -36,7 +47,10 @@ export function SettingsPage() {
   const serviceData = services.data
   const setupState = { salonId: salon.data.id, salonName: salon.data.name }
   const savePublicBooking = async () => {
-    const updated = await mutation.mutate({ allowPublicBooking: !settingsData.allow_public_booking })
+    const updated = await mutation.mutate({
+      allowPublicBooking: true,
+      settingsJson: mergePublicBookingShareSettings(settingsData.settings_json, shareForm),
+    })
     settings.setData(updated)
   }
 
@@ -68,13 +82,46 @@ export function SettingsPage() {
             </div>
             <Badge tone="primary">Owner</Badge>
           </Card>
-          <Card className="flex items-center gap-3" tone="lavender">
-            <span className="grid size-11 place-items-center rounded-md bg-surface text-primary"><CreditCard className="size-5" /></span>
-            <div className="flex-1">
-              <p className="text-sm font-semibold">Public booking</p>
-              <p className="text-xs text-muted">{settingsData.allow_public_booking ? 'Clients can use your booking link' : 'Booking link is disabled'}</p>
+          <Card className="space-y-4" id="public-booking" tone="lavender">
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-md bg-surface text-primary"><CreditCard className="size-5" /></span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Public booking</p>
+                <p className="text-xs text-muted">{settingsData.allow_public_booking ? 'Clients can use your booking link' : 'Save these details to activate your booking link'}</p>
+              </div>
+              <Badge tone={settingsData.allow_public_booking ? 'success' : 'warning'}>{settingsData.allow_public_booking ? 'Enabled' : 'Disabled'}</Badge>
             </div>
-            <Button loading={mutation.loading} onClick={savePublicBooking} size="sm" variant="outline"><Save className="size-4" /> {settingsData.allow_public_booking ? 'Disable' : 'Enable'}</Button>
+            <div className="grid gap-3">
+              <Input
+                label="WhatsApp number"
+                leadingIcon={<MessageCircle className="size-4" />}
+                onChange={(event) => setShareForm((current) => ({ ...current, whatsappPhone: event.target.value }))}
+                placeholder="+1 305 555 0100"
+                value={shareForm.whatsappPhone}
+              />
+              <Input
+                label="SMS / Message number"
+                leadingIcon={<MessageSquare className="size-4" />}
+                onChange={(event) => setShareForm((current) => ({ ...current, smsPhone: event.target.value }))}
+                placeholder="+1 305 555 0100"
+                value={shareForm.smsPhone}
+              />
+              <Input
+                label="Facebook link"
+                leadingIcon={<img alt="" className="size-4" src="/Glamhour - Assets/Salon link/Icon-2.svg" />}
+                onChange={(event) => setShareForm((current) => ({ ...current, facebookUrl: event.target.value }))}
+                placeholder="https://facebook.com/your-salon"
+                value={shareForm.facebookUrl}
+              />
+              <Input
+                label="Instagram link"
+                leadingIcon={<img alt="" className="size-4" src="/Glamhour - Assets/Salon link/Icon-1.svg" />}
+                onChange={(event) => setShareForm((current) => ({ ...current, instagramUrl: event.target.value }))}
+                placeholder="https://instagram.com/your-salon"
+                value={shareForm.instagramUrl}
+              />
+            </div>
+            <Button fullWidth loading={mutation.loading} onClick={savePublicBooking} size="sm" variant="outline"><Save className="size-4" /> Save public booking</Button>
           </Card>
           <MutationError error={mutation.error} />
         </div>

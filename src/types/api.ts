@@ -251,6 +251,24 @@ export interface SalonSettings extends Timestamped {
   settings_json: Record<string, unknown>
 }
 
+export interface PublicBookingSalon {
+  id: string
+  name: string
+  slug: string
+  timezone: string
+  currency_code: string
+  city: string | null
+  region: string | null
+  booking_enabled: boolean
+  allow_public_booking: boolean
+}
+
+export interface PublicBookingPayload {
+  salon: PublicBookingSalon
+  services: Service[]
+  categories: ServiceCategory[]
+}
+
 export interface DashboardAppointment {
   id: string
   starts_at: string

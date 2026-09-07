@@ -23,6 +23,7 @@ import type {
 interface ListOptions {
   limit: number
   offset: number
+  publicOnly?: boolean
 }
 
 interface AppointmentFilters extends ListOptions {
@@ -403,6 +404,24 @@ interface AuthSalon extends QueryResultRow {
 interface LoginResult {
   user: AuthUser
   salons: AuthSalon[]
+}
+
+interface PublicBookingSalon extends QueryResultRow {
+  id: string
+  name: string
+  slug: string
+  timezone: string
+  currency_code: string
+  city: string | null
+  region: string | null
+  booking_enabled: boolean
+  allow_public_booking: boolean
+}
+
+interface PublicBookingPayload {
+  salon: PublicBookingSalon
+  services: Service[]
+  categories: ServiceCategory[]
 }
 
 interface RequestPasswordResetInput {
@@ -2056,6 +2075,32 @@ export const dataService = {
     )
   },
 
+  async getPublicBooking(slug: string): Promise<PublicBookingPayload> {
+    const salon = await oneOrNotFound<PublicBookingSalon>(
+      `SELECT s.id, s.name, s.slug, s.timezone, s.currency_code, s.city, s.region,
+              s.booking_enabled, ss.allow_public_booking
+       FROM salons s
+       JOIN salon_settings ss ON ss.salon_id = s.id
+       WHERE s.slug = $1
+         AND s.deleted_at IS NULL
+         AND s.is_active
+       LIMIT 1`,
+      [slug],
+      'Salon not found',
+    )
+
+    if (!salon.booking_enabled || !salon.allow_public_booking) {
+      throw new ApiError(404, 'Online booking is not available for this salon.')
+    }
+
+    const [services, categories] = await Promise.all([
+      this.listServices(salon.id, undefined, { limit: 100, offset: 0, publicOnly: true }),
+      this.listServiceCategories(salon.id),
+    ])
+
+    return { salon, services, categories }
+  },
+
   saveOnboarding(salonId: string, input: SaveOnboardingInput): Promise<Salon> {
     return withTransaction(async (client) => {
       const salons = await clientRows<Salon>(
@@ -3200,9 +3245,10 @@ export const dataService = {
        WHERE s.salon_id = $1
          AND s.is_active
          AND ($2::text IS NULL OR sc.code = $2)
+         AND (NOT $5::boolean OR s.is_publicly_bookable)
        ORDER BY sc.sort_order, s.sort_order, s.name
        LIMIT $3 OFFSET $4`,
-      [salonId, categoryCode ?? null, options.limit, options.offset],
+      [salonId, categoryCode ?? null, options.limit, options.offset, options.publicOnly === true],
     )
   },
 
