@@ -563,7 +563,7 @@ function safeStorageFilename(filename: string) {
 }
 
 function publicBookingBaseUrl() {
-  return (config.APP_URL ?? 'https://glamhour.app').replace(/\/+$/, '')
+  return (config.APP_URL ?? 'https://glamhourapp.com').replace(/\/+$/, '')
 }
 
 const onboardingDayToPostgres: Record<string, number> = {

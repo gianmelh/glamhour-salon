@@ -3,7 +3,12 @@ import { PUBLIC_BOOKING_BASE_URL } from '../services/glamhour-api'
 function publicBookingBaseUrl() {
   if (typeof window !== 'undefined') {
     const { origin, hostname } = window.location
-    if (hostname === 'glamhour.app' || hostname.endsWith('.glamhour.app')) {
+    if (
+      hostname === 'glamhourapp.com'
+      || hostname.endsWith('.glamhourapp.com')
+      || hostname === 'glamhour.app'
+      || hostname.endsWith('.glamhour.app')
+    ) {
       return origin.replace(/\/+$/, '')
     }
   }

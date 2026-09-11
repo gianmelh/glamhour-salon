@@ -11,7 +11,7 @@ import type {
 } from '../types/api'
 
 export const SALON_ID = import.meta.env.VITE_SALON_ID ?? '10000000-0000-0000-0000-000000000001'
-export const PUBLIC_BOOKING_BASE_URL = (import.meta.env.VITE_PUBLIC_BOOKING_BASE_URL ?? 'https://glamhour.app').replace(/\/+$/, '')
+export const PUBLIC_BOOKING_BASE_URL = (import.meta.env.VITE_PUBLIC_BOOKING_BASE_URL ?? 'https://glamhourapp.com').replace(/\/+$/, '')
 
 const activeSalonSessionKey = 'glamhour:active-salon-id'
 

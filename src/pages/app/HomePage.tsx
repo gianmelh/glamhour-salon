@@ -9,6 +9,7 @@ import {
 } from '../../components'
 import { useDashboard, useNailSettings, useProfessionals, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
+import { writeClipboard } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
 import { formatMoney, formatTime } from '../../lib/format'
 import { publicBookingUrl } from '../../lib/public-booking-url'
@@ -79,24 +80,6 @@ function serviceLabel(appointment: DashboardAppointment) {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
   return `${service.service_name_snapshot}${category ? ` · ${category}` : ''}`
-}
-
-async function writeClipboard(text: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return
-  }
-
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.setAttribute('readonly', '')
-  textarea.style.position = 'fixed'
-  textarea.style.top = '-999px'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const copied = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  if (!copied) throw new Error('Clipboard fallback failed')
 }
 
 export function HomePage() {
