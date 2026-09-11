@@ -7,11 +7,17 @@ import { checkDatabase } from './db.js'
 import { errorHandler, notFoundHandler } from './errors.js'
 import { asyncHandler } from './http.js'
 import { apiRouter } from './routes.js'
+import { handleStripeWebhook } from './services/stripe-billing-service.js'
 
 export const app = express()
 
 app.disable('x-powered-by')
 app.use(cors({ origin: config.CORS_ORIGIN }))
+
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), asyncHandler(async (request, response) => {
+  response.json({ data: await handleStripeWebhook(request.body as Buffer, request.header('stripe-signature')) })
+}))
+
 app.use(express.json({ limit: '4mb' }))
 
 app.use('/api/media', express.static(path.resolve(config.UPLOAD_DIR), {

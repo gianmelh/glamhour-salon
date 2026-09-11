@@ -30,6 +30,10 @@ const envSchema = z.object({
   UPLOAD_DIR: z.string().default('uploads'),
   MEDIA_PUBLIC_BASE: z.string().default('http://127.0.0.1:3001/api'),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(2 * 1024 * 1024),
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+  STRIPE_MONTHLY_PRICE_ID: z.string().min(1).optional(),
+  STRIPE_ANNUAL_PRICE_ID: z.string().min(1).optional(),
 })
 
 const result = envSchema.safeParse(process.env)

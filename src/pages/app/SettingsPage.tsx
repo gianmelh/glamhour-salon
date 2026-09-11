@@ -5,11 +5,12 @@ import { CalendarDays, ChevronRight, CreditCard, LogOut, MessageCircle, MessageS
 import { Avatar, Badge, Button, Card, DataSourceNotice, ErrorState, Input, LoadingState, PageTitle } from '../../components'
 import { ScreenSection } from '../../components/screen/ScreenSection'
 import { MutationError } from '../../components/screen/MutationError'
-import { useNailSettings, useNotifications, useProfessionals, useSalon, useServiceCategories, useServices, useSettings } from '../../hooks/useGlamhourData'
+import { useNailSettings, useNotifications, useProfessionals, useSalon, useServiceCategories, useServices, useSettings, useSubscription } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { glamhourApi } from '../../services/glamhour-api'
 import { cn } from '../../lib/cn'
 import { mergePublicBookingShareSettings, publicBookingShareSettings } from '../../lib/public-booking-settings'
+import { deferTask } from '../../lib/defer'
 
 const categoryDescriptions: Record<string, string> = {
   nails: 'Manicures, pedicures, acrylics, and nail art.',
@@ -32,19 +33,33 @@ export function SettingsPage() {
   const nails = useNailSettings()
   const categories = useServiceCategories(undefined, { includeAll: true })
   const services = useServices()
+  const subscription = useSubscription()
   const mutation = useMutation(glamhourApi.updateSettings)
 
   useEffect(() => {
     if (!settings.data) return
-    setShareForm(publicBookingShareSettings(settings.data.settings_json))
+    deferTask(() => setShareForm(publicBookingShareSettings(settings.data!.settings_json)))
   }, [settings.data])
 
-  if (salon.loading || settings.loading || categories.loading || services.loading) return <LoadingState label="Loading settings..." />
-  if (!salon.data || !settings.data || !categories.data || !services.data) return <ErrorState description="Settings could not be loaded." onRetry={() => { salon.retry(); settings.retry(); categories.retry(); services.retry() }} />
+  useEffect(() => {
+    const refreshSubscription = () => subscription.retry()
+    window.addEventListener('focus', refreshSubscription)
+    document.addEventListener('visibilitychange', refreshSubscription)
+    return () => {
+      window.removeEventListener('focus', refreshSubscription)
+      document.removeEventListener('visibilitychange', refreshSubscription)
+    }
+  }, [subscription.retry])
+
+  if (salon.loading || settings.loading || categories.loading || services.loading || subscription.loading) return <LoadingState label="Loading settings..." />
+  if (!salon.data || !settings.data || !categories.data || !services.data || !subscription.data) return <ErrorState description="Settings could not be loaded." onRetry={() => { salon.retry(); settings.retry(); categories.retry(); services.retry(); subscription.retry() }} />
 
   const settingsData = settings.data
   const categoryData = categories.data
   const serviceData = services.data
+  const subscriptionData = subscription.data
+  const clientUsageColor = registeredClientsBarColor(subscriptionData.clientUsage.count)
+  const clientLimit = subscriptionData.clientUsage.limit ?? 15
   const setupState = { salonId: salon.data.id, salonName: salon.data.name }
   const savePublicBooking = async () => {
     const updated = await mutation.mutate({
@@ -81,6 +96,45 @@ export function SettingsPage() {
               <p className="mt-1 text-[11px] text-muted">{salon.data.city}, {salon.data.region}</p>
             </div>
             <Badge tone="primary">Owner</Badge>
+          </Card>
+          <Card className="rounded-[18px] border-[#d8dce8] bg-white px-6 py-6 shadow-[0_2px_2px_rgb(16_24_39_/_0.03),0_14px_28px_rgb(16_24_39_/_0.09)]">
+            <div className="flex items-start gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-[8px] bg-[#eee9ff] text-[#7c3aed]">
+                <CreditCard className="size-[18px]" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-[20px] font-extrabold leading-6 text-[#101827]">Subscription</h2>
+                <p className="mt-0.5 text-[15px] font-medium leading-5 text-[#667085]">
+                  {subscriptionData.hasPremiumAccess ? subscriptionLabel(subscriptionData.subscription?.planCode) : 'Free plan'}
+                </p>
+              </div>
+            </div>
+
+            <div className="my-3.5 h-px bg-[#d0d5dd]" />
+
+            {subscriptionData.hasPremiumAccess ? (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[13px] font-medium text-[#667085]">Registered clients</p>
+                <p className="text-[13px] font-bold text-[#667085]">Unlimited</p>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[13px] font-medium text-[#667085]">Registered clients</p>
+                  <p className="text-[13px] font-bold text-[#667085]">{subscriptionData.clientUsage.count} / {clientLimit}</p>
+                </div>
+                <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-[#edf0f4]">
+                  <div className={`h-full rounded-full ${clientUsageColor}`} style={{ width: `${Math.min(100, (subscriptionData.clientUsage.count / clientLimit) * 100)}%` }} />
+                </div>
+                {subscriptionData.clientUsage.canCreateClient
+                  ? subscriptionData.clientUsage.nearLimit && <p className="mt-2 text-xs font-semibold text-warning">Near the limit.</p>
+                  : <p className="mt-2 text-xs font-semibold text-danger">{subscriptionData.clientUsage.count} / {clientLimit} - Limit reached.</p>}
+              </div>
+            )}
+
+            <Link className="mt-7 inline-flex min-h-[46px] w-full items-center justify-center rounded-[13px] bg-glam-gradient px-5 text-[15px] font-medium text-white shadow-[0_10px_18px_rgb(76_29_149_/_0.22)]" to="/app/settings/subscription">
+              {subscriptionData.hasPremiumAccess ? 'See details' : 'Upgrade'}
+            </Link>
           </Card>
           <Card className="space-y-4" id="public-booking" tone="lavender">
             <div className="flex items-center gap-3">
@@ -190,6 +244,18 @@ function TabButton({ active, children, onClick }: { active: boolean; children: s
       {children}
     </button>
   )
+}
+
+function subscriptionLabel(planCode?: string) {
+  if (planCode === 'premium_annual') return 'Annual Premium'
+  if (planCode === 'premium_monthly') return 'Premium monthly'
+  return 'Free plan'
+}
+
+function registeredClientsBarColor(count: number) {
+  if (count <= 5) return 'bg-[#16c784]'
+  if (count <= 10) return 'bg-[#f79009]'
+  return 'bg-[#ef4444]'
 }
 
 function CardLink({ icon, label, description, state, to }: { icon: ReactNode; label: string; description: string; state?: unknown; to: string }) {

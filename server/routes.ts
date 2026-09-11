@@ -4,6 +4,15 @@ import { config } from './config.js'
 import { ApiError } from './errors.js'
 import { asyncHandler, validate } from './http.js'
 import { dataService } from './services/data-service.js'
+import {
+  cancelSubscription,
+  changeSubscriptionPlan,
+  createBillingPortalSession,
+  createCheckoutSession,
+  getSyncedSubscriptionSummary,
+  reactivateSubscription,
+  syncCheckoutSession,
+} from './services/stripe-billing-service.js'
 import { verifyAppleIdentityToken, verifyFacebookAccessToken } from './services/social-auth-service.js'
 import {
   annotationSchema,
@@ -63,6 +72,14 @@ const listQuerySchema = paginationSchema.extend({
   endDate: z.string().date().optional(),
   status: z.string().trim().min(1).optional(),
   publicOnly: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+})
+
+const premiumPlanSchema = z.object({
+  planCode: z.enum(['premium_monthly', 'premium_annual']),
+})
+
+const checkoutSessionSchema = z.object({
+  sessionId: z.string().trim().min(1),
 })
 
 router.post('/auth/login', asyncHandler(async (request, response) => {
@@ -422,6 +439,44 @@ router.get('/salons/:salonId/notifications', asyncHandler(async (request, respon
 router.get('/salons/:salonId/settings', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
   response.json({ data: await dataService.getSettings(salonId) })
+}))
+
+router.get('/salons/:salonId/subscription', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  response.json({ data: await getSyncedSubscriptionSummary(salonId) })
+}))
+
+router.post('/salons/:salonId/subscription/checkout', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const { planCode } = validate(premiumPlanSchema, request.body)
+  response.json({ data: await createCheckoutSession(salonId, planCode) })
+}))
+
+router.post('/salons/:salonId/subscription/sync-checkout', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const { sessionId } = validate(checkoutSessionSchema, request.body)
+  response.json({ data: await syncCheckoutSession(salonId, sessionId) })
+}))
+
+router.post('/salons/:salonId/subscription/portal', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  response.json({ data: await createBillingPortalSession(salonId) })
+}))
+
+router.post('/salons/:salonId/subscription/change-plan', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const { planCode } = validate(premiumPlanSchema, request.body)
+  response.json({ data: await changeSubscriptionPlan(salonId, planCode) })
+}))
+
+router.post('/salons/:salonId/subscription/cancel', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  response.json({ data: await cancelSubscription(salonId) })
+}))
+
+router.post('/salons/:salonId/subscription/reactivate', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  response.json({ data: await reactivateSubscription(salonId) })
 }))
 
 router.get('/salons/:salonId/service-materials', asyncHandler(async (request, response) => {

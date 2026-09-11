@@ -1,4 +1,13 @@
 import { ApiClientError } from '../../lib/api'
+import { Link } from 'react-router-dom'
+
+function isClientLimitError(error: Error) {
+  if (!(error instanceof ApiClientError)) return false
+  if (error.status !== 403) return false
+  if (!error.details || typeof error.details !== 'object') return false
+  const details = error.details as { canCreateClient?: unknown; limit?: unknown }
+  return details.canCreateClient === false && typeof details.limit === 'number'
+}
 
 function formatTime(value: string) {
   const date = new Date(value)
@@ -46,6 +55,20 @@ function conflictDetails(error: Error) {
 
 export function MutationError({ error }: { error: Error | null }) {
   if (!error) return null
+  if (isClientLimitError(error)) {
+    return (
+      <div className="rounded-[14px] border border-[#fbbf24] bg-[#fffbeb] p-3 text-xs text-[#92400e]">
+        <p className="font-bold">Free plan client limit reached.</p>
+        <p className="mt-1">Upgrade to Premium to add unlimited clients.</p>
+        <Link
+          className="mt-3 inline-flex min-h-9 w-full items-center justify-center rounded-[10px] bg-glam-gradient px-3 text-sm font-semibold text-white shadow-action"
+          to="/app/settings/subscription"
+        >
+          Upgrade
+        </Link>
+      </div>
+    )
+  }
   const conflict = conflictDetails(error)
   if (conflict) {
     return (

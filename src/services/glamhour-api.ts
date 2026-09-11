@@ -5,7 +5,7 @@ import type {
   ConfirmPasswordResetInput, ConfirmPasswordResetResult, LoginInput, LoginResult, RegisterAppleSalonInput,
   RegisterFacebookSalonInput, RegisterGoogleSalonInput, RegisterSalonInput, RegisterSalonResult,
   RequestPasswordResetInput, RequestPasswordResetResult, RescheduleAppointmentInput, Salon, SalonSettings,
-  SalesHistoryItem, SalesHistoryResponse, SaveOnboardingInput, Service, ServiceCategory, UpdateSettingsInput, VerifyPasswordResetCodeInput,
+  SalesHistoryItem, SalesHistoryResponse, SaveOnboardingInput, Service, ServiceCategory, SubscriptionPlanCode, SubscriptionSummary, UpdateSettingsInput, VerifyPasswordResetCodeInput,
   VerifyPasswordResetCodeResult,
   PublicBookingPayload,
 } from '../types/api'
@@ -83,6 +83,16 @@ export const glamhourApi = {
   salesHistory: (salonId?: string, filters: SalesHistoryFilters = {}) => apiRequest<SalesHistoryResponse>(`/salons/${resolveSalonId(salonId)}/sales-history${queryString({ limit: 100, ...filters })}`),
   salesHistoryDetail: (recordId: string, salonId?: string) => apiRequest<SalesHistoryItem>(`/salons/${resolveSalonId(salonId)}/sales-history/${recordId}`),
   settings: (salonId?: string) => apiRequest<SalonSettings>(`/salons/${resolveSalonId(salonId)}/settings`),
+  subscription: (salonId?: string) => apiRequest<SubscriptionSummary>(`/salons/${resolveSalonId(salonId)}/subscription`),
+  createSubscriptionCheckout: (planCode: Exclude<SubscriptionPlanCode, 'free'>, salonId?: string) =>
+    apiRequest<{ clientSecret?: string; sessionId?: string; changed?: boolean }>(`/salons/${resolveSalonId(salonId)}/subscription/checkout`, { method: 'POST', body: JSON.stringify({ planCode }) }),
+  syncSubscriptionCheckout: (sessionId: string, salonId?: string) =>
+    apiRequest<SubscriptionSummary>(`/salons/${resolveSalonId(salonId)}/subscription/sync-checkout`, { method: 'POST', body: JSON.stringify({ sessionId }) }),
+  changeSubscriptionPlan: (planCode: Exclude<SubscriptionPlanCode, 'free'>, salonId?: string) =>
+    apiRequest<{ changed: boolean }>(`/salons/${resolveSalonId(salonId)}/subscription/change-plan`, { method: 'POST', body: JSON.stringify({ planCode }) }),
+  createBillingPortal: (salonId?: string) => apiRequest<{ url: string }>(`/salons/${resolveSalonId(salonId)}/subscription/portal`, { method: 'POST' }),
+  cancelSubscription: (salonId?: string) => apiRequest<SubscriptionSummary>(`/salons/${resolveSalonId(salonId)}/subscription/cancel`, { method: 'POST' }),
+  reactivateSubscription: (salonId?: string) => apiRequest<SubscriptionSummary>(`/salons/${resolveSalonId(salonId)}/subscription/reactivate`, { method: 'POST' }),
   notifications: (salonId?: string) => apiRequest<Notification[]>(`/salons/${resolveSalonId(salonId)}/notifications?limit=100`),
   saveOnboarding: (input: SaveOnboardingInput, salonId?: string) => apiRequest<Salon>(`/salons/${resolveSalonId(salonId)}/onboarding`, { method: 'PUT', body: JSON.stringify(input) }),
   createAppointment: (input: CreateAppointmentInput, salonId?: string) => apiRequest<Appointment>(`/salons/${resolveSalonId(salonId)}/appointments`, { method: 'POST', body: JSON.stringify({ source: 'internal', ...input }) }),

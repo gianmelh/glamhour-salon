@@ -5,6 +5,7 @@ import { query, withTransaction } from '../db.js'
 import { config } from '../config.js'
 import { sendPasswordResetCode } from './email-service.js'
 import { saveSalonMedia } from './media-storage.js'
+import { enforceCanCreateClient, getClientAccessPolicy } from './stripe-billing-service.js'
 import type {
   Appointment,
   Client,
@@ -2859,20 +2860,32 @@ export const dataService = {
     })
   },
 
-  listClients(salonId: string, search: string | undefined, options: ListOptions): Promise<Client[]> {
+  async listClients(salonId: string, search: string | undefined, options: ListOptions): Promise<Client[]> {
+    const access = await getClientAccessPolicy(salonId)
     return query<Client>(
-      `SELECT * FROM clients
-       WHERE salon_id = $1
-         AND deleted_at IS NULL
-         AND (
-           $2::text IS NULL
-           OR full_name ILIKE '%' || $2 || '%'
-           OR email ILIKE '%' || $2 || '%'
-           OR phone ILIKE '%' || $2 || '%'
-         )
+      `WITH ranked_clients AS (
+         SELECT c.*,
+                row_number() OVER (ORDER BY c.created_at, c.id) AS access_rank
+         FROM clients c
+         WHERE c.salon_id = $1
+           AND c.deleted_at IS NULL
+       )
+       SELECT *,
+              (
+                NOT $5::boolean
+                AND $6::integer IS NOT NULL
+                AND access_rank > $6::integer
+              ) AS subscription_locked
+       FROM ranked_clients
+       WHERE (
+         $2::text IS NULL
+         OR full_name ILIKE '%' || $2 || '%'
+         OR email ILIKE '%' || $2 || '%'
+         OR phone ILIKE '%' || $2 || '%'
+       )
        ORDER BY full_name
        LIMIT $3 OFFSET $4`,
-      [salonId, search ?? null, options.limit, options.offset],
+      [salonId, search ?? null, options.limit, options.offset, access.hasPremiumAccess, access.limit],
     )
   },
 
@@ -2887,7 +2900,8 @@ export const dataService = {
     )
   },
 
-  createClient(salonId: string, input: CreateClientInput): Promise<Client> {
+  async createClient(salonId: string, input: CreateClientInput): Promise<Client> {
+    await enforceCanCreateClient(salonId)
     return oneOrNotFound<Client>(
       `INSERT INTO clients (
          salon_id, full_name, email, phone, date_of_birth, preferred_language, notes

@@ -4,6 +4,7 @@ import {
   fallbackSalon, fallbackServices, fallbackSettings,
 } from '../data/fallback-data'
 import { glamhourApi, resolveSalonId, type SalesHistoryFilters } from '../services/glamhour-api'
+import { applySubscriptionPreview } from '../lib/subscription-preview'
 import { useApiResource } from './useApiResource'
 
 function useResolvedSalonId(salonId?: string) {
@@ -61,6 +62,10 @@ export const useSalesHistoryDetail = (recordId: string, salonId?: string) => {
 export const useSettings = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
   return useApiResource(useCallback(() => glamhourApi.settings(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackSettings))
+}
+export const useSubscription = (salonId?: string) => {
+  const resolvedSalonId = useResolvedSalonId(salonId)
+  return useApiResource(useCallback(() => glamhourApi.subscription(resolvedSalonId).then(applySubscriptionPreview), [resolvedSalonId]))
 }
 export const useNotifications = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)

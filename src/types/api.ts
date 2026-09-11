@@ -59,6 +59,7 @@ export interface Client extends Timestamped {
   date_of_birth: string | null
   preferred_language: string | null
   notes: string | null
+  subscription_locked?: boolean
 }
 
 export interface ServiceCategory extends Timestamped {
@@ -249,6 +250,36 @@ export interface SalonSettings extends Timestamped {
   allow_public_booking: boolean
   require_booking_confirmation: boolean
   settings_json: Record<string, unknown>
+}
+
+export type SubscriptionPlanCode = 'free' | 'premium_monthly' | 'premium_annual'
+
+export interface SubscriptionSummary {
+  subscription: {
+    id: string
+    planCode: SubscriptionPlanCode
+    planName: string
+    billingInterval: 'none' | 'month' | 'year'
+    priceMinor: number
+    currencyCode: string
+    entitlements: Record<string, unknown>
+    provider: string | null
+    providerCustomerId: string | null
+    providerSubscriptionId: string | null
+    providerPriceId: string | null
+    status: string
+    currentPeriodStart: string | null
+    currentPeriodEnd: string | null
+    cancelAtPeriodEnd: boolean
+    canceledAt: string | null
+  } | null
+  clientUsage: {
+    count: number
+    limit: number | null
+    nearLimit: boolean
+    canCreateClient: boolean
+  }
+  hasPremiumAccess: boolean
 }
 
 export interface PublicBookingSalon {

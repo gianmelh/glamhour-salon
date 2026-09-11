@@ -35,6 +35,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/006_password_rese
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/007_service_materials.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/008_appointment_clinical_architecture.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/009_service_slug_uniqueness.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/012_stripe_subscriptions.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/seeds/001_mockup_seed_data.sql
 ```
 

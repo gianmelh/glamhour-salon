@@ -20,6 +20,7 @@ import { ServicesPage } from './pages/app/ServicesPage'
 import { SettingsPage } from './pages/app/SettingsPage'
 import { SharePage } from './pages/app/SharePage'
 import { StaffPage } from './pages/app/StaffPage'
+import { SubscriptionPage } from './pages/app/SubscriptionPage'
 import { EntryPage } from './pages/onboarding/EntryPage'
 import { IntroPage } from './pages/onboarding/IntroPage'
 import { SetupPage } from './pages/onboarding/SetupPage'
@@ -54,6 +55,9 @@ function App() {
         <Route path="sales" element={<SalesPage />} />
         <Route path="sales-history/:recordId" element={<SalesHistoryDetailsPage />} />
         <Route path="share" element={<SharePage />} />
+        <Route path="settings/subscription" element={<SubscriptionPage />} />
+        <Route path="settings/subscription/success" element={<SubscriptionPage />} />
+        <Route path="settings/subscription/cancel" element={<SubscriptionPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/services/nails" element={<NailSettingsPage />} />
       </Route>

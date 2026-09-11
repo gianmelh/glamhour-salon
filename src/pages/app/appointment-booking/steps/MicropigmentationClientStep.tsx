@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Info, Phone, Plus, Search, UserRound } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button, Card, Input } from '../../../../components'
 import { MutationError } from '../../../../components/screen/MutationError'
+import { useSubscription } from '../../../../hooks/useGlamhourData'
 import { useMutation } from '../../../../hooks/useMutation'
 import { cn } from '../../../../lib/cn'
+import { applyClientAccess, clientUsageLabel } from '../../../../lib/client-access'
 import { deferTask } from '../../../../lib/defer'
 import { formatShortDate } from '../../../../lib/format'
 import { glamhourApi } from '../../../../services/glamhour-api'
@@ -55,6 +58,7 @@ export function MicropigmentationClientStep({
   onContinueWithProfile: (details: Record<string, unknown>) => void
 }) {
   const createClient = useMutation(glamhourApi.createClient)
+  const subscription = useSubscription()
   const [search, setSearch] = useState('')
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -62,16 +66,18 @@ export function MicropigmentationClientStep({
   const [profile, setProfile] = useState<HealthProfileVersion | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileStage, setProfileStage] = useState<'search' | 'loaded'>('search')
+  const displayClients = useMemo(() => applyClientAccess(clients, subscription.data), [clients, subscription.data])
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
     const list = query
-      ? clients.filter((client) => client.full_name.toLowerCase().includes(query) || (client.phone ?? '').includes(query))
-      : clients
+      ? displayClients.filter((client) => client.full_name.toLowerCase().includes(query) || (client.phone ?? '').includes(query))
+      : displayClients
     return [...list].sort((a, b) => a.full_name.localeCompare(b.full_name))
-  }, [clients, search])
+  }, [displayClients, search])
 
-  const selectedClient = clients.find((client) => client.id === selectedClientId)
+  const selectedClient = displayClients.find((client) => client.id === selectedClientId)
+  const clientLimitReached = subscription.data?.clientUsage.canCreateClient === false
   const lastVisitLabel = (clientId: string) => {
     const visit = clientVisitByClientId[clientId]
     if (!visit) return undefined
@@ -112,24 +118,36 @@ export function MicropigmentationClientStep({
           <p className="mt-2 text-[15px] text-[#667085]">Add a new client to continue booking.</p>
         </header>
         <Card className="space-y-4 rounded-[20px] border-[#d0d5dd] bg-white p-4">
+          {clientLimitReached && (
+            <div className="rounded-[16px] border border-[#fbbf24] bg-[#fffbeb] p-3 text-xs text-[#92400e]">
+              <p className="font-bold">You reached 15 clients on the free plan.</p>
+              <p className="mt-1">Upgrade to Premium to add more clients.</p>
+            </div>
+          )}
           <Input label="Full name" placeholder="e.g. Sarah Johnson" value={newName} onChange={(event) => setNewName(event.target.value)} />
           <Input label="Phone number" placeholder="e.g. +52 55 1234 5678" value={newPhone} onChange={(event) => setNewPhone(event.target.value)} />
-          <Button
-            disabled={!newName.trim() || newPhone.trim().length < 7}
-            fullWidth
-            loading={createClient.loading}
-            onClick={async () => {
-              const client = await createClient.mutate({ fullName: newName.trim(), phone: newPhone.trim() })
-              onCreate(client)
-              onSelect(client.id)
-              setCreating(false)
-              setNewName('')
-              setNewPhone('')
-              onNext()
-            }}
-          >
-            Save client
-          </Button>
+          {clientLimitReached ? (
+            <Link className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-glam-gradient px-4 text-sm font-medium text-white shadow-action" to="/app/settings/subscription">
+              Upgrade
+            </Link>
+          ) : (
+            <Button
+              disabled={!newName.trim() || newPhone.trim().length < 7}
+              fullWidth
+              loading={createClient.loading}
+              onClick={async () => {
+                const client = await createClient.mutate({ fullName: newName.trim(), phone: newPhone.trim() })
+                onCreate(client)
+                onSelect(client.id)
+                setCreating(false)
+                setNewName('')
+                setNewPhone('')
+                onNext()
+              }}
+            >
+              Save client
+            </Button>
+          )}
           <MutationError error={createClient.error} />
           <Button fullWidth onClick={() => setCreating(false)} variant="outline">Cancel</Button>
         </Card>
@@ -242,25 +260,30 @@ export function MicropigmentationClientStep({
       )}
 
       <section className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Recent clients</p>
-        {filtered.slice(0, 8).map((client) => (
-          <button className="w-full text-left" key={client.id} onClick={() => onSelect(client.id)} type="button">
-            <ClientSearchCard
-              client={client}
-              selected={selectedClientId === client.id}
-              subtitle={lastVisitLabel(client.id) ?? client.email ?? undefined}
-            />
-          </button>
-        ))}
-        {!filtered.length && (
-          <Card className="rounded-[16px] border-[#d0d5dd] bg-white p-4 text-center text-sm text-[#667085]">
-            No clients match your search.
-          </Card>
-        )}
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Recent clients</p>
+          <p className="text-xs font-semibold text-[#667085]">Total clients {clientUsageLabel(clients.length, subscription.data)}</p>
+        </div>
+        <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
+          {filtered.map((client) => (
+            <button className="w-full text-left disabled:opacity-60" disabled={client.subscription_locked} key={client.id} onClick={() => onSelect(client.id)} type="button">
+              <ClientSearchCard
+                client={client}
+                selected={selectedClientId === client.id}
+                subtitle={client.subscription_locked ? 'Locked on Free plan' : lastVisitLabel(client.id) ?? client.email ?? undefined}
+              />
+            </button>
+          ))}
+          {!filtered.length && (
+            <Card className="rounded-[16px] border-[#d0d5dd] bg-white p-4 text-center text-sm text-[#667085]">
+              No clients match your search.
+            </Card>
+          )}
+        </div>
       </section>
 
       <Button
-        disabled={!selectedClientId || profileLoading}
+        disabled={!selectedClientId || profileLoading || selectedClient?.subscription_locked}
         fullWidth
         onClick={() => {
           if (profile?.is_valid) {
@@ -272,9 +295,20 @@ export function MicropigmentationClientStep({
       >
         Continue
       </Button>
-      <Button fullWidth onClick={() => setCreating(true)} variant="outline">
-        <Plus className="size-4" /> Create new client
-      </Button>
+      {selectedClient?.subscription_locked && (
+        <p className="rounded-md bg-[#fffbeb] px-3 py-2 text-xs font-semibold text-[#92400e]">
+          This client is locked on the Free plan. Upgrade to Premium to continue.
+        </p>
+      )}
+      {clientLimitReached ? (
+        <Link className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-glam-gradient px-4 text-sm font-medium text-white shadow-action" to="/app/settings/subscription">
+          Upgrade
+        </Link>
+      ) : (
+        <Button fullWidth onClick={() => setCreating(true)} variant="outline">
+          <Plus className="size-4" /> Create new client
+        </Button>
+      )}
     </div>
   )
 }

@@ -1,10 +1,13 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Calendar, Clock, Plus, UserRound } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button, Card, Input, MutationError } from '../../../../components'
 import { formatMoney, formatShortDate } from '../../../../lib/format'
 import { localDateString } from '../../../../lib/date'
+import { applyClientAccess, clientUsageLabel } from '../../../../lib/client-access'
 import { addMinutesIso, zonedDateTimeToIso } from '../../../../lib/salon-time'
 import { glamhourApi } from '../../../../services/glamhour-api'
+import { useSubscription } from '../../../../hooks/useGlamhourData'
 import { useMutation } from '../../../../hooks/useMutation'
 import type { AvailabilitySlot, Client, EligibleProvider, Service } from '../../../../types/api'
 import { ClientSearchCard } from './AppointmentDetailsStep'
@@ -96,6 +99,7 @@ export function HomeQuickCreateAppointmentStep({
   onCreate: () => void
 }) {
   const createClient = useMutation(glamhourApi.createClient)
+  const subscription = useSubscription()
   const [search, setSearch] = useState('')
   const [creatingClient, setCreatingClient] = useState(false)
   const [newName, setNewName] = useState('')
@@ -105,7 +109,9 @@ export function HomeQuickCreateAppointmentStep({
   const dateInputRef = useRef<HTMLInputElement>(null)
   const minDate = localDateString()
 
-  const selectedClient = clients.find((client) => client.id === selectedClientId)
+  const displayClients = useMemo(() => applyClientAccess(clients, subscription.data), [clients, subscription.data])
+  const selectedClient = displayClients.find((client) => client.id === selectedClientId)
+  const clientLimitReached = subscription.data?.clientUsage.canCreateClient === false
   const selectedProvider = providers.find((provider) => provider.id === providerId)
   const durationMinutes = selectedProvider?.durationMinutes ?? service.duration_minutes
   const timeOptions = useMemo(() => {
@@ -120,12 +126,16 @@ export function HomeQuickCreateAppointmentStep({
   const filteredClients = useMemo(() => {
     const query = search.trim().toLowerCase()
     const list = query
-      ? clients.filter((client) => client.full_name.toLowerCase().includes(query) || (client.phone ?? '').includes(query))
-      : clients
-    return [...list].sort((a, b) => a.full_name.localeCompare(b.full_name)).slice(0, 8)
-  }, [clients, search])
+      ? displayClients.filter((client) => client.full_name.toLowerCase().includes(query) || (client.phone ?? '').includes(query))
+      : displayClients
+    return [...list].sort((a, b) => a.full_name.localeCompare(b.full_name))
+  }, [displayClients, search])
   const requiredErrors = {
-    client: !selectedClientId ? 'Client is required' : '',
+    client: !selectedClientId
+      ? 'Client is required'
+      : selectedClient?.subscription_locked
+        ? 'This client is locked on the Free plan. Upgrade to Premium to book this client.'
+        : '',
     date: !date ? 'Day is required' : '',
     time: !time ? 'Time is required' : '',
   }
@@ -150,6 +160,13 @@ export function HomeQuickCreateAppointmentStep({
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
     openDatePicker()
+  }
+
+  const startCreatingClient = () => {
+    setNewName('')
+    setNewPhone('')
+    setClientErrors({ name: '', phone: '' })
+    setCreatingClient(true)
   }
 
   const saveClient = async () => {
@@ -191,17 +208,27 @@ export function HomeQuickCreateAppointmentStep({
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Client *</p>
-            <p className="mt-1 text-[16px] font-bold text-[#0c111d]">{selectedClient?.full_name ?? 'Select client'}</p>
+            <p className="mt-1 text-[16px] font-bold text-[#0c111d]">{creatingClient ? 'New client' : selectedClient?.full_name ?? 'Select client'}</p>
           </div>
           <UserRound className="size-5 text-[#7344cd]" />
         </div>
         {!creatingClient ? (
           <>
             <Input label="Search client" placeholder="e.g. Sarah Johnson" value={search} onChange={(event) => setSearch(event.target.value)} />
-            <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#667085]">
+              <span>Total clients</span>
+              <span>{clientUsageLabel(clients.length, subscription.data)}</span>
+            </div>
+            {clientLimitReached && (
+              <Card className="rounded-[16px] border-[#fbbf24] bg-[#fffbeb] p-3 text-xs text-[#92400e]">
+                <p className="font-bold">You reached 15 clients on the free plan.</p>
+                <p className="mt-1">Upgrade to Premium to add more clients.</p>
+              </Card>
+            )}
+            <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">
               {filteredClients.map((client) => (
-                <button className="w-full text-left" key={client.id} onClick={() => onClientSelect(client.id)} type="button">
-                  <ClientSearchCard client={client} selected={client.id === selectedClientId} subtitle={lastVisitLabel(client.id) ?? client.phone ?? undefined} />
+                <button className="w-full text-left disabled:opacity-60" disabled={client.subscription_locked} key={client.id} onClick={() => onClientSelect(client.id)} type="button">
+                  <ClientSearchCard client={client} selected={client.id === selectedClientId} subtitle={client.subscription_locked ? 'Locked on Free plan' : lastVisitLabel(client.id) ?? client.phone ?? undefined} />
                 </button>
               ))}
               {!filteredClients.length && (
@@ -209,9 +236,15 @@ export function HomeQuickCreateAppointmentStep({
               )}
             </div>
             {submitted && requiredErrors.client && <p className="text-xs font-semibold text-[#b42318]">{requiredErrors.client}</p>}
-            <Button fullWidth onClick={() => setCreatingClient(true)} variant="outline">
-              <Plus className="size-4" /> Create new client
-            </Button>
+            {clientLimitReached ? (
+              <Link className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-glam-gradient px-4 text-sm font-medium text-white shadow-action" to="/app/settings/subscription">
+                Upgrade
+              </Link>
+            ) : (
+              <Button fullWidth onClick={startCreatingClient} variant="outline">
+                <Plus className="size-4" /> Create new client
+              </Button>
+            )}
           </>
         ) : (
           <div className="space-y-3">

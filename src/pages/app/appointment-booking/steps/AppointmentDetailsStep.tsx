@@ -387,14 +387,26 @@ export function ClientSearchCard({ client, selected, subtitle }: {
   selected?: boolean
   subtitle?: string
 }) {
+  const locked = Boolean(client.subscription_locked)
   return (
-    <Card className={cn('rounded-[16px] border-[#d0d5dd] bg-white p-4', selected && 'border-[#7344cd] bg-[#ebe7ff]')}>
+    <Card className={cn(
+      'rounded-[16px] border-[#d0d5dd] bg-white p-4',
+      selected && 'border-[#7344cd] bg-[#ebe7ff]',
+      locked && 'border-[#fec84b] bg-[#fffbeb]',
+    )}>
       <div className="flex items-center gap-3">
         <span className="grid size-10 place-items-center rounded-full bg-[#ebe7ff]">
           <UserRound className="size-5 text-[#7344cd]" />
         </span>
         <div className="min-w-0">
-          <p className="truncate font-bold text-[#0c111d]">{client.full_name}</p>
+          <div className="flex items-center gap-2">
+            <p className="truncate font-bold text-[#0c111d]">{client.full_name}</p>
+            {locked && (
+              <span className="shrink-0 rounded-md bg-[#fef0c7] px-2 py-0.5 text-[10px] font-bold uppercase text-[#b54708]">
+                Locked
+              </span>
+            )}
+          </div>
           {client.phone && (
             <p className="mt-0.5 inline-flex items-center gap-1 text-sm text-[#7344cd]">
               <Phone className="size-3.5 shrink-0" /> {client.phone}
