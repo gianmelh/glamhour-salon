@@ -562,6 +562,10 @@ function safeStorageFilename(filename: string) {
     || 'verification-document'
 }
 
+function publicBookingBaseUrl() {
+  return (config.APP_URL ?? 'https://glamhour.app').replace(/\/+$/, '')
+}
+
 const onboardingDayToPostgres: Record<string, number> = {
   Sunday: 0,
   Monday: 1,
@@ -2058,7 +2062,7 @@ export const dataService = {
       staffLimit,
       upcomingAppointments,
       nextHourAppointmentCount: Number(nextHourRows[0]?.count ?? 0),
-      bookingLink: `https://glamhour.app/${salon.slug}`,
+      bookingLink: `${publicBookingBaseUrl()}/${salon.slug}`,
       emptyStateFlags: {
         noAppointmentsToday: appointmentCount === 0,
         noActiveStaff: activeStaffCount === 0,

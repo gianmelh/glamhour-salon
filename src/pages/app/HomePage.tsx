@@ -1,7 +1,7 @@
 import {
   ArrowRight, CalendarDays, CalendarPlus, CalendarX, Copy, DollarSign, Link2, Settings2, UserRound, UserX,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Badge, Button, Card, ErrorState, LoadingState,
@@ -11,6 +11,7 @@ import { useDashboard, useNailSettings, useProfessionals, useServiceCategories, 
 import { useMutation } from '../../hooks/useMutation'
 import { cn } from '../../lib/cn'
 import { formatMoney, formatTime } from '../../lib/format'
+import { publicBookingUrl } from '../../lib/public-booking-url'
 import { glamhourApi } from '../../services/glamhour-api'
 import type { DashboardAppointment } from '../../types/api'
 
@@ -20,6 +21,7 @@ const LAVENDER_CARD = '#eee9ff'
 const LAVENDER_ICON = '#efe7ff'
 const CARD_BORDER = '#dde3f1'
 const LAVENDER_BORDER = '#ddd3f6'
+type CopyState = 'idle' | 'success' | 'error'
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10)
@@ -79,9 +81,28 @@ function serviceLabel(appointment: DashboardAppointment) {
   return `${service.service_name_snapshot}${category ? ` · ${category}` : ''}`
 }
 
+async function writeClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.top = '-999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  if (!copied) throw new Error('Clipboard fallback failed')
+}
+
 export function HomePage() {
   const navigate = useNavigate()
   const [selectedDate, setSelectedDate] = useState(() => isoDate(new Date()))
+  const [copyState, setCopyState] = useState<CopyState>('idle')
   const [providerEditor, setProviderEditor] = useState<ProfessionalDraft | null>(null)
   const [providerMessage, setProviderMessage] = useState('')
   const dashboard = useDashboard(selectedDate)
@@ -101,6 +122,12 @@ export function HomePage() {
     return list.filter((service) => enabledCategoryIds.has(service.category_id))
   }, [enabledCategoryIds, services.data])
 
+  useEffect(() => {
+    if (copyState === 'idle') return
+    const timer = window.setTimeout(() => setCopyState('idle'), 2200)
+    return () => window.clearTimeout(timer)
+  }, [copyState])
+
   if (dashboard.loading) return <LoadingState label="Loading salon dashboard..." />
   if (!dashboard.data) {
     return <ErrorState description={dashboard.error?.message ?? 'The dashboard could not be loaded.'} onRetry={dashboard.retry} />
@@ -113,6 +140,7 @@ export function HomePage() {
   const salonSchedule = nailSettings.data?.salonSchedule
   const providerResourcesLoading = professionals.loading || services.loading || categories.loading || nailSettings.loading
   const providerResourcesFallback = professionals.isFallback || services.isFallback || categories.isFallback
+  const bookingUrl = publicBookingUrl(data.salon.slug)
 
   function openProviderEditor() {
     if (staffLimitReached || providerResourcesLoading || providerResourcesFallback) {
@@ -139,7 +167,12 @@ export function HomePage() {
   }
 
   async function copyBookingLink() {
-    await navigator.clipboard?.writeText(data.bookingLink)
+    try {
+      await writeClipboard(bookingUrl)
+      setCopyState('success')
+    } catch {
+      setCopyState('error')
+    }
   }
 
   return (
@@ -302,11 +335,12 @@ export function HomePage() {
         </div>
         <p className="mt-2 text-[10px] leading-4 text-[#68738b]">Share this link with clients so they can book appointments directly online.</p>
         <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-          <div className="truncate rounded-md bg-white px-3 py-2 text-[10px] font-medium text-[#111827]">{data.bookingLink}</div>
+          <div className="truncate rounded-md bg-white px-3 py-2 text-[10px] font-medium text-[#111827]">{bookingUrl}</div>
           <Button className="min-h-8 rounded-md px-3 text-[10px]" onClick={() => void copyBookingLink()} size="sm">
-            <Copy className="mr-1 size-3" /> Copy
+            <Copy className="mr-1 size-3" /> {copyState === 'success' ? 'Copied' : 'Copy'}
           </Button>
         </div>
+        {copyState === 'error' && <p className="mt-2 text-[10px] font-semibold text-[#b42318]">Copy failed. Select the link and copy it manually.</p>}
         <Link className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-[#7a3fe0]" to="/app/share">Go to share page <ArrowRight className="size-3" /></Link>
       </Card>
 
