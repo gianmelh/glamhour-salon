@@ -59,6 +59,8 @@ export function ClientStep({ clients, clientVisitByClientId, selectedClientId, o
 
   const selectedClient = displayClients.find((client) => client.id === selectedClientId)
   const clientLimitReached = subscription.data?.clientUsage.canCreateClient === false
+  const clientLimitPending = subscription.loading || !subscription.data
+  const canCreateClient = !clientLimitPending && !clientLimitReached
   const lastVisitLabel = (clientId: string) => {
     const visit = clientVisitByClientId[clientId]
     if (!visit) return undefined
@@ -89,7 +91,7 @@ export function ClientStep({ clients, clientVisitByClientId, selectedClientId, o
             </Link>
           ) : (
             <Button
-              disabled={!newName.trim() || newPhone.trim().length < 7}
+              disabled={!canCreateClient || !newName.trim() || newPhone.trim().length < 7}
               fullWidth
               loading={createClient.loading}
               onClick={async () => {
@@ -164,11 +166,16 @@ export function ClientStep({ clients, clientVisitByClientId, selectedClientId, o
       )}
       <Button disabled={!selectedClientId || selectedClient?.subscription_locked} fullWidth onClick={onNext}>Continue</Button>
       {clientLimitReached ? (
-        <Link className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-glam-gradient px-4 text-sm font-medium text-white shadow-action" to="/app/settings/subscription">
-          Upgrade
-        </Link>
+        <>
+          <Button disabled fullWidth variant="outline">
+            <Plus className="size-4" /> Create new client
+          </Button>
+          <Link className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-glam-gradient px-4 text-sm font-medium text-white shadow-action" to="/app/settings/subscription">
+            Upgrade
+          </Link>
+        </>
       ) : (
-        <Button fullWidth onClick={() => setCreating(true)} variant="outline">
+        <Button disabled={!canCreateClient} fullWidth onClick={() => { if (canCreateClient) setCreating(true) }} variant="outline">
           <Plus className="size-4" /> Create new client
         </Button>
       )}

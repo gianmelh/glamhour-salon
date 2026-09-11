@@ -112,6 +112,8 @@ export function HomeQuickCreateAppointmentStep({
   const displayClients = useMemo(() => applyClientAccess(clients, subscription.data), [clients, subscription.data])
   const selectedClient = displayClients.find((client) => client.id === selectedClientId)
   const clientLimitReached = subscription.data?.clientUsage.canCreateClient === false
+  const clientLimitPending = subscription.loading || !subscription.data
+  const canCreateClient = !clientLimitPending && !clientLimitReached
   const selectedProvider = providers.find((provider) => provider.id === providerId)
   const durationMinutes = selectedProvider?.durationMinutes ?? service.duration_minutes
   const timeOptions = useMemo(() => {
@@ -163,6 +165,7 @@ export function HomeQuickCreateAppointmentStep({
   }
 
   const startCreatingClient = () => {
+    if (!canCreateClient) return
     setNewName('')
     setNewPhone('')
     setClientErrors({ name: '', phone: '' })
@@ -170,6 +173,7 @@ export function HomeQuickCreateAppointmentStep({
   }
 
   const saveClient = async () => {
+    if (!canCreateClient) return
     const name = newName.trim()
     const phone = newPhone.trim()
     const nextErrors = {
@@ -237,11 +241,16 @@ export function HomeQuickCreateAppointmentStep({
             </div>
             {submitted && requiredErrors.client && <p className="text-xs font-semibold text-[#b42318]">{requiredErrors.client}</p>}
             {clientLimitReached ? (
-              <Link className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-glam-gradient px-4 text-sm font-medium text-white shadow-action" to="/app/settings/subscription">
-                Upgrade
-              </Link>
+              <>
+                <Button disabled fullWidth variant="outline">
+                  <Plus className="size-4" /> Create new client
+                </Button>
+                <Link className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-glam-gradient px-4 text-sm font-medium text-white shadow-action" to="/app/settings/subscription">
+                  Upgrade
+                </Link>
+              </>
             ) : (
-              <Button fullWidth onClick={startCreatingClient} variant="outline">
+              <Button disabled={!canCreateClient} fullWidth onClick={startCreatingClient} variant="outline">
                 <Plus className="size-4" /> Create new client
               </Button>
             )}
@@ -253,7 +262,13 @@ export function HomeQuickCreateAppointmentStep({
             <Input label="Phone number *" placeholder="e.g. +52 55 1234 5678" value={newPhone} onChange={(event) => setNewPhone(event.target.value)} />
             {clientErrors.phone && <p className="text-xs font-semibold text-[#b42318]">{clientErrors.phone}</p>}
             <MutationError error={createClient.error} />
-            <Button fullWidth loading={createClient.loading} onClick={() => void saveClient()}>Save client</Button>
+            {clientLimitReached ? (
+              <Link className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-glam-gradient px-4 text-sm font-medium text-white shadow-action" to="/app/settings/subscription">
+                Upgrade
+              </Link>
+            ) : (
+              <Button disabled={!canCreateClient} fullWidth loading={createClient.loading} onClick={() => void saveClient()}>Save client</Button>
+            )}
             <Button fullWidth onClick={() => setCreatingClient(false)} variant="outline">Cancel</Button>
           </div>
         )}

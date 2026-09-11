@@ -13,11 +13,13 @@ export function CreateClientModal({ initialClient = null, open, onClose, onCreat
   ))
   const subscription = useSubscription()
   const clientLimitReached = !initialClient && subscription.data?.clientUsage.canCreateClient === false
+  const clientLimitPending = !initialClient && (subscription.loading || !subscription.data)
+  const canCreateClient = Boolean(initialClient) || (!clientLimitPending && !clientLimitReached)
   return (
     <Modal onClose={onClose} open={open} title={initialClient ? 'Edit client' : 'Add client'} variant="sheet">
       <form className="space-y-3" onSubmit={async (event) => {
         event.preventDefault()
-        if (clientLimitReached) return
+        if (!canCreateClient) return
         const form = new FormData(event.currentTarget)
         const phone = String(form.get('phone') ?? '').trim()
         if (!phone) {
@@ -50,8 +52,10 @@ export function CreateClientModal({ initialClient = null, open, onClose, onCreat
         <Input defaultValue={initialClient?.phone ?? ''} label="Phone" minLength={7} name="phone" required />
         <Textarea defaultValue={initialClient?.notes ?? ''} label="Notes" name="notes" />
         <MutationError error={mutation.error} />
-        {!clientLimitReached && (
-          <Button fullWidth loading={mutation.loading} type="submit">{initialClient ? 'Save client' : 'Create client'}</Button>
+        {clientLimitReached ? (
+          <Button disabled fullWidth type="button">Create client</Button>
+        ) : (
+          <Button disabled={!canCreateClient} fullWidth loading={mutation.loading} type="submit">{initialClient ? 'Save client' : 'Create client'}</Button>
         )}
       </form>
     </Modal>

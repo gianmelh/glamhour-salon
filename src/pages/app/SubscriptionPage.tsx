@@ -280,17 +280,13 @@ export function SubscriptionPage() {
           <DetailRow label="Next Charge / Renewal" value={currentPeriodEnd ? formatDate(currentPeriodEnd) : 'Pending Stripe sync'} />
           {summary.subscription?.cancelAtPeriodEnd && (
             <div className="rounded-lg bg-warning-soft p-3 text-xs leading-5 text-warning">
-              Premium access continues until {currentPeriodEnd ? formatDate(currentPeriodEnd) : 'the end of your billing period'}.
+              Subscription cancellation is scheduled. Premium access continues until {currentPeriodEnd ? formatDate(currentPeriodEnd) : 'the end of your billing period'}.
             </div>
           )}
           {summary.subscription?.cancelAtPeriodEnd ? (
             <Button fullWidth loading={loadingAction === 'reactivate'} onClick={reactivatePremium}>Keep Premium</Button>
           ) : (
-            <div className="rounded-lg border border-danger/20 bg-danger-soft p-3">
-              <p className="text-xs font-bold text-danger">Danger Zone</p>
-              <p className="mt-1 text-xs leading-5 text-danger">Premium access continues until the end of your current paid billing period.</p>
-              <Button className="mt-3" fullWidth onClick={() => setCancelOpen(true)} variant="danger">Cancel Subscription</Button>
-            </div>
+            <Button fullWidth onClick={() => setCancelOpen(true)} variant="danger">Cancel Subscription</Button>
           )}
         </Card>
       )}
