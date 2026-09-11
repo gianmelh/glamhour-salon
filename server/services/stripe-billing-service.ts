@@ -8,6 +8,7 @@ export type SubscriptionPlanCode = 'free' | 'premium_monthly' | 'premium_annual'
 
 const FREE_CLIENT_LIMIT = 15
 const premiumStatuses = new Set(['active', 'trialing', 'past_due'])
+const UNDEFINED_TABLE = '42P01'
 
 interface SubscriptionRow extends QueryResultRow {
   id: string
@@ -93,6 +94,13 @@ function planCodeForPrice(priceId?: string | null): SubscriptionPlanCode {
 
 function unixToIso(value?: number | null) {
   return value ? new Date(value * 1000).toISOString() : null
+}
+
+function isDatabaseError(error: unknown, code: string) {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && (error as { code?: string }).code === code
 }
 
 async function stripeRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -230,10 +238,15 @@ async function resolveSalonIdForStripeCustomer(customerId: string) {
 }
 
 export async function getSubscriptionSummary(salonId: string) {
-  const [subscription, countRows] = await Promise.all([
-    activeSubscription(salonId),
-    query<{ count: string }>('SELECT count(*) FROM clients WHERE salon_id = $1 AND deleted_at IS NULL', [salonId]),
-  ])
+  let subscription: SubscriptionRow | null = null
+  try {
+    subscription = await activeSubscription(salonId)
+  } catch (error) {
+    if (!isDatabaseError(error, UNDEFINED_TABLE)) {
+      throw error
+    }
+  }
+  const countRows = await query<{ count: string }>('SELECT count(*) FROM clients WHERE salon_id = $1 AND deleted_at IS NULL', [salonId])
   const clientCount = Number(countRows[0]?.count ?? 0)
   const periodEnded = subscription?.current_period_end
     ? new Date(subscription.current_period_end).getTime() <= Date.now()
