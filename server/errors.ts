@@ -51,11 +51,25 @@ export const errorHandler: ErrorRequestHandler = (error, _request, response, _ne
   }
 
   if (typeof error === 'object' && error !== null && 'code' in error) {
-    const databaseError = error as { code?: string; detail?: string }
+    const databaseError = error as { code?: string; constraint?: string; detail?: string }
 
     if (databaseError.code === '23P01' && 'constraint' in databaseError && databaseError.constraint === 'appointments_no_client_overlap') {
       response.status(409).json({
         error: { code: 'CLIENT_APPOINTMENT_CONFLICT', message: 'This client already has an appointment during this time.' },
+      })
+      return
+    }
+
+    if (databaseError.code === '23505' && databaseError.constraint === 'clients_salon_phone_unique') {
+      response.status(409).json({
+        error: { code: 'CLIENT_PHONE_EXISTS', message: 'A client with this phone number already exists.' },
+      })
+      return
+    }
+
+    if (databaseError.code === '23505' && databaseError.constraint === 'clients_salon_email_unique') {
+      response.status(409).json({
+        error: { code: 'CLIENT_EMAIL_EXISTS', message: 'A client with this email already exists.' },
       })
       return
     }

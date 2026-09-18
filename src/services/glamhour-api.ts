@@ -141,6 +141,8 @@ export const glamhourApi = {
   }),
   createClient: (input: CreateClientInput, salonId?: string) => apiRequest<Client>(`/salons/${resolveSalonId(salonId)}/clients`, { method: 'POST', body: JSON.stringify(input) }),
   updateClient: (id: string, input: CreateClientInput, salonId?: string) => apiRequest<Client>(`/salons/${resolveSalonId(salonId)}/clients/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  findOrCreateClient: (input: CreateClientInput & { mergeNotes?: string }, salonId?: string) =>
+    apiRequest<Client>(`/salons/${resolveSalonId(salonId)}/clients/find-or-create`, { method: 'POST', body: JSON.stringify(input) }),
   createService: (input: CreateServiceInput, salonId?: string) => apiRequest<Service>(`/salons/${resolveSalonId(salonId)}/services`, { method: 'POST', body: JSON.stringify({ currencyCode: 'USD', isPubliclyBookable: true, ...input }) }),
   ensureService: (input: import('../types/api').EnsureServiceInput, salonId?: string) =>
     apiRequest<Service>(`/salons/${resolveSalonId(salonId)}/services/ensure`, {

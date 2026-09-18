@@ -200,6 +200,10 @@ export const createClientSchema = z.object({
   notes: z.string().max(5000).optional(),
 })
 
+export const findOrCreateClientSchema = createClientSchema.extend({
+  mergeNotes: z.string().max(5000).optional(),
+})
+
 const serviceWriteBaseSchema = z.object({
   categoryId: uuidSchema.optional(),
   categoryCode: z.string().trim().min(1).max(60).optional(),

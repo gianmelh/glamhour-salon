@@ -7,7 +7,7 @@ import {
   Badge, Button, Card, ErrorState, LoadingState,
   ProfessionalEditorModal, emptyProfessionalDraft, type ProfessionalDraft,
 } from '../../components'
-import { useDashboard, useNailSettings, useProfessionals, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
+import { useDashboard, useNailSettings, useProfessionals, useServiceCategories, useServices, useSubscription } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { writeClipboard } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
@@ -93,6 +93,7 @@ export function HomePage() {
   const services = useServices()
   const categories = useServiceCategories()
   const nailSettings = useNailSettings()
+  const subscription = useSubscription()
   const saveProvider = useMutation((input: ProfessionalDraft) => glamhourApi.createProfessional(input))
   const days = useMemo(() => weekDays(selectedDate), [selectedDate])
   const enabledCategoryIds = useMemo(
@@ -111,9 +112,9 @@ export function HomePage() {
     return () => window.clearTimeout(timer)
   }, [copyState])
 
-  if (dashboard.loading) return <LoadingState label="Loading salon dashboard..." />
-  if (!dashboard.data) {
-    return <ErrorState description={dashboard.error?.message ?? 'The dashboard could not be loaded.'} onRetry={dashboard.retry} />
+  if (dashboard.loading || subscription.loading) return <LoadingState label="Loading salon dashboard..." />
+  if (!dashboard.data || !subscription.data) {
+    return <ErrorState description={dashboard.error?.message ?? subscription.error?.message ?? 'The dashboard could not be loaded.'} onRetry={() => { dashboard.retry(); subscription.retry() }} />
   }
 
   const data = dashboard.data
@@ -124,6 +125,7 @@ export function HomePage() {
   const providerResourcesLoading = professionals.loading || services.loading || categories.loading || nailSettings.loading
   const providerResourcesFallback = professionals.isFallback || services.isFallback || categories.isFallback
   const bookingUrl = publicBookingUrl(data.salon.slug)
+  const hasPremiumAccess = subscription.data.hasPremiumAccess
 
   function openProviderEditor() {
     if (staffLimitReached || providerResourcesLoading || providerResourcesFallback) {
@@ -150,6 +152,7 @@ export function HomePage() {
   }
 
   async function copyBookingLink() {
+    if (!hasPremiumAccess) return
     try {
       await writeClipboard(bookingUrl)
       setCopyState('success')
@@ -316,15 +319,25 @@ export function HomePage() {
           <Link2 className="size-4 text-[#7a3fe0]" />
           <h2 className="text-[15px] font-bold text-[#111827]">Your Booking Link</h2>
         </div>
-        <p className="mt-2 text-[10px] leading-4 text-[#68738b]">Share this link with clients so they can book appointments directly online.</p>
-        <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-          <div className="truncate rounded-md bg-white px-3 py-2 text-[10px] font-medium text-[#111827]">{bookingUrl}</div>
-          <Button className="min-h-8 rounded-md px-3 text-[10px]" onClick={() => void copyBookingLink()} size="sm">
-            <Copy className="mr-1 size-3" /> {copyState === 'success' ? 'Copied' : 'Copy'}
-          </Button>
-        </div>
-        {copyState === 'error' && <p className="mt-2 text-[10px] font-semibold text-[#b42318]">Copy failed. Select the link and copy it manually.</p>}
-        <Link className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-[#7a3fe0]" to="/app/share">Go to share page <ArrowRight className="size-3" /></Link>
+        <p className="mt-2 text-[10px] leading-4 text-[#68738b]">
+          {hasPremiumAccess ? 'Share this link with clients so they can book appointments directly online.' : 'Online booking links are available with an active Premium membership.'}
+        </p>
+        {hasPremiumAccess ? (
+          <>
+            <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+              <div className="truncate rounded-md bg-white px-3 py-2 text-[10px] font-medium text-[#111827]">{bookingUrl}</div>
+              <Button className="min-h-8 rounded-md px-3 text-[10px]" onClick={() => void copyBookingLink()} size="sm">
+                <Copy className="mr-1 size-3" /> {copyState === 'success' ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+            {copyState === 'error' && <p className="mt-2 text-[10px] font-semibold text-[#b42318]">Copy failed. Select the link and copy it manually.</p>}
+            <Link className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-[#7a3fe0]" to="/app/share">Go to share page <ArrowRight className="size-3" /></Link>
+          </>
+        ) : (
+          <Link className="mt-3 inline-flex min-h-8 items-center justify-center rounded-md bg-glam-gradient px-4 text-[10px] font-bold text-white shadow-action" to="/app/settings/subscription">
+            Upgrade
+          </Link>
+        )}
       </Card>
 
       {providerEditor && (

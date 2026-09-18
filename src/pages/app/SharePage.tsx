@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, Copy } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button, Card, DataSourceNotice, ErrorState, LoadingState } from '../../components'
-import { useSalon, useSettings } from '../../hooks/useGlamhourData'
+import { useSalon, useSettings, useSubscription } from '../../hooks/useGlamhourData'
 import { writeClipboard } from '../../lib/clipboard'
 import { phoneForUrl, publicBookingShareSettings } from '../../lib/public-booking-settings'
 import { publicBookingShareMessage, publicBookingUrl } from '../../lib/public-booking-url'
@@ -26,6 +26,7 @@ export function SharePage() {
   const [configurationPrompt, setConfigurationPrompt] = useState<{ channel: ShareChannel; message: string } | null>(null)
   const salon = useSalon()
   const settings = useSettings()
+  const subscription = useSubscription()
   const bookingUrl = useMemo(() => salon.data ? publicBookingUrl(salon.data.slug) : '', [salon.data])
   const shareSettings = publicBookingShareSettings(settings.data?.settings_json)
 
@@ -35,11 +36,17 @@ export function SharePage() {
     return () => window.clearTimeout(timer)
   }, [copyState])
 
-  if (salon.loading || settings.loading) return <LoadingState label="Loading salon link..." />
-  if (!salon.data || !settings.data) return <ErrorState description={salon.error?.message ?? settings.error?.message ?? 'Salon could not be loaded'} onRetry={() => { salon.retry(); settings.retry() }} />
+  if (salon.loading || settings.loading || subscription.loading) return <LoadingState label="Loading salon link..." />
+  if (!salon.data || !settings.data || !subscription.data) return <ErrorState description={salon.error?.message ?? settings.error?.message ?? subscription.error?.message ?? 'Salon could not be loaded'} onRetry={() => { salon.retry(); settings.retry(); subscription.retry() }} />
+
+  const hasPremiumAccess = subscription.data.hasPremiumAccess
 
   const copyLink = async () => {
     setConfigurationPrompt(null)
+    if (!hasPremiumAccess) {
+      setCopyState('idle')
+      return
+    }
     try {
       await writeClipboard(bookingUrl)
       setCopyState('success')
@@ -70,6 +77,7 @@ export function SharePage() {
       label: 'WhatsApp',
       icon: '/Glamhour - Assets/Salon link/Icon-4.svg',
       onClick: () => {
+        if (!hasPremiumAccess) return
         if (!requireConfiguration('WhatsApp', whatsappPhone, 'Add your WhatsApp number in Public booking settings to use this option.')) return
         window.open(`https://wa.me/${whatsappPhone}?text=${encodedMessage}`, '_blank', 'noopener,noreferrer')
       },
@@ -78,6 +86,7 @@ export function SharePage() {
       label: 'SMS / Message',
       icon: '/Glamhour - Assets/Salon link/Icon-3.svg',
       onClick: () => {
+        if (!hasPremiumAccess) return
         if (!requireConfiguration('SMS / Message', smsPhone, 'Add your SMS / Message number in Public booking settings to use this option.')) return
         window.location.href = `sms:${smsPhone}${isIos() ? '&' : '?'}body=${encodedMessage}`
       },
@@ -86,6 +95,7 @@ export function SharePage() {
       label: 'Facebook',
       icon: '/Glamhour - Assets/Salon link/Icon-2.svg',
       onClick: () => {
+        if (!hasPremiumAccess) return
         if (!requireConfiguration('Facebook', facebookUrl, 'Add your Facebook link in Public booking settings to use this option.')) return
         window.open(facebookUrl, '_blank', 'noopener,noreferrer')
       },
@@ -94,6 +104,7 @@ export function SharePage() {
       label: 'Instagram',
       icon: '/Glamhour - Assets/Salon link/Icon-1.svg',
       onClick: async () => {
+        if (!hasPremiumAccess) return
         if (!requireConfiguration('Instagram', instagramUrl, 'Add your Instagram link in Public booking settings to use this option.')) return
         await copyLink()
         window.open(instagramUrl, '_blank', 'noopener,noreferrer')
@@ -119,10 +130,21 @@ export function SharePage() {
           <img alt="" className="size-4" src="/Glamhour - Assets/Salon link/Icon-6.svg" />
           <p className="text-[12px] font-extrabold text-[#101827]">Your Booking Link</p>
         </div>
-        <p className="mt-2 max-w-[250px] text-[10px] font-medium leading-4 text-[#596275]">Share this link with clients so they can book appointments directly online.</p>
-        <div className="mt-4 flex min-h-10 items-center gap-2 rounded-md bg-white px-3 py-2">
+        <p className="mt-2 max-w-[250px] text-[10px] font-medium leading-4 text-[#596275]">
+          {hasPremiumAccess ? 'Share this link with clients so they can book appointments directly online.' : 'Online booking links are available with an active Premium membership.'}
+        </p>
+        {!hasPremiumAccess && (
+          <div className="mt-3 rounded-md border border-[#ded3ff] bg-white p-3">
+            <p className="text-[11px] font-bold leading-4 text-[#101827]">Upgrade to enable your booking link.</p>
+            <p className="mt-1 text-[10px] font-medium leading-4 text-[#596275]">Clients who visit this link will see an upgrade message until Premium is active.</p>
+            <Link className="mt-3 inline-flex min-h-8 w-full items-center justify-center rounded-md bg-glam-gradient px-3 text-[10px] font-bold text-white shadow-action" to="/app/settings/subscription">
+              Upgrade
+            </Link>
+          </div>
+        )}
+        <div className={`mt-4 flex min-h-10 items-center gap-2 rounded-md bg-white px-3 py-2 ${hasPremiumAccess ? '' : 'opacity-60'}`}>
           <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-[#101827]">{bookingUrl.replace(/^https?:\/\//, '')}</span>
-          <Button className="min-h-7 rounded-[5px] px-3 text-[10px]" onClick={copyLink} size="sm" type="button">
+          <Button className="min-h-7 rounded-[5px] px-3 text-[10px]" disabled={!hasPremiumAccess} onClick={copyLink} size="sm" type="button">
             <Copy className="size-3" /> Copy
           </Button>
         </div>
@@ -133,7 +155,7 @@ export function SharePage() {
       <div className="mt-4 space-y-3">
         {shareOptions.map((option) => (
           <div className="space-y-2" key={option.label}>
-            <button className="flex min-h-[58px] w-full flex-col items-center justify-center rounded-lg bg-white text-center shadow-card" onClick={option.onClick} type="button">
+            <button className="flex min-h-[58px] w-full flex-col items-center justify-center rounded-lg bg-white text-center shadow-card disabled:opacity-60" disabled={!hasPremiumAccess} onClick={option.onClick} type="button">
               <img alt="" className="size-4" src={option.icon} />
               <span className="mt-1 text-[10px] font-extrabold text-[#101827]">{option.label}</span>
             </button>

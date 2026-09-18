@@ -27,6 +27,7 @@ import {
   createClientSchema,
   createServiceSchema,
   ensureServiceSchema,
+  findOrCreateClientSchema,
   confirmPasswordResetSchema,
   dashboardQuerySchema,
   eligibleProvidersQuerySchema,
@@ -260,6 +261,12 @@ router.post('/salons/:salonId/clients', asyncHandler(async (request, response) =
   const { salonId } = validate(salonParamsSchema, request.params)
   const body = validate(createClientSchema, request.body)
   response.status(201).json({ data: await dataService.createClient(salonId, body) })
+}))
+
+router.post('/salons/:salonId/clients/find-or-create', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(findOrCreateClientSchema, request.body)
+  response.status(200).json({ data: await dataService.findOrCreateClient(salonId, body) })
 }))
 
 router.patch('/salons/:salonId/clients/:id', asyncHandler(async (request, response) => {

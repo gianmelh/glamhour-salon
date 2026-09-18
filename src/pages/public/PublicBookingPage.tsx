@@ -109,11 +109,12 @@ export function PublicBookingPage() {
     setBusy(true)
     setSubmitError(null)
     try {
-      const client = await glamhourApi.createClient({
+      const client = await glamhourApi.findOrCreateClient({
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
         email: form.email.trim() || undefined,
         notes: 'Created from public booking link.',
+        mergeNotes: 'Used public booking link.',
       }, payload.salon.id)
       await glamhourApi.createAppointment({
         clientId: client.id,

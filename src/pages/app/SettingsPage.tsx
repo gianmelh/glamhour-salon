@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarDays, ChevronRight, CreditCard, LogOut, MessageCircle, MessageSquare, Plus, Save, Scissors, UsersRound } from 'lucide-react'
+import { CalendarDays, ChevronRight, CreditCard, LogOut, MessageCircle, MessageSquare, Plus, Save, Scissors, UserRound, UsersRound } from 'lucide-react'
 import { Avatar, Badge, Button, Card, DataSourceNotice, ErrorState, Input, LoadingState, PageTitle } from '../../components'
 import { ScreenSection } from '../../components/screen/ScreenSection'
 import { MutationError } from '../../components/screen/MutationError'
@@ -224,6 +224,15 @@ export function SettingsPage() {
               icon={<UsersRound className="size-4" />}
               label="Team & Providers"
               to="/app/settings/services/nails"
+            />
+          </ScreenSection>
+
+          <ScreenSection title="Clients">
+            <CardLink
+              description={`Total ${subscriptionData.clientUsage.count}`}
+              icon={<UserRound className="size-4" />}
+              label="Manage clients"
+              to="/app/clients"
             />
           </ScreenSection>
         </div>

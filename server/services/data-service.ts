@@ -5,7 +5,7 @@ import { query, withTransaction } from '../db.js'
 import { config } from '../config.js'
 import { sendPasswordResetCode } from './email-service.js'
 import { saveSalonMedia } from './media-storage.js'
-import { enforceCanCreateClient, getClientAccessPolicy } from './stripe-billing-service.js'
+import { enforceCanCreateClient, getClientAccessPolicy, getSyncedSubscriptionSummary } from './stripe-billing-service.js'
 import type {
   Appointment,
   Client,
@@ -130,6 +130,10 @@ interface CreateClientInput {
   dateOfBirth?: string
   preferredLanguage?: string
   notes?: string
+}
+
+interface FindOrCreateClientInput extends CreateClientInput {
+  mergeNotes?: string
 }
 
 interface CreateServiceInput {
@@ -2094,6 +2098,12 @@ export const dataService = {
       'Salon not found',
     )
 
+    const subscription = await getSyncedSubscriptionSummary(salon.id)
+
+    if (!subscription.hasPremiumAccess) {
+      throw new ApiError(403, 'This salon booking link is available with an active Premium membership. Ask the salon to upgrade to enable online booking.')
+    }
+
     if (!salon.booking_enabled || !salon.allow_public_booking) {
       throw new ApiError(404, 'Online booking is not available for this salon.')
     }
@@ -2904,7 +2914,58 @@ export const dataService = {
     )
   },
 
+  async findClientByContact(salonId: string, input: { phone?: string | null; email?: string | null }): Promise<Client | null> {
+    const phone = input.phone?.trim() || null
+    const normalizedPhone = phone?.replace(/\D/g, '') || null
+    const email = input.email?.trim().toLowerCase() || null
+    if (!normalizedPhone && !email) return null
+
+    const rows = await query<Client>(
+      `SELECT *
+       FROM clients
+       WHERE salon_id = $1
+         AND deleted_at IS NULL
+         AND (
+           ($2::text IS NOT NULL AND regexp_replace(phone, '\\D', '', 'g') = $2)
+           OR ($3::text IS NOT NULL AND lower(email) = $3)
+         )
+       ORDER BY created_at
+       LIMIT 1`,
+      [salonId, normalizedPhone, email],
+    )
+    return rows[0] ?? null
+  },
+
+  async ensureClientContactAvailable(salonId: string, input: { phone?: string | null; email?: string | null }, excludedClientId?: string): Promise<void> {
+    const phone = input.phone?.trim() || null
+    const normalizedPhone = phone?.replace(/\D/g, '') || null
+    const email = input.email?.trim().toLowerCase() || null
+    if (!normalizedPhone && !email) return
+
+    const conflicts = await query<{ id: string; phone_conflict: boolean; email_conflict: boolean }>(
+      `SELECT id,
+              ($2::text IS NOT NULL AND regexp_replace(phone, '\\D', '', 'g') = $2) AS phone_conflict,
+              ($3::text IS NOT NULL AND lower(email) = $3) AS email_conflict
+       FROM clients
+       WHERE salon_id = $1
+         AND deleted_at IS NULL
+         AND ($4::uuid IS NULL OR id <> $4)
+         AND (
+           ($2::text IS NOT NULL AND regexp_replace(phone, '\\D', '', 'g') = $2)
+           OR ($3::text IS NOT NULL AND lower(email) = $3)
+         )
+       LIMIT 1`,
+      [salonId, normalizedPhone, email, excludedClientId ?? null],
+    )
+
+    const conflict = conflicts[0]
+    if (!conflict) return
+    if (conflict.phone_conflict) throw new ApiError(409, 'A client with this phone number already exists.')
+    if (conflict.email_conflict) throw new ApiError(409, 'A client with this email already exists.')
+  },
+
   async createClient(salonId: string, input: CreateClientInput): Promise<Client> {
+    await this.ensureClientContactAvailable(salonId, input)
     await enforceCanCreateClient(salonId)
     return oneOrNotFound<Client>(
       `INSERT INTO clients (
@@ -2924,8 +2985,32 @@ export const dataService = {
     )
   },
 
-  updateClient(salonId: string, id: string, input: CreateClientInput): Promise<Client> {
+  async findOrCreateClient(salonId: string, input: FindOrCreateClientInput): Promise<Client> {
+    const existing = await this.findClientByContact(salonId, input)
+    if (!existing) return this.createClient(salonId, input)
+
+    const email = existing.email ?? input.email ?? null
+    const phone = existing.phone ?? input.phone ?? null
+    const mergedNotes = input.mergeNotes
+      ? [existing.notes, input.mergeNotes].filter(Boolean).join('\n')
+      : existing.notes
+
     return oneOrNotFound<Client>(
+      `UPDATE clients
+       SET full_name = CASE WHEN btrim(full_name) = '' THEN $3 ELSE full_name END,
+           email = $4,
+           phone = $5,
+           notes = $6,
+           updated_at = now()
+       WHERE salon_id = $1 AND id = $2 AND deleted_at IS NULL
+       RETURNING *`,
+      [salonId, existing.id, input.fullName, email, phone, mergedNotes],
+      'Client not found',
+    )
+  },
+
+  updateClient(salonId: string, id: string, input: CreateClientInput): Promise<Client> {
+    return this.ensureClientContactAvailable(salonId, input, id).then(() => oneOrNotFound<Client>(
       `UPDATE clients
        SET full_name = $3,
            email = $4,
@@ -2947,7 +3032,7 @@ export const dataService = {
         input.notes ?? null,
       ],
       'Client not found',
-    )
+    ))
   },
 
   listServiceCategories(salonId?: string, includeAll = false): Promise<ServiceCategory[]> {
