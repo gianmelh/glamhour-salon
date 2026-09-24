@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, CheckCircle2, Clock, MapPin, UserRound } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, Clock, UserRound } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { Button, ErrorState, LoadingState } from '../../components'
 import { deferTask } from '../../lib/defer'
-import { formatMoney } from '../../lib/format'
 import { addMinutesIso, formatZonedDate, formatZonedTime, normalizeTimeZone, zonedDateString } from '../../lib/salon-time'
 import { glamhourApi } from '../../services/glamhour-api'
 import type { AvailabilitySlot, EligibleProvider, PublicBookingPayload, Service } from '../../types/api'
 
-type Step = 'service' | 'provider' | 'time' | 'details' | 'success'
+type Step = 'service' | 'schedule' | 'provider' | 'details' | 'success'
 
 function nextBookableDates(timeZone: string) {
   const today = zonedDateString(new Date(), timeZone)
   const [year, month, day] = today.split('-').map(Number)
   const start = new Date(Date.UTC(year, (month || 1) - 1, day || 1, 12, 0, 0))
-  return Array.from({ length: 14 }, (_, index) => {
+  return Array.from({ length: 21 }, (_, index) => {
     const date = new Date(start)
     date.setUTCDate(start.getUTCDate() + index)
     return date.toISOString().slice(0, 10)
@@ -29,16 +28,30 @@ export function PublicBookingPage() {
   const [submitError, setSubmitError] = useState<Error | null>(null)
   const [step, setStep] = useState<Step>('service')
   const [service, setService] = useState<Service | null>(null)
+  const [serviceCategory, setServiceCategory] = useState<string | null>(null)
   const [provider, setProvider] = useState<EligibleProvider | null>(null)
   const [date, setDate] = useState('')
   const [slot, setSlot] = useState<AvailabilitySlot | null>(null)
   const [providers, setProviders] = useState<EligibleProvider[]>([])
+  const [providerSlots, setProviderSlots] = useState<Record<string, AvailabilitySlot[]>>({})
   const [availability, setAvailability] = useState<AvailabilitySlot[]>([])
+  const [providersLoading, setProvidersLoading] = useState(false)
+  const [slotsLoading, setSlotsLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ fullName: '', phone: '', email: '', notes: '' })
+  const [confirmationCode, setConfirmationCode] = useState('')
+  const [calendarMonth, setCalendarMonth] = useState('')
 
   const timeZone = normalizeTimeZone(payload?.salon.timezone)
   const dates = useMemo(() => nextBookableDates(timeZone), [timeZone])
+  const serviceGroups = useMemo(() => {
+    const groups = new Map<string, Service[]>()
+    payload?.services.forEach((item) => {
+      const key = item.category_name ?? item.name
+      groups.set(key, [...(groups.get(key) ?? []), item])
+    })
+    return [...groups.entries()]
+  }, [payload])
 
   useEffect(() => {
     let active = true
@@ -47,7 +60,9 @@ export function PublicBookingPage() {
       .then((data) => {
         if (!active) return
         setPayload(data)
-        setDate(nextBookableDates(normalizeTimeZone(data.salon.timezone))[0] ?? '')
+        const firstDate = nextBookableDates(normalizeTimeZone(data.salon.timezone))[0] ?? ''
+        setDate(firstDate)
+        setCalendarMonth(firstDate.slice(0, 7))
         setError(null)
       })
       .catch((reason) => {
@@ -62,10 +77,12 @@ export function PublicBookingPage() {
   useEffect(() => {
     if (!payload || !service || !date) {
       deferTask(() => setProviders([]))
+      deferTask(() => setAvailability([]))
+      deferTask(() => setProviderSlots({}))
       return
     }
     let active = true
-    deferTask(() => setBusy(true))
+    deferTask(() => setProvidersLoading(true))
     glamhourApi.eligibleProviders({ serviceId: service.id, categoryId: service.category_id, date }, payload.salon.id)
       .then((items) => {
         if (active) setProviders(items)
@@ -74,30 +91,46 @@ export function PublicBookingPage() {
         if (active) setProviders([])
       })
       .finally(() => {
-        if (active) setBusy(false)
+        if (active) setProvidersLoading(false)
       })
     return () => { active = false }
   }, [date, payload, service])
 
   useEffect(() => {
-    if (!payload || !service || !provider || !date) {
+    if (!payload || !service || !date || providers.length === 0) {
       deferTask(() => setAvailability([]))
+      deferTask(() => setProviderSlots({}))
       return
     }
     let active = true
-    deferTask(() => setBusy(true))
-    glamhourApi.appointmentAvailability({ providerId: provider.id, serviceId: service.id, date, timezone: timeZone }, payload.salon.id)
-      .then((result) => {
-        if (active) setAvailability(result.slots)
+    deferTask(() => setSlotsLoading(true))
+    Promise.all(providers.map(async (item) => {
+      const result = await glamhourApi.appointmentAvailability({ providerId: item.id, serviceId: service.id, date, timezone: timeZone }, payload.salon.id)
+      return [item.id, result.slots] as const
+    }))
+      .then((results) => {
+        if (!active) return
+        const nextProviderSlots = Object.fromEntries(results)
+        const slotsByStart = new Map<string, AvailabilitySlot>()
+        results.forEach(([, slots]) => {
+          slots.filter((item) => item.available).forEach((item) => {
+            if (!slotsByStart.has(item.startsAt)) slotsByStart.set(item.startsAt, item)
+          })
+        })
+        setProviderSlots(nextProviderSlots)
+        setAvailability([...slotsByStart.values()].sort((a, b) => a.startsAt.localeCompare(b.startsAt)))
       })
       .catch(() => {
-        if (active) setAvailability([])
+        if (active) {
+          setProviderSlots({})
+          setAvailability([])
+        }
       })
       .finally(() => {
-        if (active) setBusy(false)
+        if (active) setSlotsLoading(false)
       })
     return () => { active = false }
-  }, [date, payload, provider, service, timeZone])
+  }, [date, payload, providers, service, timeZone])
 
   if (loading) return <PublicShell><LoadingState label="Loading booking link..." /></PublicShell>
   if (error || !payload) {
@@ -116,7 +149,7 @@ export function PublicBookingPage() {
         notes: 'Created from public booking link.',
         mergeNotes: 'Used public booking link.',
       }, payload.salon.id)
-      await glamhourApi.createAppointment({
+      const appointment = await glamhourApi.createAppointment({
         clientId: client.id,
         professionalId: provider.id,
         serviceIds: [service.id],
@@ -125,6 +158,7 @@ export function PublicBookingPage() {
         source: 'public_booking',
         customerNotes: form.notes.trim() || undefined,
       }, payload.salon.id)
+      setConfirmationCode(`A${appointment.id.replace(/-/g, '').slice(0, 5).toUpperCase()}`)
       setStep('success')
     } catch (reason) {
       setSubmitError(reason instanceof Error ? reason : new Error('Appointment could not be requested.'))
@@ -135,124 +169,192 @@ export function PublicBookingPage() {
 
   const bookAnotherService = () => {
     setService(null)
+    setServiceCategory(null)
     setProvider(null)
     setSlot(null)
     setProviders([])
     setAvailability([])
     setForm({ fullName: '', phone: '', email: '', notes: '' })
+    setConfirmationCode('')
     setSubmitError(null)
     setStep('service')
   }
 
-  const groupedServices = payload.services.reduce<Record<string, Service[]>>((result, item) => {
-    const key = item.category_name ?? 'Services'
-    result[key] = [...(result[key] ?? []), item]
-    return result
-  }, {})
+  const providersForSlot = providers.filter((item) => providerSlots[item.id]?.some((providerSlot) => providerSlot.startsAt === slot?.startsAt))
+  const selectedDateLabel = date ? fullDateLabel(date, timeZone) : ''
+  const selectService = (item: Service) => {
+    setService(item)
+    setServiceCategory(null)
+    setProvider(null)
+    setSlot(null)
+    setAvailability([])
+    setStep('schedule')
+  }
+  const downloadTicket = () => {
+    if (!service || !provider || !slot) return
+    const ticket = [
+      payload.salon.name,
+      `Confirmation: ${confirmationCode}`,
+      `Client: ${form.fullName}`,
+      `Service: ${service.name}`,
+      `Date: ${formatZonedDate(slot.startsAt, timeZone)}`,
+      `Time: ${formatZonedTime(slot.startsAt, timeZone)}`,
+      `Specialist: ${provider.full_name}`,
+    ].join('\n')
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(new Blob([ticket], { type: 'text/plain' }))
+    link.download = `${confirmationCode || 'booking'}-ticket.txt`
+    link.click()
+    URL.revokeObjectURL(link.href)
+  }
 
   return (
     <PublicShell>
-      <div className="space-y-5 px-5 py-6">
-        <header className="space-y-3">
-          <div className="grid size-12 place-items-center rounded-lg bg-[#eee9ff] text-[#7c3aed]">
-            <CalendarDays className="size-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-[#101827]">{payload.salon.name}</h1>
-            <p className="mt-1 flex items-center gap-1 text-xs font-medium text-[#748096]">
-              <MapPin className="size-3.5" />
-              {[payload.salon.city, payload.salon.region].filter(Boolean).join(', ') || 'Online booking'}
-            </p>
-          </div>
-        </header>
-
-        <StepIndicator step={step} />
-        {submitError && <p className="rounded-md bg-[#fff0f0] px-3 py-2 text-xs font-semibold text-[#e05252]">{submitError.message}</p>}
+      <PhoneStatus />
+      <div className="min-h-[calc(100dvh-34px)] px-5 pb-6 pt-4">
+        {submitError && <p className="mb-3 rounded-md bg-[#fff0f0] px-3 py-2 text-[11px] font-semibold text-[#e05252]">{submitError.message}</p>}
 
         {step === 'service' && (
           <section className="space-y-4">
-            <h2 className="text-lg font-bold">Choose a service</h2>
-            {Object.entries(groupedServices).map(([category, items]) => (
-              <div className="space-y-2" key={category}>
-                <p className="text-[11px] font-bold uppercase text-[#748096]">{category}</p>
-                {items.map((item) => (
-                  <button className="flex w-full items-center justify-between gap-3 rounded-lg border border-[#e1e4ec] bg-white p-4 text-left shadow-card" key={item.id} onClick={() => { setService(item); setProvider(null); setSlot(null); setStep('provider') }} type="button">
-                    <span>
-                      <span className="block text-sm font-bold">{item.name}</span>
-                      <span className="mt-1 block text-xs text-[#748096]">{item.duration_minutes} min</span>
-                    </span>
-                    <span className="text-sm font-bold text-[#7c3aed]">{formatMoney(item.price_minor, item.currency_code)}</span>
-                  </button>
-                ))}
-              </div>
-            ))}
-          </section>
-        )}
-
-        {step === 'provider' && service && (
-          <section className="space-y-4">
-            <PublicBack onClick={() => setStep('service')} />
-            <h2 className="text-lg font-bold">Choose a professional</h2>
-            {busy && <LoadingState label="Finding availability..." />}
-            {!busy && providers.length === 0 && <p className="rounded-lg bg-white p-4 text-sm text-[#748096]">No available professionals were found for this service.</p>}
-            {providers.map((item) => (
-              <button className="flex w-full items-center gap-3 rounded-lg border border-[#e1e4ec] bg-white p-4 text-left shadow-card" key={item.id} onClick={() => { setProvider(item); setSlot(null); setStep('time') }} type="button">
-                <span className="grid size-10 place-items-center rounded-full bg-[#eee9ff] text-[#7c3aed]"><UserRound className="size-5" /></span>
-                <span>
-                  <span className="block text-sm font-bold">{item.full_name}</span>
-                  <span className="text-xs text-[#748096]">{item.durationMinutes} min appointment</span>
-                </span>
-              </button>
-            ))}
-          </section>
-        )}
-
-        {step === 'time' && provider && (
-          <section className="space-y-4">
-            <PublicBack onClick={() => setStep('provider')} />
-            <h2 className="text-lg font-bold">Choose a time</h2>
-            <div className="grid grid-cols-2 gap-2">
-              {dates.slice(0, 6).map((item) => (
-                <button className={`rounded-md border px-3 py-2 text-xs font-bold ${date === item ? 'border-[#7c3aed] bg-[#eee9ff] text-[#4c1d95]' : 'border-[#e1e4ec] bg-white'}`} key={item} onClick={() => { setDate(item); setSlot(null) }} type="button">
-                  {shortDateLabel(item, timeZone)}
+            <ScreenHeader title="Services" subtitle="Select a category to schedule an appointment" />
+            <div className="space-y-3 pt-1">
+              {serviceGroups.map(([category, items]) => (
+                <button className="flex min-h-[52px] w-full items-center gap-3 rounded-md bg-[#f1efff] px-3 text-left" key={category} onClick={() => items.length === 1 ? selectService(items[0]) : setServiceCategory(category)} type="button">
+                  <ServiceIcon service={items[0]} />
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-extrabold text-[#101827]">{category}</span>
+                  <span className="text-[15px] font-semibold text-[#8b5cf6]">›</span>
                 </button>
               ))}
             </div>
-            {busy && <LoadingState label="Loading time slots..." />}
-            {!busy && <div className="grid grid-cols-3 gap-2">
-              {availability.filter((item) => item.available).slice(0, 18).map((item) => (
-                <button className={`min-h-11 rounded-md border text-xs font-bold ${slot?.startsAt === item.startsAt ? 'border-[#7c3aed] bg-[#7c3aed] text-white' : 'border-[#e1e4ec] bg-white'}`} key={item.startsAt} onClick={() => setSlot(item)} type="button">
-                  {item.label}
-                </button>
-              ))}
-            </div>}
-            {!busy && availability.filter((item) => item.available).length === 0 && <p className="rounded-lg bg-white p-4 text-sm text-[#748096]">No times are available on this day.</p>}
-            <Button disabled={!slot} fullWidth onClick={() => setStep('details')}>Continue</Button>
+            {serviceCategory && (
+              <div aria-modal="true" className="fixed inset-0 z-20 flex items-end justify-center bg-black/25" role="dialog">
+                <div className="w-full max-w-[393px] rounded-t-lg bg-white px-5 pb-7 pt-4 shadow-2xl">
+                  <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[#d8dbe5]" />
+                  <h2 className="text-[13px] font-extrabold text-[#101827]">Choose your service</h2>
+                  <p className="mt-0.5 text-[8px] font-semibold text-[#8a93a5]">{serviceCategory}</p>
+                  <div className="mt-4 space-y-2">
+                    {serviceGroups.find(([category]) => category === serviceCategory)?.[1].map((item) => (
+                      <button className="flex min-h-[44px] w-full items-center justify-between rounded-md bg-[#f1efff] px-3 text-left text-[11px] font-bold text-[#101827]" key={item.id} onClick={() => selectService(item)} type="button">
+                        <span>{item.name}</span><ChevronRight className="size-4 text-[#8b5cf6]" />
+                      </button>
+                    ))}
+                  </div>
+                  <button className="mt-4 w-full text-center text-[10px] font-bold text-[#7c3aed]" onClick={() => setServiceCategory(null)} type="button">Cancel</button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {step === 'schedule' && service && (
+          <section className="space-y-4">
+            <ScreenHeader onBack={() => setStep('service')} title="Choose your schedule" subtitle="Select a date and available time" />
+            <div className="rounded-md border border-[#f0eef8] bg-white px-2 pb-3 pt-2">
+              <div className="mb-2 flex items-center justify-between">
+                <button aria-label="Previous month" className="grid size-6 place-items-center text-[#596275]" onClick={() => setCalendarMonth(shiftMonth(calendarMonth, -1))} type="button"><ChevronLeft className="size-3" /></button>
+                <p className="text-center text-[10px] font-bold text-[#101827]">{monthLabel(`${calendarMonth}-01`, timeZone)}</p>
+                <button aria-label="Next month" className="grid size-6 place-items-center text-[#596275]" onClick={() => setCalendarMonth(shiftMonth(calendarMonth, 1))} type="button"><ChevronRight className="size-3" /></button>
+              </div>
+              <div className="mb-2 grid grid-cols-7 text-center text-[8px] font-bold text-[#a8afbd]">
+                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}
+              </div>
+              <div className="grid grid-cols-7 gap-y-1 text-center">
+                {calendarCells(calendarMonth).map((item, index) => item ? (
+                  <button className={`mx-auto grid size-7 place-items-center rounded-full text-[9px] font-bold ${date === item ? 'bg-[#8b5cf6] text-white' : item < dates[0] ? 'text-[#c8ccd5]' : 'text-[#596275]'}`} disabled={item < dates[0]} key={item} onClick={() => { setDate(item); setSlot(null); setProvider(null) }} type="button">{Number(item.slice(-2))}</button>
+                ) : <span key={`blank-${index}`} />)}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 flex items-center gap-1 text-[10px] font-bold text-[#7c3aed]"><Clock className="size-3" /> Time</p>
+              {(providersLoading || slotsLoading) && <LoadingState label="Loading available times..." />}
+              {!providersLoading && !slotsLoading && availability.length === 0 && <p className="rounded-md bg-[#f1efff] p-3 text-[10px] font-semibold text-[#596275]">No times are available on this day.</p>}
+              {!providersLoading && !slotsLoading && availability.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {availability.slice(0, 12).map((item) => (
+                    <button className={`min-h-8 rounded-md text-[10px] font-bold ${slot?.startsAt === item.startsAt ? 'bg-[#eee9ff] text-[#4c1d95] ring-1 ring-[#8b5cf6]' : 'bg-[#f3f5fb] text-[#8a93a5]'}`} key={item.startsAt} onClick={() => { setSlot(item); setProvider(null) }} type="button">
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {slot && <div className="rounded-md bg-[#f1efff] px-3 py-3 text-center text-[10px] font-extrabold text-[#4c1d95]">{selectedDateLabel}<br /><span className="text-[#7c3aed]">{slot.label}</span></div>}
+            <FlowButton disabled={!slot || providersLoading || slotsLoading} onClick={() => setStep('provider')}>{slot ? 'Continue' : 'Select date and time'}</FlowButton>
+          </section>
+        )}
+
+        {step === 'provider' && service && slot && (
+          <section className="space-y-4">
+            <ScreenHeader onBack={() => setStep('schedule')} title="Choose your specialist" subtitle="Select based on availability and specialties" />
+            <button className="w-full text-center text-[10px] font-bold text-[#8b5cf6]" disabled={providersForSlot.length === 0} onClick={() => {
+              const nextProvider = providersForSlot[0]
+              if (!nextProvider) return
+              setProvider(nextProvider)
+              setSlot(providerSlots[nextProvider.id]?.find((providerSlot) => providerSlot.startsAt === slot.startsAt) ?? slot)
+            }} type="button">Choose anyone available</button>
+            <div className="space-y-3">
+              {providersForSlot.length === 0 && <p className="rounded-md bg-[#f1efff] p-3 text-[10px] font-semibold text-[#596275]">No specialists are available for this time.</p>}
+              {providersForSlot.map((item) => {
+                const selected = provider?.id === item.id
+                return (
+                  <button className={`flex min-h-[70px] w-full items-center gap-3 rounded-md px-3 text-left ${selected ? 'bg-[#eee9ff] ring-1 ring-[#8b5cf6]' : 'bg-[#f1efff]'}`} key={item.id} onClick={() => {
+                    const nextSlot = providerSlots[item.id]?.find((providerSlot) => providerSlot.startsAt === slot.startsAt) ?? slot
+                    setProvider(item)
+                    setSlot(nextSlot)
+                  }} type="button">
+                    <ProviderAvatar provider={item} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[12px] font-extrabold text-[#101827]">{item.full_name}</span>
+                      <span className="mt-0.5 block text-[9px] font-semibold text-[#8a93a5]">{service.name}</span>
+                      <span className="mt-1 block truncate text-[8px] font-bold text-[#8b5cf6]">Services offered</span>
+                    </span>
+                    {selected && <CheckCircle2 className="size-4 text-[#7c3aed]" />}
+                  </button>
+                )
+              })}
+            </div>
+            <FlowButton disabled={!provider} onClick={() => setStep('details')}>Continue</FlowButton>
           </section>
         )}
 
         {step === 'details' && service && provider && slot && (
           <section className="space-y-4">
-            <PublicBack onClick={() => setStep('time')} />
-            <div className="rounded-lg bg-white p-4 shadow-card">
-              <p className="text-sm font-bold">{service.name}</p>
-              <p className="mt-1 flex items-center gap-1 text-xs text-[#748096]"><CalendarDays className="size-3.5" />{formatZonedDate(slot.startsAt, timeZone)}</p>
-              <p className="mt-1 flex items-center gap-1 text-xs text-[#748096]"><Clock className="size-3.5" />{formatZonedTime(slot.startsAt, timeZone)} with {provider.full_name}</p>
+            <ScreenHeader onBack={() => setStep('provider')} title="Details" subtitle="To continue your appointment confirmation" />
+            <div className="space-y-3">
+              <label className="block text-[9px] font-bold text-[#596275]">Preferred language
+                <select className="mt-1 min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-2 text-[10px] font-semibold text-[#101827]">
+                  <option>English</option>
+                  <option>Spanish</option>
+                  <option>Portuguese</option>
+                </select>
+              </label>
+              <Field label="Email"><input className="min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-[10px] font-semibold outline-none focus:border-[#8b5cf6]" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} type="email" value={form.email} /></Field>
+              <Field label="Full name"><input className="min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-[10px] font-semibold outline-none focus:border-[#8b5cf6]" onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))} value={form.fullName} /></Field>
+              <Field label="Phone"><input className="min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-[10px] font-semibold outline-none focus:border-[#8b5cf6]" onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} type="tel" value={form.phone} /></Field>
             </div>
-            <input className="min-h-12 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-sm" onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))} placeholder="Full name" value={form.fullName} />
-            <input className="min-h-12 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-sm" onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Phone number" value={form.phone} />
-            <input className="min-h-12 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-sm" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email (optional)" type="email" value={form.email} />
-            <textarea className="min-h-24 w-full resize-none rounded-md border border-[#e1e4ec] bg-white px-3 py-3 text-sm" onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes for the salon (optional)" value={form.notes} />
-            <Button disabled={!form.fullName.trim() || !form.phone.trim()} fullWidth loading={busy} onClick={submit}>Request appointment</Button>
+            <FlowButton disabled={!form.fullName.trim() || !form.phone.trim()} loading={busy} onClick={submit}>Confirm appointment</FlowButton>
           </section>
         )}
 
-        {step === 'success' && (
-          <section className="space-y-4 rounded-lg bg-white p-5 text-center shadow-card">
-            <CheckCircle2 className="mx-auto size-12 text-[#21855b]" />
-            <h2 className="text-lg font-bold">Appointment requested</h2>
-            <p className="text-sm text-[#748096]">Thanks, {form.fullName}. {payload.salon.name} has received your booking.</p>
-            <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#eee9ff] px-4 text-sm font-bold text-[#4c1d95]" onClick={bookAnotherService} type="button">Book another service</button>
+        {step === 'success' && service && provider && slot && (
+          <section className="space-y-4 text-center">
+            <div className="mx-auto mt-3 grid size-9 place-items-center rounded-md bg-[#eee9ff] text-[#7c3aed]">
+              <CheckCircle2 className="size-5" />
+            </div>
+            <ScreenHeader title="Booking Confirmed!" subtitle={form.email ? `We've sent the details to ${form.email}` : 'Your appointment has been scheduled'} centered />
+            <div className="rounded-md border border-[#e1e4ec] bg-white px-4 py-3">
+              <p className="text-[9px] font-bold text-[#8a93a5]">Confirmation code</p>
+              <p className="mt-1 text-[18px] font-extrabold tracking-[0.12em] text-[#101827]">{confirmationCode || 'A1JPQ'}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-left">
+              <SummaryItem label="Client" value={form.fullName} />
+              <SummaryItem label="Service" value={service.name} />
+              <SummaryItem label="Date" value={formatZonedDate(slot.startsAt, timeZone)} />
+              <SummaryItem label="Time" value={formatZonedTime(slot.startsAt, timeZone)} />
+            </div>
+            <SummaryItem icon={<UserRound className="size-3" />} label={payload.salon.name} value={[payload.salon.city, payload.salon.region].filter(Boolean).join(', ') || provider.full_name} />
+            <FlowButton onClick={downloadTicket}>Download ticket</FlowButton>
+            <button className="w-full text-center text-[10px] font-bold text-[#7c3aed]" onClick={bookAnotherService} type="button">Go back to start</button>
           </section>
         )}
       </div>
@@ -261,23 +363,98 @@ export function PublicBookingPage() {
 }
 
 function PublicShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-[#eceaf5] sm:py-6"><main className="mx-auto min-h-dvh w-full max-w-[393px] overflow-x-hidden bg-[#f2f5ff]">{children}</main></div>
+  return <div className="min-h-screen bg-[#444] sm:py-6"><main className="mx-auto min-h-dvh w-full max-w-[393px] overflow-x-hidden bg-white">{children}</main></div>
 }
 
-function shortDateLabel(date: string, timeZone: string) {
+function fullDateLabel(date: string, timeZone: string) {
   return new Intl.DateTimeFormat('en-US', {
     timeZone,
+    weekday: 'long',
     month: 'short',
     day: 'numeric',
   }).format(new Date(`${date}T12:00:00Z`))
 }
 
-function PublicBack({ onClick }: { onClick: () => void }) {
-  return <button className="text-xs font-bold text-[#7c3aed]" onClick={onClick} type="button">Back</button>
+function monthLabel(date: string, timeZone: string) {
+  return new Intl.DateTimeFormat('en-US', { timeZone, month: 'long', year: 'numeric' }).format(new Date(`${date}T12:00:00Z`))
 }
 
-function StepIndicator({ step }: { step: Step }) {
-  const steps: Step[] = ['service', 'provider', 'time', 'details']
-  const current = Math.max(0, steps.indexOf(step))
-  return <div className="flex gap-1">{steps.map((item, index) => <span className={`h-1.5 flex-1 rounded-full ${index <= current || step === 'success' ? 'bg-[#7c3aed]' : 'bg-[#ded3ff]'}`} key={item} />)}</div>
+function shiftMonth(month: string, offset: number) {
+  const [year, monthNumber] = month.split('-').map(Number)
+  const next = new Date(Date.UTC(year, monthNumber - 1 + offset, 1))
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+function calendarCells(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number)
+  const firstDay = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay()
+  const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate()
+  return [
+    ...Array.from({ length: firstDay }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => `${month}-${String(index + 1).padStart(2, '0')}`),
+  ]
+}
+
+function PhoneStatus() {
+  return (
+    <div className="flex h-[34px] items-center justify-between px-5 pt-2 text-[8px] font-bold text-[#101827]">
+      <span>9:41</span>
+      <span className="flex items-center gap-1">
+        <span className="h-1.5 w-3 rounded-[2px] border border-[#101827]" />
+        <span className="h-1.5 w-2 rounded-[2px] bg-[#101827]" />
+      </span>
+    </div>
+  )
+}
+
+function ScreenHeader({ title, subtitle, onBack, centered = false }: { title: string; subtitle: string; onBack?: () => void; centered?: boolean }) {
+  return (
+    <header className={`relative ${centered ? 'text-center' : ''}`}>
+      {onBack && (
+        <button aria-label="Back" className="absolute -left-1 top-0 grid size-6 place-items-center rounded-full text-[#101827]" onClick={onBack} type="button">
+          <ChevronLeft className="size-4" />
+        </button>
+      )}
+      <h1 className="text-[13px] font-extrabold leading-5 text-[#101827]">{title}</h1>
+      <p className="mt-0.5 text-[8px] font-semibold leading-3 text-[#8a93a5]">{subtitle}</p>
+    </header>
+  )
+}
+
+function FlowButton({ children, disabled, loading, onClick }: { children: React.ReactNode; disabled?: boolean; loading?: boolean; onClick: () => void }) {
+  return (
+    <Button className="min-h-9 rounded-md text-[10px] font-extrabold shadow-action" disabled={disabled} fullWidth loading={loading} onClick={onClick}>
+      {children}
+    </Button>
+  )
+}
+
+function ServiceIcon({ service }: { service: Service }) {
+  const code = service.category_code ?? service.category_name?.toLowerCase() ?? ''
+  const icon = code.includes('nail')
+    ? '/Glamhour - Assets/Registration flow/Home/Lashes/icons/category-nails.png'
+    : code.includes('lash')
+      ? '/Glamhour - Assets/Registration flow/Home/Lashes/icons/category-lash.png'
+      : code.includes('cosmet')
+        ? '/Glamhour - Assets/Registration flow/Home/Lashes/icons/category-cosmetology.png'
+        : '/Glamhour - Assets/Registration flow/Home/Lashes/icons/category-micropigmentation.png'
+  return <img alt="" className="size-6 rounded-full object-cover" src={icon} />
+}
+
+function ProviderAvatar({ provider }: { provider: EligibleProvider }) {
+  if (provider.avatar_url) return <img alt="" className="size-10 rounded-full object-cover" src={provider.avatar_url} />
+  return <span className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-[11px] font-extrabold text-[#7c3aed]">{provider.full_name.slice(0, 1)}</span>
+}
+
+function SummaryItem({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-[#f1efff] px-3 py-2 text-left">
+      <p className="flex items-center gap-1 text-[8px] font-bold text-[#8a93a5]">{icon}{label}</p>
+      <p className="mt-1 truncate text-[10px] font-extrabold text-[#101827]">{value}</p>
+    </div>
+  )
+}
+
+function Field({ children, label }: { children: React.ReactNode; label: string }) {
+  return <label className="block space-y-1 text-[9px] font-bold text-[#596275]">{label}{children}</label>
 }
