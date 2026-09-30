@@ -311,17 +311,6 @@ export function PublicBookingPage() {
               </div>
             </div>
             <div>
-              <p className="mb-2 text-[10px] font-bold text-[#596275]">Upcoming days</p>
-              <div className="grid grid-cols-4 gap-2">
-                {dates.slice(0, 12).map((item) => (
-                  <button className={`min-h-11 rounded-md border px-1 text-center transition-colors ${date === item ? 'border-[#8b5cf6] bg-[#8b5cf6] text-white' : 'border-[#ddd6fe] bg-[#f5f3ff] text-[#5b21b6]'}`} key={item} onClick={() => { setDate(item); setCalendarMonth(item.slice(0, 7)); setSlot(null); setProvider(null) }} type="button">
-                    <span className="block text-[8px] font-bold">{shortWeekdayLabel(item, timeZone)}</span>
-                    <span className="mt-0.5 block text-[10px] font-extrabold">{Number(item.slice(-2))}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
               <p className="mb-2 flex items-center gap-1 text-[10px] font-bold text-[#7c3aed]"><Clock className="size-3" /> Time</p>
               {(providersLoading || slotsLoading) && <LoadingState label="Loading available times..." />}
               {!providersLoading && !slotsLoading && availabilityError && <p className="rounded-md bg-[#fff0f0] p-3 text-[10px] font-semibold text-[#c24141]">{availabilityError}</p>}
@@ -354,17 +343,25 @@ export function PublicBookingPage() {
               {providersForSlot.length === 0 && <p className="rounded-md bg-[#f1efff] p-3 text-[10px] font-semibold text-[#596275]">No specialists are available for this time.</p>}
               {providersForSlot.map((item) => {
                 const selected = provider?.id === item.id
+                const languages = providerLanguages(item)
+                const offeredServices = providerServices(item, service)
                 return (
-                  <button className={`flex min-h-[70px] w-full items-center gap-3 rounded-md px-3 text-left ${selected ? 'bg-[#eee9ff] ring-1 ring-[#8b5cf6]' : 'bg-[#f1efff]'}`} key={item.id} onClick={() => {
+                  <button className={`flex min-h-[118px] w-full items-start gap-3 rounded-lg px-4 py-4 text-left ${selected ? 'bg-[#eef2ff] ring-1 ring-[#8b5cf6]' : 'bg-[#f4f6ff]'}`} key={item.id} onClick={() => {
                     const nextSlot = providerSlots[item.id]?.find((providerSlot) => providerSlot.startsAt === slot.startsAt) ?? slot
                     setProvider(item)
                     setSlot(nextSlot)
                   }} type="button">
-                    <ProviderAvatar provider={item} />
+                    <ProviderAvatar provider={item} size="lg" />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[12px] font-extrabold text-[#101827]">{item.full_name}</span>
-                      <span className="mt-0.5 flex items-center gap-1 text-[9px] font-semibold text-[#8a93a5]"><Languages className="size-3" /> {languageLabel(item.languages)}</span>
-                      <span className="mt-1 flex items-start gap-1 text-[8px] font-bold leading-3 text-[#8b5cf6]"><Scissors className="mt-0.5 size-3 shrink-0" /> <span className="max-h-6 overflow-hidden">{servicesOfferedLabel(item, service)}</span></span>
+                      <span className="block text-[14px] font-extrabold text-[#101827]">{item.full_name}</span>
+                      <span className="mt-1 flex items-center gap-1 text-[9px] font-bold text-[#596275]"><Languages className="size-3 text-[#8b5cf6]" /> Languages</span>
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {languages.map((language) => <span className="rounded border border-[#d9dce7] bg-white px-1.5 py-0.5 text-[8px] font-semibold text-[#596275]" key={language}>{language}</span>)}
+                      </span>
+                      <span className="mt-2 flex items-center gap-1 text-[9px] font-bold text-[#596275]"><Scissors className="size-3 text-[#8b5cf6]" /> Services offered</span>
+                      <span className="mt-1 flex max-h-[42px] flex-wrap gap-1 overflow-hidden">
+                        {offeredServices.map((serviceName) => <span className="rounded border border-[#d9dce7] bg-white px-1.5 py-0.5 text-[8px] font-semibold text-[#596275]" key={serviceName}>{serviceName}</span>)}
+                      </span>
                     </span>
                     {selected && <CheckCircle2 className="size-4 text-[#7c3aed]" />}
                   </button>
@@ -433,10 +430,6 @@ function fullDateLabel(date: string, timeZone: string) {
   }).format(new Date(`${date}T12:00:00Z`))
 }
 
-function shortWeekdayLabel(date: string, timeZone: string) {
-  return new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(new Date(`${date}T12:00:00Z`))
-}
-
 function monthLabel(date: string, timeZone: string) {
   return new Intl.DateTimeFormat('en-US', { timeZone, month: 'long', year: 'numeric' }).format(new Date(`${date}T12:00:00Z`))
 }
@@ -491,18 +484,19 @@ function ServiceIcon({ service }: { service: Service }) {
   return <img alt="" className="size-6 rounded-full object-cover" src={icon} />
 }
 
-function ProviderAvatar({ provider }: { provider: EligibleProvider }) {
-  if (provider.avatar_url) return <img alt="" className="size-10 rounded-full object-cover" src={provider.avatar_url} />
-  return <span className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-[11px] font-extrabold text-[#7c3aed]">{provider.full_name.slice(0, 1)}</span>
+function ProviderAvatar({ provider, size = 'md' }: { provider: EligibleProvider; size?: 'md' | 'lg' }) {
+  const className = size === 'lg' ? 'size-14' : 'size-10'
+  if (provider.avatar_url) return <img alt="" className={`${className} shrink-0 rounded-full object-cover`} src={provider.avatar_url} />
+  return <span className={`grid ${className} shrink-0 place-items-center rounded-full bg-white text-[11px] font-extrabold text-[#7c3aed]`}>{provider.full_name.slice(0, 1)}</span>
 }
 
-function languageLabel(languages: string[] | undefined) {
-  return languages?.length ? languages.join(', ') : 'Language not specified'
+function providerLanguages(provider: EligibleProvider) {
+  return provider.languages?.length ? provider.languages : ['Not specified']
 }
 
-function servicesOfferedLabel(provider: EligibleProvider, selectedService: Service) {
+function providerServices(provider: EligibleProvider, selectedService: Service) {
   const services = provider.services_offered?.filter(Boolean)
-  return services?.length ? services.join(', ') : selectedService.name
+  return services?.length ? services : [selectedService.name]
 }
 
 function SummaryItem({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {
