@@ -206,6 +206,10 @@ export function RegistrationPage() {
     attachGooglePlaceAutocomplete({
       apiKey: googleMapsApiKey,
       container,
+      onQueryChange: (value) => {
+        setSalonLocation(value);
+        setSelectedPlaceId("");
+      },
       placeholder: "Search salon location...",
       onPlaceSelect: (place) => {
         if (!isMounted) {

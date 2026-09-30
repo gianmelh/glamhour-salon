@@ -27,14 +27,15 @@ type GooglePlaceSelectEvent = Event & {
 
 type GooglePlaceAutocompleteElement = HTMLElement & {
   placeholder: string
+  value?: string
   addEventListener: (
-    type: 'gmp-select',
-    listener: (event: GooglePlaceSelectEvent) => void,
+    type: 'gmp-select' | 'input',
+    listener: ((event: GooglePlaceSelectEvent) => void) | ((event: Event) => void),
     options?: boolean | AddEventListenerOptions,
   ) => void
   removeEventListener: (
-    type: 'gmp-select',
-    listener: (event: GooglePlaceSelectEvent) => void,
+    type: 'gmp-select' | 'input',
+    listener: ((event: GooglePlaceSelectEvent) => void) | ((event: Event) => void),
     options?: boolean | EventListenerOptions,
   ) => void
 }
@@ -104,11 +105,13 @@ export function loadGoogleMapsPlaces(apiKey: string) {
 export async function attachGooglePlaceAutocomplete({
   apiKey,
   container,
+  onQueryChange,
   onPlaceSelect,
   placeholder,
 }: {
   apiKey: string
   container: HTMLElement
+  onQueryChange?: (value: string) => void
   onPlaceSelect: (place: GoogleSelectedPlace) => void
   placeholder: string
 }) {
@@ -125,6 +128,11 @@ export async function attachGooglePlaceAutocomplete({
   const autocomplete = new PlaceAutocompleteElement()
   autocomplete.placeholder = placeholder
   autocomplete.className = 'google-place-autocomplete'
+
+  const handleInput = (event: Event) => {
+    const input = event.composedPath().find((item): item is HTMLInputElement => item instanceof HTMLInputElement)
+    onQueryChange?.(input?.value ?? autocomplete.value ?? '')
+  }
 
   const handlePlaceSelect = async (event: GooglePlaceSelectEvent) => {
     const place = event.placePrediction?.toPlace()
@@ -144,9 +152,11 @@ export async function attachGooglePlaceAutocomplete({
   }
 
   container.replaceChildren(autocomplete)
+  autocomplete.addEventListener('input', handleInput)
   autocomplete.addEventListener('gmp-select', handlePlaceSelect)
 
   return () => {
+    autocomplete.removeEventListener('input', handleInput)
     autocomplete.removeEventListener('gmp-select', handlePlaceSelect)
     autocomplete.remove()
   }
