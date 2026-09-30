@@ -2107,7 +2107,7 @@ export const dataService = {
       throw new ApiError(403, 'This salon booking link is available with an active Premium membership. Ask the salon to upgrade to enable online booking.')
     }
 
-    if (!salon.booking_enabled || !salon.allow_public_booking) {
+    if (!salon.booking_enabled) {
       throw new ApiError(404, 'Online booking is not available for this salon.')
     }
 
