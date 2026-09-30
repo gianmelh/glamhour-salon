@@ -199,22 +199,28 @@ export function PublicBookingPage() {
     setAvailability([])
     setStep('schedule')
   }
-  const downloadTicket = () => {
+  const downloadTicket = async () => {
     if (!service || !provider || !slot) return
-    const ticket = [
-      payload.salon.name,
-      `Confirmation: ${confirmationCode}`,
-      `Client: ${form.fullName}`,
-      `Service: ${service.name}`,
-      `Date: ${formatZonedDate(slot.startsAt, timeZone)}`,
-      `Time: ${formatZonedTime(slot.startsAt, timeZone)}`,
-      `Specialist: ${provider.full_name}`,
-    ].join('\n')
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(new Blob([ticket], { type: 'text/plain' }))
-    link.download = `${confirmationCode || 'booking'}-ticket.txt`
-    link.click()
-    URL.revokeObjectURL(link.href)
+    setBusy(true)
+    setSubmitError(null)
+    try {
+      const { downloadBookingTicketPdf } = await import('../../lib/booking-ticket-pdf')
+      await downloadBookingTicketPdf({
+        confirmationCode,
+        salonName: payload.salon.name,
+        salonLogoUrl: payload.salon.logo_url,
+        clientName: form.fullName,
+        serviceName: service.name,
+        date: formatZonedDate(slot.startsAt, timeZone),
+        time: formatZonedTime(slot.startsAt, timeZone),
+        specialistName: provider.full_name,
+        location: [payload.salon.city, payload.salon.region].filter(Boolean).join(', '),
+      })
+    } catch {
+      setSubmitError(new Error('The PDF ticket could not be generated. Please try again.'))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -362,7 +368,7 @@ export function PublicBookingPage() {
               <SummaryItem label="Time" value={formatZonedTime(slot.startsAt, timeZone)} />
             </div>
             <SummaryItem icon={<UserRound className="size-3" />} label={payload.salon.name} value={[payload.salon.city, payload.salon.region].filter(Boolean).join(', ') || provider.full_name} />
-            <FlowButton onClick={downloadTicket}>Download ticket</FlowButton>
+            <FlowButton loading={busy} onClick={downloadTicket}>Download PDF ticket</FlowButton>
             <button className="w-full text-center text-[10px] font-bold text-[#7c3aed]" onClick={bookAnotherService} type="button">Go back to start</button>
           </section>
         )}

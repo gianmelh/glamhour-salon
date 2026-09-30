@@ -286,6 +286,7 @@ export interface PublicBookingSalon {
   id: string
   name: string
   slug: string
+  logo_url: string | null
   timezone: string
   currency_code: string
   city: string | null

@@ -415,6 +415,7 @@ interface PublicBookingSalon extends QueryResultRow {
   id: string
   name: string
   slug: string
+  logo_url: string | null
   timezone: string
   currency_code: string
   city: string | null
@@ -2086,7 +2087,9 @@ export const dataService = {
 
   async getPublicBooking(slug: string): Promise<PublicBookingPayload> {
     const salon = await oneOrNotFound<PublicBookingSalon>(
-      `SELECT s.id, s.name, s.slug, s.timezone, s.currency_code, s.city, s.region,
+      `SELECT s.id, s.name, s.slug,
+              COALESCE(NULLIF(ss.settings_json->>'logoUrl', ''), NULLIF(ss.settings_json->>'logo_url', '')) AS logo_url,
+              s.timezone, s.currency_code, s.city, s.region,
               s.booking_enabled, ss.allow_public_booking
        FROM salons s
        JOIN salon_settings ss ON ss.salon_id = s.id
