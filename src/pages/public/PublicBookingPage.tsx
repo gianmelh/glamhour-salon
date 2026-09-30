@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, ChevronLeft, ChevronRight, Clock, UserRound } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Languages, MapPin, Scissors } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { Button, ErrorState, LoadingState } from '../../components'
 import { ApiClientError } from '../../lib/api'
@@ -14,7 +14,7 @@ function nextBookableDates(timeZone: string) {
   const today = zonedDateString(new Date(), timeZone)
   const [year, month, day] = today.split('-').map(Number)
   const start = new Date(Date.UTC(year, (month || 1) - 1, day || 1, 12, 0, 0))
-  return Array.from({ length: 21 }, (_, index) => {
+  return Array.from({ length: 90 }, (_, index) => {
     const date = new Date(start)
     date.setUTCDate(start.getUTCDate() + index)
     return date.toISOString().slice(0, 10)
@@ -47,6 +47,15 @@ export function PublicBookingPage() {
 
   const timeZone = normalizeTimeZone(payload?.salon.timezone)
   const dates = useMemo(() => nextBookableDates(timeZone), [timeZone])
+  const bookableDateSet = useMemo(() => new Set(dates), [dates])
+  const salonLocation = useMemo(() => {
+    if (!payload) return ''
+    return [
+      payload.salon.address_line_1,
+      payload.salon.city,
+      payload.salon.region,
+    ].filter(Boolean).join(', ')
+  }, [payload])
   const serviceGroups = useMemo(() => {
     const groups = new Map<string, Service[]>()
     payload?.services.forEach((item) => {
@@ -237,7 +246,7 @@ export function PublicBookingPage() {
         date: formatZonedDate(slot.startsAt, timeZone),
         time: formatZonedTime(slot.startsAt, timeZone),
         specialistName: provider.full_name,
-        location: [payload.salon.city, payload.salon.region].filter(Boolean).join(', '),
+        location: salonLocation || payload.salon.name,
       })
     } catch {
       setSubmitError(new Error('The PDF ticket could not be generated. Please try again.'))
@@ -297,8 +306,19 @@ export function PublicBookingPage() {
               </div>
               <div className="grid grid-cols-7 gap-y-1 text-center">
                 {calendarCells(calendarMonth).map((item, index) => item ? (
-                  <button className={`mx-auto grid size-7 place-items-center rounded-full text-[9px] font-bold ${date === item ? 'bg-[#8b5cf6] text-white' : item < dates[0] ? 'text-[#c8ccd5]' : 'text-[#596275]'}`} disabled={item < dates[0]} key={item} onClick={() => { setDate(item); setSlot(null); setProvider(null) }} type="button">{Number(item.slice(-2))}</button>
+                  <button className={`mx-auto grid size-7 place-items-center rounded-full text-[9px] font-bold ${date === item ? 'bg-[#8b5cf6] text-white' : bookableDateSet.has(item) ? 'text-[#596275] hover:bg-[#f1efff]' : 'text-[#c8ccd5]'}`} disabled={!bookableDateSet.has(item)} key={item} onClick={() => { setDate(item); setSlot(null); setProvider(null) }} type="button">{Number(item.slice(-2))}</button>
                 ) : <span key={`blank-${index}`} />)}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-[10px] font-bold text-[#596275]">Upcoming days</p>
+              <div className="grid grid-cols-4 gap-2">
+                {dates.slice(0, 12).map((item) => (
+                  <button className={`min-h-11 rounded-md border px-1 text-center transition-colors ${date === item ? 'border-[#8b5cf6] bg-[#8b5cf6] text-white' : 'border-[#ddd6fe] bg-[#f5f3ff] text-[#5b21b6]'}`} key={item} onClick={() => { setDate(item); setCalendarMonth(item.slice(0, 7)); setSlot(null); setProvider(null) }} type="button">
+                    <span className="block text-[8px] font-bold">{shortWeekdayLabel(item, timeZone)}</span>
+                    <span className="mt-0.5 block text-[10px] font-extrabold">{Number(item.slice(-2))}</span>
+                  </button>
+                ))}
               </div>
             </div>
             <div>
@@ -343,8 +363,8 @@ export function PublicBookingPage() {
                     <ProviderAvatar provider={item} />
                     <span className="min-w-0 flex-1">
                       <span className="block text-[12px] font-extrabold text-[#101827]">{item.full_name}</span>
-                      <span className="mt-0.5 block text-[9px] font-semibold text-[#8a93a5]">{service.name}</span>
-                      <span className="mt-1 block truncate text-[8px] font-bold text-[#8b5cf6]">Services offered</span>
+                      <span className="mt-0.5 flex items-center gap-1 text-[9px] font-semibold text-[#8a93a5]"><Languages className="size-3" /> {languageLabel(item.languages)}</span>
+                      <span className="mt-1 flex items-start gap-1 text-[8px] font-bold leading-3 text-[#8b5cf6]"><Scissors className="mt-0.5 size-3 shrink-0" /> <span className="max-h-6 overflow-hidden">{servicesOfferedLabel(item, service)}</span></span>
                     </span>
                     {selected && <CheckCircle2 className="size-4 text-[#7c3aed]" />}
                   </button>
@@ -390,7 +410,7 @@ export function PublicBookingPage() {
               <SummaryItem label="Date" value={formatZonedDate(slot.startsAt, timeZone)} />
               <SummaryItem label="Time" value={formatZonedTime(slot.startsAt, timeZone)} />
             </div>
-            <SummaryItem icon={<UserRound className="size-3" />} label={payload.salon.name} value={[payload.salon.city, payload.salon.region].filter(Boolean).join(', ') || provider.full_name} />
+            <SummaryItem icon={<MapPin className="size-3" />} label={payload.salon.name} value={salonLocation || 'Salon location'} />
             <FlowButton loading={busy} onClick={downloadTicket}>Download PDF ticket</FlowButton>
             <button className="w-full text-center text-[10px] font-bold text-[#7c3aed]" onClick={bookAnotherService} type="button">Go back to start</button>
           </section>
@@ -411,6 +431,10 @@ function fullDateLabel(date: string, timeZone: string) {
     month: 'short',
     day: 'numeric',
   }).format(new Date(`${date}T12:00:00Z`))
+}
+
+function shortWeekdayLabel(date: string, timeZone: string) {
+  return new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(new Date(`${date}T12:00:00Z`))
 }
 
 function monthLabel(date: string, timeZone: string) {
@@ -470,6 +494,15 @@ function ServiceIcon({ service }: { service: Service }) {
 function ProviderAvatar({ provider }: { provider: EligibleProvider }) {
   if (provider.avatar_url) return <img alt="" className="size-10 rounded-full object-cover" src={provider.avatar_url} />
   return <span className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-[11px] font-extrabold text-[#7c3aed]">{provider.full_name.slice(0, 1)}</span>
+}
+
+function languageLabel(languages: string[] | undefined) {
+  return languages?.length ? languages.join(', ') : 'Language not specified'
+}
+
+function servicesOfferedLabel(provider: EligibleProvider, selectedService: Service) {
+  const services = provider.services_offered?.filter(Boolean)
+  return services?.length ? services.join(', ') : selectedService.name
 }
 
 function SummaryItem({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {

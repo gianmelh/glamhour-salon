@@ -418,6 +418,7 @@ interface PublicBookingSalon extends QueryResultRow {
   logo_url: string | null
   timezone: string
   currency_code: string
+  address_line_1: string | null
   city: string | null
   region: string | null
   booking_enabled: boolean
@@ -2089,7 +2090,7 @@ export const dataService = {
     const salon = await oneOrNotFound<PublicBookingSalon>(
       `SELECT s.id, s.name, s.slug,
               COALESCE(NULLIF(ss.settings_json->>'logoUrl', ''), NULLIF(ss.settings_json->>'logo_url', '')) AS logo_url,
-              s.timezone, s.currency_code, s.city, s.region,
+              s.timezone, s.currency_code, s.address_line_1, s.city, s.region,
               s.booking_enabled, ss.allow_public_booking
        FROM salons s
        JOIN salon_settings ss ON ss.salon_id = s.id
@@ -4526,7 +4527,8 @@ export const dataService = {
               s.duration_minutes AS service_duration_minutes,
               s.category_id,
               sc.code AS category_code,
-              sc.name AS category_name
+              sc.name AS category_name,
+              COALESCE(provider_services.services_offered, ARRAY[]::text[]) AS services_offered
        FROM professionals p
        JOIN professional_services ps
          ON ps.salon_id = p.salon_id AND ps.professional_id = p.id AND ps.is_active
@@ -4535,6 +4537,20 @@ export const dataService = {
        JOIN service_categories sc ON sc.id = s.category_id AND sc.is_active
        JOIN salon_service_categories ssc
          ON ssc.salon_id = p.salon_id AND ssc.category_id = s.category_id AND ssc.is_active
+       LEFT JOIN LATERAL (
+         SELECT array_agg(service_names.name ORDER BY service_names.name) AS services_offered
+         FROM (
+           SELECT DISTINCT offered.name
+           FROM professional_services offered_ps
+           JOIN services offered
+             ON offered.salon_id = offered_ps.salon_id
+            AND offered.id = offered_ps.service_id
+            AND offered.is_active
+           WHERE offered_ps.salon_id = p.salon_id
+             AND offered_ps.professional_id = p.id
+             AND offered_ps.is_active
+         ) service_names
+       ) provider_services ON true
        WHERE p.salon_id = $1
          AND p.status = 'active'
          AND p.deleted_at IS NULL

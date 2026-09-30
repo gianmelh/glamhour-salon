@@ -289,6 +289,7 @@ export interface PublicBookingSalon {
   logo_url: string | null
   timezone: string
   currency_code: string
+  address_line_1?: string | null
   city: string | null
   region: string | null
   booking_enabled: boolean
@@ -452,6 +453,7 @@ export interface EligibleProvider extends Professional {
   durationMinutes: number
   category_code?: string
   category_name?: string
+  services_offered?: string[]
 }
 
 export interface AvailabilitySlot {
