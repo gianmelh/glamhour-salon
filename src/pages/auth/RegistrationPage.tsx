@@ -80,7 +80,7 @@ function createLocalRegistrationResult(draft: SignUpForm): RegisterSalonResult {
       city: null,
       region: null,
       verification_status: "local",
-      onboarding_status: "pending",
+      onboarding_status: "in_progress",
       booking_enabled: false,
       is_active: true,
       created_at: now,

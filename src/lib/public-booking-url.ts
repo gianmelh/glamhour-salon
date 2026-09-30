@@ -18,7 +18,7 @@ function publicBookingBaseUrl() {
 
 export function publicBookingUrl(slug: string) {
   const safeSlug = encodeURIComponent(slug)
-  return `${publicBookingBaseUrl()}/${safeSlug}`
+  return `${publicBookingBaseUrl()}/book/${safeSlug}`
 }
 
 export function publicBookingShareMessage(bookingUrl: string) {
