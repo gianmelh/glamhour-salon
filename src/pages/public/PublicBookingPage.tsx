@@ -37,6 +37,7 @@ export function PublicBookingPage() {
   const [availability, setAvailability] = useState<AvailabilitySlot[]>([])
   const [providersLoading, setProvidersLoading] = useState(false)
   const [slotsLoading, setSlotsLoading] = useState(false)
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ fullName: '', phone: '', email: '', notes: '' })
   const [confirmationCode, setConfirmationCode] = useState('')
@@ -75,7 +76,7 @@ export function PublicBookingPage() {
   }, [salonSlug])
 
   useEffect(() => {
-    if (!payload || !service || !date) {
+    if (!payload || !service) {
       deferTask(() => setProviders([]))
       deferTask(() => setAvailability([]))
       deferTask(() => setProviderSlots({}))
@@ -83,7 +84,7 @@ export function PublicBookingPage() {
     }
     let active = true
     deferTask(() => setProvidersLoading(true))
-    glamhourApi.eligibleProviders({ serviceId: service.id, categoryId: service.category_id, date }, payload.salon.id)
+    glamhourApi.eligibleProviders({ serviceId: service.id, categoryId: service.category_id }, payload.salon.id)
       .then((items) => {
         if (active) setProviders(items)
       })
@@ -92,38 +93,40 @@ export function PublicBookingPage() {
       })
       .finally(() => {
         if (active) setProvidersLoading(false)
-      })
+    })
     return () => { active = false }
-  }, [date, payload, service])
+  }, [payload, service])
 
   useEffect(() => {
     if (!payload || !service || !date || providers.length === 0) {
       deferTask(() => setAvailability([]))
       deferTask(() => setProviderSlots({}))
+      deferTask(() => setAvailabilityError(null))
       return
     }
     let active = true
-    deferTask(() => setSlotsLoading(true))
-    Promise.all(providers.map(async (item) => {
+    deferTask(() => {
+      setSlotsLoading(true)
+      setAvailabilityError(null)
+    })
+    Promise.allSettled(providers.map(async (item) => {
       const result = await glamhourApi.appointmentAvailability({ providerId: item.id, serviceId: service.id, date, timezone: timeZone }, payload.salon.id)
       return [item.id, result.slots] as const
     }))
       .then((results) => {
         if (!active) return
-        const nextProviderSlots = Object.fromEntries(results)
+        const availableResults = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
+        const nextProviderSlots = Object.fromEntries(availableResults)
         const slotsByStart = new Map<string, AvailabilitySlot>()
-        results.forEach(([, slots]) => {
+        availableResults.forEach(([, slots]) => {
           slots.filter((item) => item.available).forEach((item) => {
             if (!slotsByStart.has(item.startsAt)) slotsByStart.set(item.startsAt, item)
           })
         })
         setProviderSlots(nextProviderSlots)
         setAvailability([...slotsByStart.values()].sort((a, b) => a.startsAt.localeCompare(b.startsAt)))
-      })
-      .catch(() => {
-        if (active) {
-          setProviderSlots({})
-          setAvailability([])
+        if (availableResults.length === 0) {
+          setAvailabilityError('Available times could not be loaded. Please try another date.')
         }
       })
       .finally(() => {
@@ -272,11 +275,12 @@ export function PublicBookingPage() {
             <div>
               <p className="mb-2 flex items-center gap-1 text-[10px] font-bold text-[#7c3aed]"><Clock className="size-3" /> Time</p>
               {(providersLoading || slotsLoading) && <LoadingState label="Loading available times..." />}
-              {!providersLoading && !slotsLoading && availability.length === 0 && <p className="rounded-md bg-[#f1efff] p-3 text-[10px] font-semibold text-[#596275]">No times are available on this day.</p>}
+              {!providersLoading && !slotsLoading && availabilityError && <p className="rounded-md bg-[#fff0f0] p-3 text-[10px] font-semibold text-[#c24141]">{availabilityError}</p>}
+              {!providersLoading && !slotsLoading && !availabilityError && availability.length === 0 && <p className="rounded-md bg-[#f1efff] p-3 text-[10px] font-semibold text-[#596275]">No times are available on this day.</p>}
               {!providersLoading && !slotsLoading && availability.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {availability.slice(0, 12).map((item) => (
-                    <button className={`min-h-8 rounded-md text-[10px] font-bold ${slot?.startsAt === item.startsAt ? 'bg-[#eee9ff] text-[#4c1d95] ring-1 ring-[#8b5cf6]' : 'bg-[#f3f5fb] text-[#8a93a5]'}`} key={item.startsAt} onClick={() => { setSlot(item); setProvider(null) }} type="button">
+                    <button className={`min-h-8 rounded-md border text-[10px] font-bold transition-colors ${slot?.startsAt === item.startsAt ? 'border-[#8b5cf6] bg-[#8b5cf6] text-white' : 'border-[#ddd6fe] bg-[#f5f3ff] text-[#5b21b6] hover:border-[#8b5cf6] hover:bg-[#eee9ff]'}`} key={item.startsAt} onClick={() => { setSlot(item); setProvider(null) }} type="button">
                       {item.label}
                     </button>
                   ))}
