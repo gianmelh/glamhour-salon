@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, ChevronLeft, ChevronRight, Clock, UserRound } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { Button, ErrorState, LoadingState } from '../../components'
+import { ApiClientError } from '../../lib/api'
 import { deferTask } from '../../lib/defer'
 import { addMinutesIso, formatZonedDate, formatZonedTime, normalizeTimeZone, zonedDateString } from '../../lib/salon-time'
 import { glamhourApi } from '../../services/glamhour-api'
@@ -38,6 +39,7 @@ export function PublicBookingPage() {
   const [providersLoading, setProvidersLoading] = useState(false)
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
+  const [availabilityVersion, setAvailabilityVersion] = useState(0)
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ fullName: '', phone: '', email: '', notes: '' })
   const [confirmationCode, setConfirmationCode] = useState('')
@@ -116,10 +118,13 @@ export function PublicBookingPage() {
       .then((results) => {
         if (!active) return
         const availableResults = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
-        const nextProviderSlots = Object.fromEntries(availableResults)
+        const nextProviderSlots: Record<string, AvailabilitySlot[]> = Object.fromEntries(availableResults.map(([providerId, slots]) => [
+          providerId,
+          slots.filter((item) => item.available),
+        ]))
         const slotsByStart = new Map<string, AvailabilitySlot>()
-        availableResults.forEach(([, slots]) => {
-          slots.filter((item) => item.available).forEach((item) => {
+        Object.values(nextProviderSlots).forEach((slots) => {
+          slots.forEach((item) => {
             if (!slotsByStart.has(item.startsAt)) slotsByStart.set(item.startsAt, item)
           })
         })
@@ -133,7 +138,7 @@ export function PublicBookingPage() {
         if (active) setSlotsLoading(false)
       })
     return () => { active = false }
-  }, [date, payload, providers, service, timeZone])
+  }, [availabilityVersion, date, payload, providers, service, timeZone])
 
   if (loading) return <PublicShell><LoadingState label="Loading booking link..." /></PublicShell>
   if (error || !payload) {
@@ -170,7 +175,20 @@ export function PublicBookingPage() {
       setConfirmationCode(`A${appointment.id.replace(/-/g, '').slice(0, 5).toUpperCase()}`)
       setStep('success')
     } catch (reason) {
-      setSubmitError(reason instanceof Error ? reason : new Error('Appointment could not be requested.'))
+      const isProfessionalConflict = reason instanceof ApiClientError
+        && reason.status === 409
+        && (reason.code === 'APPOINTMENT_CONFLICT' || reason.message === 'The professional is unavailable for that time.')
+      if (isProfessionalConflict) {
+        setProvider(null)
+        setSlot(null)
+        setAvailability([])
+        setProviderSlots({})
+        setAvailabilityVersion((current) => current + 1)
+        setStep('schedule')
+        setSubmitError(new Error('That time was just booked. The available times have been refreshed.'))
+      } else {
+        setSubmitError(reason instanceof Error ? reason : new Error('Appointment could not be requested.'))
+      }
     } finally {
       setBusy(false)
     }
@@ -182,14 +200,19 @@ export function PublicBookingPage() {
     setProvider(null)
     setSlot(null)
     setProviders([])
+    setProviderSlots({})
     setAvailability([])
+    setAvailabilityError(null)
+    setAvailabilityVersion((current) => current + 1)
     setForm({ fullName: '', phone: '', email: '', notes: '' })
     setConfirmationCode('')
     setSubmitError(null)
     setStep('service')
   }
 
-  const providersForSlot = providers.filter((item) => providerSlots[item.id]?.some((providerSlot) => providerSlot.startsAt === slot?.startsAt))
+  const providersForSlot = providers.filter((item) => providerSlots[item.id]?.some((providerSlot) => (
+    providerSlot.available && providerSlot.startsAt === slot?.startsAt
+  )))
   const selectedDateLabel = date ? fullDateLabel(date, timeZone) : ''
   const selectService = (item: Service) => {
     setService(item)

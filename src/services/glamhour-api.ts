@@ -70,8 +70,8 @@ export const glamhourApi = {
   appointmentCategories: (salonId?: string) => apiRequest<AppointmentCategory[]>(`/salons/${resolveSalonId(salonId)}/appointment-categories`),
   healthProfile: (clientId: string, category: string, salonId?: string) => apiRequest<HealthProfileVersion | null>(`/salons/${resolveSalonId(salonId)}/clients/${clientId}/health-profiles/${category}`),
   professionals: (salonId?: string) => apiRequest<Professional[]>(`/salons/${resolveSalonId(salonId)}/professionals?limit=100`),
-  eligibleProviders: (params: { serviceId: string; categoryId?: string; date?: string; durationMinutes?: number; optionalStartTime?: string }, salonId?: string) => apiRequest<EligibleProvider[]>(`/salons/${resolveSalonId(salonId)}/providers/eligible${queryString(params)}`),
-  appointmentAvailability: (params: { providerId: string; serviceId: string; date: string; timezone?: string }, salonId?: string) => apiRequest<AppointmentAvailability>(`/salons/${resolveSalonId(salonId)}/availability${queryString(params)}`),
+  eligibleProviders: (params: { serviceId: string; categoryId?: string; date?: string; durationMinutes?: number; optionalStartTime?: string }, salonId?: string) => apiRequest<EligibleProvider[]>(`/salons/${resolveSalonId(salonId)}/providers/eligible${queryString(params)}`, { cache: 'no-store' }),
+  appointmentAvailability: (params: { providerId: string; serviceId: string; date: string; timezone?: string }, salonId?: string) => apiRequest<AppointmentAvailability>(`/salons/${resolveSalonId(salonId)}/availability${queryString(params)}`, { cache: 'no-store' }),
   nailSettings: (salonId?: string) => apiRequest<NailSettingsResponse>(`/salons/${resolveSalonId(salonId)}/settings/nails`),
   serviceMaterials: (params: { categoryId?: string; categoryCode?: string; serviceId?: string }, salonId?: string) =>
     apiRequest<import('../types/api').ServiceMaterial[]>(`/salons/${resolveSalonId(salonId)}/service-materials${queryString(params)}`),

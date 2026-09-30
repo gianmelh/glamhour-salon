@@ -215,6 +215,7 @@ router.get('/salons/:salonId/professionals', asyncHandler(async (request, respon
 router.get('/salons/:salonId/providers/eligible', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
   const query = validate(eligibleProvidersQuerySchema, request.query)
+  response.set('Cache-Control', 'no-store')
   response.json({ data: await dataService.listEligibleProviders(salonId, query) })
 }))
 
@@ -403,6 +404,7 @@ router.patch('/salons/:salonId/appointments/:id/treatment-details', asyncHandler
 router.get('/salons/:salonId/availability', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
   const query = validate(appointmentAvailabilityQuerySchema, request.query)
+  response.set('Cache-Control', 'no-store')
   response.json({ data: await dataService.getAppointmentAvailability(salonId, query) })
 }))
 
