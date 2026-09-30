@@ -4,6 +4,7 @@ import { config } from './config.js'
 import { ApiError } from './errors.js'
 import { asyncHandler, validate } from './http.js'
 import { dataService } from './services/data-service.js'
+import { sendAppointmentConfirmationEmail } from './services/email-service.js'
 import {
   cancelSubscription,
   changeSubscriptionPlan,
@@ -334,7 +335,14 @@ router.post('/salons/:salonId/treatment-media/upload', asyncHandler(async (reque
 router.post('/salons/:salonId/appointments', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
   const body = validate(createAppointmentSchema, request.body)
-  response.status(201).json({ data: await dataService.createAppointment({ salonId, ...body }) })
+  const appointment = await dataService.createAppointment({ salonId, ...body })
+  response.status(201).json({ data: appointment })
+  void sendAppointmentConfirmationEmail(salonId, appointment.id).catch((error) => {
+    console.warn('Appointment confirmation dispatch failed.', {
+      appointmentId: appointment.id,
+      reason: error instanceof Error ? error.message : 'unknown_error',
+    })
+  })
 }))
 
 router.post('/salons/:salonId/health-questionnaires', asyncHandler(async (request, response) => {

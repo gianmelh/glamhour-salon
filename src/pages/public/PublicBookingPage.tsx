@@ -379,7 +379,7 @@ export function PublicBookingPage() {
             <div className="mx-auto mt-3 grid size-9 place-items-center rounded-md bg-[#eee9ff] text-[#7c3aed]">
               <CheckCircle2 className="size-5" />
             </div>
-            <ScreenHeader title="Booking Confirmed!" subtitle={form.email ? `We've sent the details to ${form.email}` : 'Your appointment has been scheduled'} centered />
+            <ScreenHeader title="Booking Confirmed!" subtitle={form.email ? `Confirmation details will be sent to ${form.email}` : 'Your appointment has been scheduled'} centered />
             <div className="rounded-md border border-[#e1e4ec] bg-white px-4 py-3">
               <p className="text-[9px] font-bold text-[#8a93a5]">Confirmation code</p>
               <p className="mt-1 text-[18px] font-extrabold tracking-[0.12em] text-[#101827]">{confirmationCode || 'A1JPQ'}</p>
