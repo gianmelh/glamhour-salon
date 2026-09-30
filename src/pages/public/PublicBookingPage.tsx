@@ -134,7 +134,13 @@ export function PublicBookingPage() {
 
   if (loading) return <PublicShell><LoadingState label="Loading booking link..." /></PublicShell>
   if (error || !payload) {
-    return <PublicShell><ErrorState description={error?.message ?? 'This booking link is not available.'} /></PublicShell>
+    return (
+      <PublicShell>
+        <div className="flex min-h-dvh items-center px-5 py-10">
+          <ErrorState className="w-full" compact description={error?.message ?? 'This booking link is not available.'} />
+        </div>
+      </PublicShell>
+    )
   }
 
   const submit = async () => {
@@ -210,8 +216,7 @@ export function PublicBookingPage() {
 
   return (
     <PublicShell>
-      <PhoneStatus />
-      <div className="min-h-[calc(100dvh-34px)] px-5 pb-6 pt-4">
+      <div className="min-h-dvh px-5 pb-6 pt-8">
         {submitError && <p className="mb-3 rounded-md bg-[#fff0f0] px-3 py-2 text-[11px] font-semibold text-[#e05252]">{submitError.message}</p>}
 
         {step === 'service' && (
@@ -393,18 +398,6 @@ function calendarCells(month: string) {
     ...Array.from({ length: firstDay }, () => null),
     ...Array.from({ length: daysInMonth }, (_, index) => `${month}-${String(index + 1).padStart(2, '0')}`),
   ]
-}
-
-function PhoneStatus() {
-  return (
-    <div className="flex h-[34px] items-center justify-between px-5 pt-2 text-[8px] font-bold text-[#101827]">
-      <span>9:41</span>
-      <span className="flex items-center gap-1">
-        <span className="h-1.5 w-3 rounded-[2px] border border-[#101827]" />
-        <span className="h-1.5 w-2 rounded-[2px] bg-[#101827]" />
-      </span>
-    </div>
-  )
 }
 
 function ScreenHeader({ title, subtitle, onBack, centered = false }: { title: string; subtitle: string; onBack?: () => void; centered?: boolean }) {
