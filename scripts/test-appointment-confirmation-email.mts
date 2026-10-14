@@ -18,6 +18,7 @@ const { config } = await import('../server/config.ts')
 const { default: nodemailer } = await import('nodemailer')
 const { dataService } = await import('../server/services/data-service.ts')
 const { sendAppointmentConfirmationEmail } = await import('../server/services/email-service.ts')
+const { renderAppointmentConfirmationEmail, renderBookingVerificationEmail } = await import('../server/email/templates.ts')
 const { apiRouter } = await import('../server/routes.ts')
 
 const salonId = '10000000-0000-4000-8000-000000000001'
@@ -33,7 +34,10 @@ const baselineRow = {
   starts_at: '2030-01-01T15:00:00.000Z', professional_name: 'Artist <test>',
   service_names: ['Lash & lift', 'Brows <care>'],
 }
-type Mail = { to: string; subject: string; html: string; text: string }
+type Mail = {
+  to: string; subject: string; html: string; text: string
+  attachments?: { filename: string; content: Buffer; contentType: string; contentDisposition: string; cid: string }[]
+}
 type EmailResult = { status: 'sent' | 'failed' | 'not_sent'; reason?: string }
 type ResponseBody = { data: typeof appointment & { confirmation_email?: EmailResult } }
 let row: (Omit<typeof baselineRow, 'recipient'> & { recipient: string | null }) | undefined
@@ -121,11 +125,85 @@ const tests: [string, () => Promise<void>][] = [
     assert.equal(sent[0].to, recipient)
     assert.match(sent[0].text, /Confirmation: AABCDE/)
     assert.match(sent[0].text, /10:00 AM/)
+    assert.match(sent[0].text, /Tuesday, January 1, 2030/)
+    assert.match(sent[0].text, /Location: New York, NY/)
+    assert.match(sent[0].text, /Specialist: Artist <test>/)
     assert.match(sent[0].html, /Client &lt;test&gt;/)
     assert.match(sent[0].html, /Salon &amp; Test/)
     assert.match(sent[0].html, /Lash &amp; lift, Brows &lt;care&gt;/)
+    for (const essential of ['AABCDE', '10:00 AM', 'Tuesday, January 1, 2030', 'New York, NY', 'Artist &lt;test&gt;']) {
+      assert.ok(sent[0].html.includes(essential), 'essential details remain text when email images are blocked')
+    }
     assert.equal(notifications.at(-1)?.status, 'sent')
     assert.equal(result?.status, 'sent')
+  }],
+  ['confirmation embeds a real PNG with matching CID and produces valid inline-image MIME without external images', async () => {
+    await sendAppointmentConfirmationEmail(salonId, appointmentId)
+    const mail = sent[0]
+    const imageSources = [...mail.html.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["']/gi)].map((match) => match[1])
+    assert.ok(imageSources.length > 0, 'the branded message includes a logo')
+    assert.ok(imageSources.every((source) => source.startsWith('cid:')), 'email images do not depend on external hosts or data URLs')
+    const attachments = mail.attachments ?? []
+    for (const source of imageSources) {
+      const matches = attachments.filter((attachment) => attachment.cid === source.slice(4))
+      assert.equal(matches.length, 1, 'each HTML image resolves to exactly one attached CID')
+      const logo = matches[0]
+      assert.equal(logo.contentType, 'image/png')
+      assert.equal(logo.contentDisposition, 'inline')
+      assert.ok(Buffer.isBuffer(logo.content))
+      assert.deepEqual(logo.content.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), 'the attachment contains PNG bytes, not an SVG renamed .png')
+      assert.equal(logo.content.toString('ascii', 12, 16), 'IHDR')
+      assert.ok(logo.content.readUInt32BE(16) > 0 && logo.content.readUInt32BE(20) > 0)
+    }
+
+    // Nodemailer's real stream transport serializes MIME locally; it cannot
+    // connect to SMTP. This checks the message that a mail client would receive.
+    const transport = originalTransport({ streamTransport: true, buffer: true, newline: 'unix' })
+    const compiled = await transport.sendMail({ ...mail, from: 'test@glamhour.test' })
+    const mime = Buffer.from(compiled.message).toString('utf8').replace(/\r\n/g, '\n')
+    assert.match(mime, /Content-Type: multipart\/related;/i)
+    assert.match(mime, /Content-Type: text\/plain;/i)
+    assert.match(mime, /Content-Type: text\/html;/i)
+    for (const logo of attachments) {
+      const parts = mime.split(/\n--[^\n]+\n/).filter((part) => part.includes(`Content-ID: <${logo.cid}>`))
+      assert.equal(parts.length, 1)
+      const [headers, ...body] = parts[0].split('\n\n')
+      assert.match(headers, /Content-Type: image\/png/i)
+      assert.match(headers, /Content-Disposition: inline/i)
+      assert.match(headers, /Content-Transfer-Encoding: base64/i)
+      assert.deepEqual(Buffer.from(body.join('\n\n').trim(), 'base64'), logo.content, 'encoded image data survives MIME serialization intact')
+    }
+  }],
+  ['all dynamic appointment fields and verification content remain escaped in HTML', async () => {
+    const attack = '<img src=x onerror="boom">&\''
+    const escaped = '&lt;img src=x onerror=&quot;boom&quot;&gt;&amp;&#39;'
+    const fields = ['clientName', 'salonName', 'services', 'dateLabel', 'timeLabel', 'professionalName', 'location', 'confirmationCode'] as const
+    const input = Object.fromEntries(fields.map((field) => [field, `${field} ${attack}`])) as Record<typeof fields[number], string>
+    const mail = renderAppointmentConfirmationEmail(input)
+    for (const field of fields) {
+      assert.ok(mail.html.includes(`${field} ${escaped}`), `${field} is rendered safely`)
+      assert.ok(mail.text.includes(input[field]), `${field} remains readable in plain text`)
+    }
+    assert.ok(!mail.html.includes(attack), 'untrusted input cannot add HTML images or event handlers')
+    const verification = renderBookingVerificationEmail({ salonName: attack, code: attack })
+    assert.ok(!verification.html.includes(attack))
+    assert.ok(verification.html.includes(escaped))
+    assert.equal(verification.attachments[0].cid, mail.attachments[0].cid)
+    assert.deepEqual(verification.attachments[0].content, mail.attachments[0].content, 'verification and confirmation use the same bundled logo')
+  }],
+  ['manual preview test mode is visibly labeled while normal appointment and OTP messages are not', async () => {
+    const appointmentInput = { clientName: 'Client', salonName: 'Salon', services: 'Service', dateLabel: 'Tuesday', timeLabel: '10:00 AM', professionalName: 'Artist', confirmationCode: 'ATEST' }
+    for (const [production, preview] of [
+      [renderAppointmentConfirmationEmail(appointmentInput), renderAppointmentConfirmationEmail({ ...appointmentInput, testMode: true })],
+      [renderBookingVerificationEmail({ salonName: 'Salon', code: '123456' }), renderBookingVerificationEmail({ salonName: 'Salon', code: '123456', testMode: true })],
+    ]) {
+      assert.match(preview.subject, /^\[TEST\]/)
+      assert.match(preview.text, /No appointment has been created/)
+      assert.match(preview.html, /No appointment has been created/)
+      assert.match(preview.text, /this code is not valid/)
+      assert.doesNotMatch(production.subject, /^\[TEST\]/)
+      assert.doesNotMatch(production.text, /No appointment has been created/)
+    }
   }],
   ['public booking waits for SMTP outcome and returns the created appointment once', async () => {
     let started!: () => void; let release!: () => void

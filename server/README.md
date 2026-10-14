@@ -154,6 +154,23 @@ regressions; this does not send real email. After deployment, verify delivery wi
 a designated test inbox and check the notification/provider message ID. SMTP
 acceptance alone cannot confirm receipt or placement outside spam.
 
+## Branded email previews
+
+Booking confirmations and booking verification codes share the Glamhour email
+layout in `server/email/templates.ts`. The official mark is attached as an inline
+PNG with a matching Content-ID, without relying on an external image URL. Email
+content also has a plain-text alternative; reservation and verification codes
+remain text when images are blocked. The PNG in `server/assets/` must be included
+when deploying the API, as it is when pulling this repository.
+
+`npm run email:preview` renders both HTML previews and MIME `.eml` files into a
+temporary `glamhour-email-preview` directory. It uses demo data, does not connect
+to the database, and does not send email. To test the real SMTP configuration from
+the server, run `npm run email:preview -- --send-to=your-test-address@domain.com`.
+This sends exactly one confirmation using the real template, clearly marked TEST,
+with an invalid demo code and a visible notice that no appointment was created.
+The result reports SMTP acceptance, not inbox receipt. No credentials are printed.
+
 ## Examples
 
 The seeded Glow Salon ID is `10000000-0000-0000-0000-000000000001`.

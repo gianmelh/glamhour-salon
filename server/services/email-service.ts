@@ -3,18 +3,10 @@ import type { QueryResultRow } from 'pg'
 import { config } from '../config.js'
 import { pool } from '../db.js'
 import { ApiError } from '../errors.js'
+import { escapeHtml, renderAppointmentConfirmationEmail, renderBookingVerificationEmail } from '../email/templates.js'
 
 function smtpConfigured() {
   return Boolean(config.SMTP_HOST && config.SMTP_PORT && config.SMTP_USER && config.SMTP_PASS && config.SMTP_FROM)
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
 }
 
 function createTransporter() {
@@ -176,37 +168,20 @@ export async function sendAppointmentConfirmationEmail(
       return { status: 'not_sent', reason: skipReason ?? 'smtp_not_configured' }
     }
 
-    const safeName = escapeHtml(row.client_name)
-    const safeSalon = escapeHtml(row.salon_name)
-    const safeServices = escapeHtml(services)
-    const safeProfessional = escapeHtml(row.professional_name ?? row.salon_name)
-    const safeLocation = escapeHtml(location)
+    const email = renderAppointmentConfirmationEmail({
+      clientName: row.client_name,
+      salonName: row.salon_name,
+      services,
+      dateLabel,
+      timeLabel,
+      professionalName: row.professional_name ?? row.salon_name,
+      location,
+      confirmationCode,
+    })
     const info = await createTransporter().sendMail({
       from: config.SMTP_FROM,
       to: row.recipient,
-      subject: title,
-      text: `Hi ${row.client_name},\n\nYour appointment at ${row.salon_name} is confirmed.\n\nService: ${services}\nDate: ${dateLabel}\nTime: ${timeLabel}\nSpecialist: ${row.professional_name ?? row.salon_name}${location ? `\nLocation: ${location}` : ''}\nConfirmation: ${confirmationCode}\n\nPlease keep this email for your records.`,
-      html: `
-        <div style="font-family:Arial,sans-serif;line-height:1.5;color:#172033;max-width:560px;margin:auto">
-          <div style="background:#f5f3ff;border-radius:12px;padding:24px">
-            <h1 style="font-size:22px;margin:0 0 4px">${safeSalon}</h1>
-            <p style="color:#6d28d9;font-size:12px;font-weight:700;margin:0">APPOINTMENT CONFIRMED</p>
-          </div>
-          <p>Hi ${safeName},</p>
-          <p>Your appointment is confirmed. Here are your details:</p>
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="padding:8px 0;color:#6b7280">Service</td><td style="padding:8px 0;font-weight:700">${safeServices}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280">Date</td><td style="padding:8px 0;font-weight:700">${dateLabel}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280">Time</td><td style="padding:8px 0;font-weight:700">${timeLabel}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280">Specialist</td><td style="padding:8px 0;font-weight:700">${safeProfessional}</td></tr>
-            ${location ? `<tr><td style="padding:8px 0;color:#6b7280">Location</td><td style="padding:8px 0;font-weight:700">${safeLocation}</td></tr>` : ''}
-          </table>
-          <div style="background:#fafaff;border:1px solid #ddd6fe;border-radius:8px;padding:16px;text-align:center;margin-top:20px">
-            <div style="color:#6b7280;font-size:11px;font-weight:700">CONFIRMATION CODE</div>
-            <div style="color:#4c1d95;font-size:24px;font-weight:700;margin-top:4px">${confirmationCode}</div>
-          </div>
-        </div>
-      `,
+      ...email,
     })
 
     if (!Array.isArray(info.accepted) || info.accepted.length === 0 || (Array.isArray(info.rejected) && info.rejected.length > 0)) {
@@ -282,20 +257,11 @@ export async function sendPublicBookingVerificationCode({
   if (!smtpConfigured() || nonDeliverableEmailReason(email)) {
     throw new ApiError(503, 'Email verification is temporarily unavailable.')
   }
-  const safeSalon = escapeHtml(salonName)
-  const safeCode = escapeHtml(code)
   try {
     const info = await createTransporter().sendMail({
       from: config.SMTP_FROM,
       to: email,
-      subject: 'Your Glamhour booking verification code',
-      text: `Your verification code for ${salonName} is ${code}.\n\nThis code expires in 10 minutes. If you did not request this, ignore this email.`,
-      html: `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#172033">
-        <h1 style="font-size:20px">Verify your email for ${safeSalon}</h1>
-        <p>Enter this code to continue your booking:</p>
-        <p style="font-size:28px;font-weight:700;letter-spacing:6px">${safeCode}</p>
-        <p>This code expires in 10 minutes. If you did not request this, ignore this email.</p>
-      </div>`,
+      ...renderBookingVerificationEmail({ salonName, code }),
     })
     if (!Array.isArray(info.accepted) || info.accepted.length === 0 || (Array.isArray(info.rejected) && info.rejected.length > 0)) {
       throw new ApiError(503, 'Email verification is temporarily unavailable.')
