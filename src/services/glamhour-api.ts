@@ -7,7 +7,7 @@ import type {
   RequestPasswordResetInput, RequestPasswordResetResult, RescheduleAppointmentInput, Salon, SalonSettings,
   SalesHistoryItem, SalesHistoryResponse, SaveOnboardingInput, Service, ServiceCategory, SubscriptionPlanCode, SubscriptionSummary, UpdateSettingsInput, VerifyPasswordResetCodeInput,
   VerifyPasswordResetCodeResult,
-  PublicBookingPayload,
+  PublicBookingPayload, PublicBookingEmailStatus, PublicBookingEmailCodeResponse,
 } from '../types/api'
 
 export const SALON_ID = import.meta.env.VITE_SALON_ID ?? '10000000-0000-0000-0000-000000000001'
@@ -59,14 +59,33 @@ export const glamhourApi = {
   registerGoogleSalon: (input: RegisterGoogleSalonInput) => apiRequest<RegisterSalonResult>('/auth/google/register', { method: 'POST', body: JSON.stringify(input) }),
   registerFacebookSalon: (input: RegisterFacebookSalonInput) => apiRequest<RegisterSalonResult>('/auth/facebook/register', { method: 'POST', body: JSON.stringify(input) }),
   registerAppleSalon: (input: RegisterAppleSalonInput) => apiRequest<RegisterSalonResult>('/auth/apple/register', { method: 'POST', body: JSON.stringify(input) }),
-  publicBooking: (slug: string) => apiRequest<PublicBookingPayload>(`/public-booking/${encodeURIComponent(slug)}`),
+  publicBooking: (slug: string) => apiRequest<PublicBookingPayload>(`/public-booking/${encodeURIComponent(slug)}`, { cache: 'no-store' }),
+  publicFindOrCreateClient: (slug: string, input: CreateClientInput & { email: string; mergeNotes?: string }) => apiRequest<Pick<Client, 'id'>>(`/public-booking/${encodeURIComponent(slug)}/clients/find-or-create`, { method: 'POST', body: JSON.stringify(input) }),
+  publicBookingEmailStatus: (slug: string, email: string) => apiRequest<PublicBookingEmailStatus>(`/public-booking/${encodeURIComponent(slug)}/email-verification/status`, { method: 'POST', body: JSON.stringify({ email }) }),
+  requestPublicBookingEmailCode: (slug: string, email: string) => apiRequest<PublicBookingEmailCodeResponse>(`/public-booking/${encodeURIComponent(slug)}/email-verification/request`, { method: 'POST', body: JSON.stringify({ email }) }),
+  verifyPublicBookingEmailCode: (slug: string, email: string, code: string) => apiRequest<{ verified: true }>(`/public-booking/${encodeURIComponent(slug)}/email-verification/verify`, { method: 'POST', body: JSON.stringify({ email, code }) }),
   salon: (salonId?: string) => apiRequest<Salon>(`/salons/${resolveSalonId(salonId)}`),
   dashboard: (salonId?: string, date?: string) => apiRequest<DashboardSummary>(`/salons/${resolveSalonId(salonId)}/dashboard${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   appointments: (salonId?: string) => apiRequest<Appointment[]>(`/salons/${resolveSalonId(salonId)}/appointments?limit=100`),
   appointment: (id: string, salonId?: string) => apiRequest<Appointment>(`/salons/${resolveSalonId(salonId)}/appointments/${id}`),
   clients: (salonId?: string) => apiRequest<Client[]>(`/salons/${resolveSalonId(salonId)}/clients?limit=100`),
-  services: (salonId?: string, options?: { publicOnly?: boolean }) => apiRequest<Service[]>(`/salons/${resolveSalonId(salonId)}/services${queryString({ limit: 100, publicOnly: options?.publicOnly ? 'true' : undefined })}`),
+  services: async (salonId?: string, options?: { publicOnly?: boolean }): Promise<Service[]> => {
+    const resolvedSalonId = resolveSalonId(salonId)
+    const pageSize = 100
+    const services: Service[] = []
+    const seenIds = new Set<string>()
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await apiRequest<Service[]>(`/salons/${resolvedSalonId}/services${queryString({ limit: pageSize, offset, publicOnly: options?.publicOnly ? 'true' : undefined })}`)
+      for (const service of page) {
+        if (seenIds.has(service.id)) throw new Error('The service catalog changed while loading. Please try again.')
+        seenIds.add(service.id)
+        services.push(service)
+      }
+      if (page.length < pageSize) return services
+    }
+  },
   categories: (salonId?: string, options?: { includeAll?: boolean }) => apiRequest<ServiceCategory[]>(`/service-categories${queryString({ salonId: resolveSalonId(salonId), includeAll: options?.includeAll ? 'true' : undefined })}`),
+  updateServiceCategories: (input: { categoryIds: string[] }, salonId?: string) => apiRequest<ServiceCategory[]>(`/salons/${resolveSalonId(salonId)}/service-categories`, { method: 'PUT', body: JSON.stringify(input) }),
   appointmentCategories: (salonId?: string) => apiRequest<AppointmentCategory[]>(`/salons/${resolveSalonId(salonId)}/appointment-categories`),
   healthProfile: (clientId: string, category: string, salonId?: string) => apiRequest<HealthProfileVersion | null>(`/salons/${resolveSalonId(salonId)}/clients/${clientId}/health-profiles/${category}`),
   professionals: (salonId?: string) => apiRequest<Professional[]>(`/salons/${resolveSalonId(salonId)}/professionals?limit=100`),

@@ -1,4 +1,5 @@
-import type { OnboardingDayInput, UpsertProfessionalInput } from '../../types/api'
+import type { OnboardingDayInput, ProfessionalWithNailSettings, UpsertProfessionalInput } from '../../types/api'
+import { normalizeLanguages, normalizeProviderSchedule } from '../../lib/provider-settings'
 
 export type ProfessionalDraft = UpsertProfessionalInput & { id?: string; photoName?: string }
 
@@ -22,4 +23,34 @@ export function emptyProfessionalDraft(salonSchedule = defaultSalonSchedule): Pr
     schedule: salonSchedule,
     serviceAssignments: [],
   }
+}
+
+export function normalizeProfessionalDraft(draft: ProfessionalDraft, salonSchedule: Record<string, OnboardingDayInput>): ProfessionalDraft {
+  return {
+    ...draft,
+    languages: normalizeLanguages(draft.languages),
+    schedule: draft.useSalonSchedule ? salonSchedule : normalizeProviderSchedule(draft.schedule ?? salonSchedule),
+  }
+}
+
+export function professionalDraftFromProvider(provider: ProfessionalWithNailSettings, salonSchedule: Record<string, OnboardingDayInput>): ProfessionalDraft {
+  return normalizeProfessionalDraft({
+    id: provider.id,
+    fullName: provider.full_name,
+    email: provider.email ?? '',
+    phone: provider.phone ?? '',
+    avatarUrl: provider.avatar_url,
+    languages: provider.languages,
+    status: provider.status === 'inactive' ? 'inactive' : 'active',
+    salonEarningsPercent: Number(provider.salon_earnings_percent),
+    professionalEarningsPercent: Number(provider.professional_earnings_percent),
+    useSalonSchedule: provider.use_salon_schedule,
+    schedule: provider.schedule,
+    serviceAssignments: provider.service_assignments.map((assignment) => ({
+      serviceId: assignment.service_id,
+      isActive: assignment.is_active,
+      durationOverrideMinutes: assignment.duration_override_minutes,
+      priceOverrideMinor: assignment.price_override_minor,
+    })),
+  }, salonSchedule)
 }

@@ -5,7 +5,7 @@ import { CalendarDays, ChevronRight, CreditCard, LogOut, MessageCircle, MessageS
 import { Avatar, Badge, Button, Card, DataSourceNotice, ErrorState, Input, LoadingState, PageTitle } from '../../components'
 import { ScreenSection } from '../../components/screen/ScreenSection'
 import { MutationError } from '../../components/screen/MutationError'
-import { useNailSettings, useNotifications, useProfessionals, useSalon, useServiceCategories, useServices, useSettings, useSubscription } from '../../hooks/useGlamhourData'
+import { useNotifications, useProfessionals, useSalon, useServiceCategories, useSettings, useSubscription } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { glamhourApi } from '../../services/glamhour-api'
 import { cn } from '../../lib/cn'
@@ -30,9 +30,8 @@ export function SettingsPage() {
   const settings = useSettings()
   const professionals = useProfessionals()
   const notifications = useNotifications()
-  const nails = useNailSettings()
   const categories = useServiceCategories(undefined, { includeAll: true })
-  const services = useServices()
+  const enabledCategories = useServiceCategories()
   const subscription = useSubscription()
   const mutation = useMutation(glamhourApi.updateSettings)
 
@@ -51,16 +50,16 @@ export function SettingsPage() {
     }
   }, [subscription.retry])
 
-  if (salon.loading || settings.loading || categories.loading || services.loading || subscription.loading) return <LoadingState label="Loading settings..." />
-  if (!salon.data || !settings.data || !categories.data || !services.data || !subscription.data) return <ErrorState description="Settings could not be loaded." onRetry={() => { salon.retry(); settings.retry(); categories.retry(); services.retry(); subscription.retry() }} />
+  if (salon.loading || settings.loading || categories.loading || enabledCategories.loading || subscription.loading) return <LoadingState label="Loading settings..." />
+  if (!salon.data || !settings.data || !categories.data || !enabledCategories.data || !subscription.data) return <ErrorState description="Settings could not be loaded." onRetry={() => { salon.retry(); settings.retry(); categories.retry(); enabledCategories.retry(); subscription.retry() }} />
 
   const settingsData = settings.data
   const categoryData = categories.data
-  const serviceData = services.data
+  const enabledCategoryIds = new Set(enabledCategories.data.map((category) => category.id))
   const subscriptionData = subscription.data
   const clientUsageColor = registeredClientsBarColor(subscriptionData.clientUsage.count)
   const clientLimit = subscriptionData.clientUsage.limit ?? 15
-  const setupState = { salonId: salon.data.id, salonName: salon.data.name }
+  const setupState = { salonId: salon.data.id, salonName: salon.data.name, returnTo: '/app/settings' }
   const savePublicBooking = async () => {
     const updated = await mutation.mutate({
       allowPublicBooking: true,
@@ -78,7 +77,7 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <DataSourceNotice visible={salon.isFallback || settings.isFallback || professionals.isFallback || notifications.isFallback || categories.isFallback || services.isFallback} />
+      <DataSourceNotice visible={salon.isFallback || settings.isFallback || professionals.isFallback || notifications.isFallback || categories.isFallback || enabledCategories.isFallback} />
       <PageTitle title="Settings" subtitle="Manage your account settings and salon preferences." />
 
       <div className="grid grid-cols-2 rounded-lg bg-surface-soft p-1">
@@ -193,10 +192,7 @@ export function SettingsPage() {
           <ScreenSection title="Service Categories">
             <Card padding="none">
               {categoryData.map((category) => {
-                const configuredServices = serviceData.filter((service) => service.category_id === category.id && service.is_active)
-                const enabled = category.code === 'nails'
-                  ? (nails.data?.category.isEnabled ?? configuredServices.length > 0)
-                  : configuredServices.length > 0
+                const enabled = enabledCategoryIds.has(category.id)
                 return (
                   <CategoryRow
                     description={category.description ?? categoryDescriptions[category.code] ?? 'Service details coming from your salon catalog.'}
@@ -210,9 +206,9 @@ export function SettingsPage() {
               })}
             </Card>
             <CardLink
-              description="Add or remove service categories using the onboarding setup flow."
+              description="Choose which categories your salon offers. You can enable them again later."
               icon={<Plus className="size-4" />}
-              label="Add service categories"
+              label="Manage service categories"
               state={setupState}
               to="/onboarding/categories"
             />

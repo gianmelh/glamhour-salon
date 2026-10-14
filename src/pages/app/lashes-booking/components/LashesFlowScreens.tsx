@@ -1,6 +1,7 @@
 import { Camera, ChevronRight, TriangleAlert, Upload } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../../../lib/cn";
+import { useServiceCategories } from "../../../../hooks/useGlamhourData";
 import { lashesBookingAssets } from "../assets";
 import { lashMapZoneNumbers, lashVariantOptions, lashesDetailsLayout } from "../lashesDetailsSpec";
 import {
@@ -18,7 +19,6 @@ import {
   LashesSecondaryButton,
 } from "./LashesFlowButtons";
 import {
-  LashCategoryGrid,
   LashSection,
   LashesCategoryTab,
   LashesStepHeader,
@@ -101,24 +101,27 @@ export function LashesDetailsCategoryHeader({
 }: {
   onBack: () => void;
 }) {
+  const categories = useServiceCategories();
+  const enabledCodes = new Set(
+    categories.loading || categories.error || categories.isFallback
+      ? []
+      : (categories.data ?? []).filter((category) => category.is_active).map((category) => category.code),
+  );
+  const tabs = [
+    { code: 'lashes', label: 'Lashes', icon: lashesBookingAssets.categories.lashes },
+    { code: 'nails', label: 'Nails', icon: lashesBookingAssets.categories.nails },
+    { code: 'cosmetology', label: 'cosmetology', icon: lashesBookingAssets.categories.cosmetology },
+    { code: 'micropigmentation', label: 'Micropigmentation', icon: lashesBookingAssets.categories.micropigmentation },
+  ];
   return (
     <LashesStepHeader onBack={onBack} title="Details of service">
-      <LashCategoryGrid gap={lashesDetailsLayout.categoryTabGap}>
-        <LashesCategoryTab active icon={lashesBookingAssets.categories.lashes}>
-          Lashes
-        </LashesCategoryTab>
-        <LashesCategoryTab icon={lashesBookingAssets.categories.nails}>
-          Nails
-        </LashesCategoryTab>
-        <LashesCategoryTab icon={lashesBookingAssets.categories.cosmetology}>
-          cosmetology
-        </LashesCategoryTab>
-        <LashesCategoryTab
-          icon={lashesBookingAssets.categories.micropigmentation}
-        >
-          Micropigmentation
-        </LashesCategoryTab>
-      </LashCategoryGrid>
+      <div aria-busy={categories.loading} aria-label="Available service categories" role="group" className="grid w-full min-w-0 grid-cols-2" style={{ gap: lashesDetailsLayout.categoryTabGap }}>
+        {tabs.filter((tab) => enabledCodes.has(tab.code)).map((tab) => (
+          <LashesCategoryTab active={tab.code === 'lashes'} icon={tab.icon} key={tab.code}>
+            {tab.label}
+          </LashesCategoryTab>
+        ))}
+      </div>
     </LashesStepHeader>
   );
 }

@@ -381,7 +381,7 @@ export function CalendarPage() {
         <section className="mt-2 grid gap-3">
           <Link
             className="inline-flex min-h-[56px] w-full items-center justify-center rounded-[16px] bg-glam-gradient px-5 text-[16px] font-medium text-white shadow-[0_12px_22px_rgba(92,52,186,0.24)] transition hover:brightness-105"
-            to="/app/appointments/new?fresh=1"
+            to={`/app/appointments/new?fresh=1&source=home&date=${localDateString(selectedDate)}`}
           >
             Book new service
           </Link>

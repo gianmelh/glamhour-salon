@@ -1,9 +1,11 @@
 import crypto from 'node:crypto'
 import type { PoolClient, QueryResultRow } from 'pg'
 import { ApiError } from '../errors.js'
+import { normalizeLanguages } from '../../src/lib/provider-settings.js'
 import { query, withTransaction } from '../db.js'
 import { config } from '../config.js'
 import { sendPasswordResetCode } from './email-service.js'
+import { assertPublicBookingEmailVerified } from './public-booking-email-service.js'
 import { saveSalonMedia } from './media-storage.js'
 import { enforceCanCreateClient, getClientAccessPolicy, getSyncedSubscriptionSummary } from './stripe-billing-service.js'
 import type {
@@ -74,6 +76,7 @@ interface CreateAppointmentInput {
   startsAt: string
   endsAt: string
   source: 'internal' | 'public_booking' | 'rebook'
+  publicBookingEmail?: string
   customerNotes?: string
   internalNotes?: string
   treatmentDetails?: Record<string, unknown>
@@ -733,8 +736,17 @@ async function upsertProfessionalWorkingHours(
   schedule: Record<string, OnboardingDayInput>,
 ) {
   for (const [day, value] of Object.entries(schedule)) {
-    const dayOfWeek = onboardingDayToPostgres[day]
-    if (dayOfWeek === undefined) continue
+    if (onboardingDayToPostgres[day] === undefined) throw new ApiError(400, 'Invalid provider schedule day.')
+    if (!value.enabled) continue
+    const open = timeStringToMinutes(value.open)
+    const close = timeStringToMinutes(value.close)
+    if (open === null || close === null || open >= close) {
+      throw new ApiError(400, `Provider hours on ${day} must have a valid opening time before the closing time.`)
+    }
+  }
+  // A custom schedule replaces the whole week; omitted days must not inherit old hours.
+  for (const [day, dayOfWeek] of Object.entries(onboardingDayToPostgres)) {
+    const value = schedule[day] ?? { enabled: false, open: '09:00', close: '18:00' }
     await client.query(
       `INSERT INTO professional_working_hours (
          salon_id, professional_id, day_of_week, is_working, starts_at, ends_at
@@ -1031,7 +1043,7 @@ function normalizeHealthAnswerValue(answerValue: unknown) {
 function timeStringToMinutes(value: string | null | undefined) {
   if (!value) return null
   const [hours, minutes] = value.slice(0, 5).split(':').map(Number)
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
   return hours * 60 + minutes
 }
 
@@ -1410,25 +1422,6 @@ async function buildProfessionalConflictDetails(input: {
   }
 }
 
-async function ensureSalonCategoriesForAssignments(
-  client: PoolClient,
-  salonId: string,
-  assignments: ProfessionalServiceAssignmentInput[],
-) {
-  const serviceIds = assignments.filter((assignment) => assignment.isActive).map((assignment) => assignment.serviceId)
-  if (!serviceIds.length) return
-  await client.query(
-    `INSERT INTO salon_service_categories (salon_id, category_id, is_active)
-     SELECT DISTINCT $1::uuid, s.category_id, true
-     FROM services s
-     WHERE s.salon_id = $1::uuid
-       AND s.id = ANY($2::uuid[])
-       AND s.is_active
-     ON CONFLICT (salon_id, category_id) DO UPDATE SET is_active = true`,
-    [salonId, serviceIds],
-  )
-}
-
 async function validateProfessionalAssignments(
   client: PoolClient,
   salonId: string,
@@ -1441,13 +1434,13 @@ async function validateProfessionalAssignments(
     throw new ApiError(400, 'Provider service assignments cannot contain duplicates.')
   }
 
-  await ensureSalonCategoriesForAssignments(client, salonId, assignments)
-
   const validRows = await clientRows<QueryResultRow & { id: string }>(
     client,
     `SELECT s.id
      FROM services s
      JOIN service_categories sc ON sc.id = s.category_id AND sc.is_active
+     JOIN salon_service_categories ssc
+       ON ssc.salon_id = s.salon_id AND ssc.category_id = s.category_id AND ssc.is_active
      WHERE s.salon_id = $1::uuid
        AND s.id = ANY($2::uuid[])
        AND s.is_active`,
@@ -1465,7 +1458,13 @@ async function saveProfessionalAssignments(
   assignments: ProfessionalServiceAssignmentInput[],
 ) {
   await client.query(
-    'UPDATE professional_services SET is_active = false WHERE salon_id = $1 AND professional_id = $2',
+    `UPDATE professional_services ps SET is_active = false
+     FROM services s
+     JOIN service_categories sc ON sc.id = s.category_id AND sc.is_active
+     JOIN salon_service_categories ssc
+       ON ssc.salon_id = s.salon_id AND ssc.category_id = s.category_id AND ssc.is_active
+     WHERE ps.salon_id = $1 AND ps.professional_id = $2
+       AND s.salon_id = ps.salon_id AND s.id = ps.service_id AND s.is_active`,
     [salonId, professionalId],
   )
   for (const assignment of assignments) {
@@ -2108,7 +2107,7 @@ export const dataService = {
       throw new ApiError(403, 'This salon booking link is available with an active Premium membership. Ask the salon to upgrade to enable online booking.')
     }
 
-    if (!salon.booking_enabled) {
+    if (!salon.booking_enabled || !salon.allow_public_booking) {
       throw new ApiError(404, 'Online booking is not available for this salon.')
     }
 
@@ -2117,7 +2116,8 @@ export const dataService = {
       this.listServiceCategories(salon.id),
     ])
 
-    return { salon, services, categories }
+    const enabledCategoryIds = new Set(categories.map((category) => category.id))
+    return { salon, services: services.filter((service) => enabledCategoryIds.has(service.category_id)), categories }
   },
 
   saveOnboarding(salonId: string, input: SaveOnboardingInput): Promise<Salon> {
@@ -2129,6 +2129,7 @@ export const dataService = {
       )
       const salon = salons[0]
       if (!salon) throw new ApiError(404, 'Salon not found')
+      const editingConfiguredSalon = salon.onboarding_status === 'completed' || salon.booking_enabled
 
       const completedSteps = stepsCompletedThrough(input.step)
       await client.query(
@@ -2153,9 +2154,9 @@ export const dataService = {
         `UPDATE salons
          SET onboarding_status = $2::varchar,
              onboarding_step = $3::varchar,
-             booking_enabled = CASE WHEN $2::varchar = 'completed' THEN true ELSE booking_enabled END
+             booking_enabled = CASE WHEN $4::boolean THEN booking_enabled WHEN $2::varchar = 'completed' THEN true ELSE booking_enabled END
          WHERE id = $1`,
-        [salonId, input.completed ? 'completed' : 'in_progress', input.completed ? null : input.step],
+        [salonId, input.completed || editingConfiguredSalon ? 'completed' : 'in_progress', input.completed || editingConfiguredSalon ? null : input.step, editingConfiguredSalon],
       )
 
       if (!input.completed) {
@@ -2168,8 +2169,15 @@ export const dataService = {
         return rows[0]
       }
 
-      const selectedCategoryIds = [...new Set(input.draft.selectedCategoryIds)]
-      if (!selectedCategoryIds.length) {
+      // Existing salons change membership explicitly through category settings.
+      // A team/schedule draft may contain stale category IDs and must not enable them.
+      const selectedCategoryIds = editingConfiguredSalon
+        ? (await clientRows<{ category_id: string }>(client,
+          `SELECT ssc.category_id FROM salon_service_categories ssc
+           JOIN service_categories sc ON sc.id = ssc.category_id AND sc.is_active
+           WHERE ssc.salon_id = $1 AND ssc.is_active`, [salonId])).map((row) => row.category_id)
+        : [...new Set(input.draft.selectedCategoryIds)]
+      if (!selectedCategoryIds.length && !editingConfiguredSalon) {
         throw new ApiError(400, 'Select at least one service category.')
       }
 
@@ -2181,7 +2189,7 @@ export const dataService = {
         && Number.isInteger(Number(service.duration))
         && Number(service.duration) > 0
       ))
-      if (!selectedServices.length) {
+      if (!selectedServices.length && !editingConfiguredSalon) {
         throw new ApiError(400, 'Select at least one service.')
       }
 
@@ -2189,24 +2197,29 @@ export const dataService = {
       const activeProviders = input.draft.providers.filter((provider) => (
         provider.name.trim() && provider.serviceIds.some((serviceId) => selectedServiceDraftIds.has(serviceId))
       ))
-      if (!activeProviders.length) {
+      if (!activeProviders.length && !editingConfiguredSalon) {
         throw new ApiError(400, 'Add at least one provider and assign a service.')
       }
       if (activeProviders.length > 10) {
         throw new ApiError(400, 'You’ve reached the limit of 10 active staff members. Upgrade your plan to add more providers.')
       }
 
-      await client.query(
-        'UPDATE salon_service_categories SET is_active = false WHERE salon_id = $1',
-        [salonId],
-      )
-      for (const categoryId of selectedCategoryIds) {
+      if (!editingConfiguredSalon) {
+        const validCategories = await clientRows<{ id: string }>(client,
+          'SELECT id FROM service_categories WHERE id = ANY($1::uuid[]) AND is_active', [selectedCategoryIds])
+        if (validCategories.length !== selectedCategoryIds.length) throw new ApiError(400, 'One or more service categories are unavailable.')
         await client.query(
-          `INSERT INTO salon_service_categories (salon_id, category_id, is_active)
-           VALUES ($1, $2, true)
-           ON CONFLICT (salon_id, category_id) DO UPDATE SET is_active = true`,
-          [salonId, categoryId],
+          'UPDATE salon_service_categories SET is_active = false WHERE salon_id = $1',
+          [salonId],
         )
+        for (const categoryId of selectedCategoryIds) {
+          await client.query(
+            `INSERT INTO salon_service_categories (salon_id, category_id, is_active)
+             VALUES ($1, $2, true)
+             ON CONFLICT (salon_id, category_id) DO UPDATE SET is_active = true`,
+            [salonId, categoryId],
+          )
+        }
       }
 
       const serviceIdByDraftId = new Map<string, string>()
@@ -2253,10 +2266,12 @@ export const dataService = {
                  is_publicly_bookable = true,
                  sort_order = EXCLUDED.sort_order,
                  updated_at = now()
+               WHERE services.category_id = EXCLUDED.category_id
                RETURNING id`,
               [salonId, service.categoryId, service.name.trim(), slug, durationMinutes, priceMinor, index * 10],
             )
-        if (rows[0]) serviceIdByDraftId.set(service.id, rows[0].id)
+        if (!rows[0]) throw new ApiError(400, 'A service with this name already exists in another category. Choose a different service name.')
+        serviceIdByDraftId.set(service.id, rows[0].id)
       }
 
       await ensureServiceMaterialsTable()
@@ -2299,10 +2314,12 @@ export const dataService = {
 
       await upsertSalonWorkingHours(client, salonId, input.draft.schedule)
 
-      await client.query(
-        'UPDATE professionals SET status = $2 WHERE salon_id = $1 AND deleted_at IS NULL',
-        [salonId, 'inactive'],
-      )
+      if (!editingConfiguredSalon) {
+        await client.query(
+          'UPDATE professionals SET status = $2 WHERE salon_id = $1 AND deleted_at IS NULL',
+          [salonId, 'inactive'],
+        )
+      }
       for (const provider of activeProviders) {
         const salonPercent = parsePercent(provider.salonPercent, 'Salon earnings percent must be between 0 and 100.')
         const professionalPercent = parsePercent(provider.professionalPercent, 'Provider earnings percent must be between 0 and 100.')
@@ -2351,7 +2368,7 @@ export const dataService = {
                 provider.name.trim(),
                 provider.email.trim(),
                 provider.phone.trim(),
-                provider.languages,
+                normalizeLanguages(provider.languages),
                 salonPercent,
                 professionalPercent,
               ],
@@ -2368,7 +2385,7 @@ export const dataService = {
                 provider.name.trim(),
                 provider.email.trim(),
                 provider.phone.trim(),
-                provider.languages,
+                normalizeLanguages(provider.languages),
                 salonPercent,
                 professionalPercent,
               ],
@@ -2376,10 +2393,7 @@ export const dataService = {
         const professionalId = providerRows[0]?.id
         if (!professionalId) throw new ApiError(500, 'Provider could not be saved.')
 
-        await client.query(
-          'UPDATE professional_services SET is_active = false WHERE salon_id = $1 AND professional_id = $2',
-          [salonId, professionalId],
-        )
+        await saveProfessionalAssignments(client, salonId, professionalId, [])
         for (const draftServiceId of provider.serviceIds) {
           const serviceId = serviceIdByDraftId.get(draftServiceId)
           if (!serviceId) continue
@@ -2519,6 +2533,7 @@ export const dataService = {
       salonSchedule: normalizeScheduleRows(salonHours),
       providers: professionalRows.map((row) => ({
         ...row,
+        languages: normalizeLanguages((row.languages ?? []) as string[]),
         use_salon_schedule: !row.has_custom_schedule,
         schedule: normalizeScheduleRows(schedulesByProfessional.get(row.id as string) ?? []),
       })),
@@ -2623,12 +2638,11 @@ export const dataService = {
         }
       }
 
-      return this.getNailSettings(salonId)
-    })
+    }).then(() => this.getNailSettings(salonId))
   },
 
-  listProfessionals(salonId: string, options: ListOptions): Promise<Professional[]> {
-    return query<Professional>(
+  async listProfessionals(salonId: string, options: ListOptions): Promise<Professional[]> {
+    const professionals = await query<Professional>(
       `SELECT
          p.*,
          COALESCE(
@@ -2650,14 +2664,16 @@ export const dataService = {
        LIMIT $2 OFFSET $3`,
       [salonId, options.limit, options.offset],
     )
+    return professionals.map((professional) => ({ ...professional, languages: normalizeLanguages(professional.languages) }))
   },
 
-  getProfessional(salonId: string, id: string): Promise<Professional> {
-    return oneOrNotFound<Professional>(
+  async getProfessional(salonId: string, id: string): Promise<Professional> {
+    const professional = await oneOrNotFound<Professional>(
       'SELECT * FROM professionals WHERE salon_id = $1 AND id = $2 AND deleted_at IS NULL',
       [salonId, id],
       'Professional not found',
     )
+    return { ...professional, languages: normalizeLanguages(professional.languages) }
   },
 
   async createProfessional(salonId: string, input: UpsertProfessionalInput): Promise<Professional> {
@@ -2686,7 +2702,7 @@ export const dataService = {
           input.email ?? '',
           input.phone ?? '',
           input.avatarUrl ?? null,
-          input.languages,
+          normalizeLanguages(input.languages),
           input.status,
           input.salonEarningsPercent,
           input.professionalEarningsPercent,
@@ -2740,7 +2756,7 @@ export const dataService = {
           input.email ?? '',
           input.phone ?? '',
           input.avatarUrl ?? null,
-          input.languages,
+          normalizeLanguages(input.languages),
           input.status,
           input.salonEarningsPercent,
           input.professionalEarningsPercent,
@@ -3013,6 +3029,48 @@ export const dataService = {
     )
   },
 
+  async findOrCreatePublicBookingClient(salonId: string, input: FindOrCreateClientInput & { email: string }): Promise<Client> {
+    const email = input.email.trim().toLowerCase()
+    await assertPublicBookingEmailVerified(salonId, email)
+    return withTransaction(async (client) => {
+      const matches = await clientRows<Client>(
+        client,
+        `SELECT * FROM clients
+         WHERE salon_id = $1 AND deleted_at IS NULL
+           AND (lower(btrim(email)) = $2 OR regexp_replace(phone, '\\D', '', 'g') = $3)
+         ORDER BY id
+         LIMIT 2
+         FOR UPDATE`,
+        [salonId, email, input.phone?.replace(/\D/g, '') || null],
+      )
+      if (matches.length > 1) {
+        throw new ApiError(409, 'These contact details belong to different clients. Please contact the salon.')
+      }
+      const existing = matches[0]
+      if (existing?.email?.trim() && existing.email.trim().toLowerCase() !== email) {
+        throw new ApiError(409, 'This phone number belongs to a client with a different email. Use that email or contact the salon.')
+      }
+      if (existing) {
+        const rows = await clientRows<Client>(client,
+          `UPDATE clients SET email = $3, phone = COALESCE(phone, $4), updated_at = now()
+           WHERE salon_id = $1 AND id = $2 AND deleted_at IS NULL
+           RETURNING *`,
+          [salonId, existing.id, email, input.phone ?? null],
+        )
+        return rows[0]
+      }
+
+      await enforceCanCreateClient(salonId)
+      const rows = await clientRows<Client>(client,
+        `INSERT INTO clients (salon_id, full_name, email, phone, preferred_language, notes)
+         VALUES ($1, $2, $3, $4, $5, 'Created from public booking link.') RETURNING *`,
+        [salonId, input.fullName, email, input.phone ?? null, input.preferredLanguage ?? null],
+      )
+      if (!rows[0]) throw new ApiError(500, 'Client could not be created.')
+      return rows[0]
+    })
+  },
+
   updateClient(salonId: string, id: string, input: CreateClientInput): Promise<Client> {
     return this.ensureClientContactAvailable(salonId, input, id).then(() => oneOrNotFound<Client>(
       `UPDATE clients
@@ -3054,6 +3112,31 @@ export const dataService = {
        ORDER BY sc.sort_order, sc.name`,
       [salonId],
     )
+  },
+
+  async updateServiceCategories(salonId: string, categoryIds: string[]): Promise<ServiceCategory[]> {
+    const selectedIds = [...new Set(categoryIds)]
+    await withTransaction(async (client) => {
+      const salons = await clientRows<{ id: string }>(client,
+        'SELECT id FROM salons WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [salonId])
+      if (!salons[0]) throw new ApiError(404, 'Salon not found')
+      const validCategories = await clientRows<{ id: string }>(client,
+        'SELECT id FROM service_categories WHERE id = ANY($1::uuid[]) AND is_active', [selectedIds])
+      if (validCategories.length !== selectedIds.length) throw new ApiError(400, 'One or more service categories are unavailable.')
+      await client.query(
+        'UPDATE salon_service_categories SET is_active = (category_id = ANY($2::uuid[])), updated_at = now() WHERE salon_id = $1',
+        [salonId, selectedIds],
+      )
+      if (selectedIds.length) {
+        await client.query(
+          `INSERT INTO salon_service_categories (salon_id, category_id, is_active)
+           SELECT $1, category_id, true FROM unnest($2::uuid[]) AS selected(category_id)
+           ON CONFLICT (salon_id, category_id) DO UPDATE SET is_active = true, updated_at = now()`,
+          [salonId, selectedIds],
+        )
+      }
+    })
+    return this.listServiceCategories(salonId)
   },
 
   async listAppointmentCategories(salonId: string) {
@@ -3352,8 +3435,13 @@ export const dataService = {
        WHERE s.salon_id = $1
          AND s.is_active
          AND ($2::text IS NULL OR sc.code = $2)
-         AND (NOT $5::boolean OR s.is_publicly_bookable)
-       ORDER BY sc.sort_order, s.sort_order, s.name
+         AND (NOT $5::boolean OR (
+           s.is_publicly_bookable AND sc.is_active AND EXISTS (
+             SELECT 1 FROM salon_service_categories ssc
+             WHERE ssc.salon_id = s.salon_id AND ssc.category_id = s.category_id AND ssc.is_active
+           )
+         ))
+       ORDER BY sc.sort_order, s.sort_order, s.name, s.id
        LIMIT $3 OFFSET $4`,
       [salonId, categoryCode ?? null, options.limit, options.offset, options.publicOnly === true],
     )
@@ -3383,13 +3471,13 @@ export const dataService = {
       throw Object.assign(new Error('Service category not found'), { statusCode: 404 })
     }
 
-    await query(
-      `INSERT INTO salon_service_categories (salon_id, category_id, is_active)
-       VALUES ($1, $2, true)
-       ON CONFLICT (salon_id, category_id)
-       DO UPDATE SET is_active = true, updated_at = now()`,
+    const enabledCategory = await query<QueryResultRow>(
+      `SELECT 1 FROM salon_service_categories ssc
+       JOIN service_categories sc ON sc.id = ssc.category_id AND sc.is_active
+       WHERE ssc.salon_id = $1 AND ssc.category_id = $2 AND ssc.is_active`,
       [salonId, categoryId],
     )
+    if (!enabledCategory[0]) throw new ApiError(400, 'This service category is disabled for the salon.')
 
     const slug = (input.slug
       ?? input.name
@@ -3451,13 +3539,13 @@ export const dataService = {
     const slug = input.slug.trim().toLowerCase()
     const name = input.name.trim().replace(/\s+/g, ' ')
 
-    await query(
-      `INSERT INTO salon_service_categories (salon_id, category_id, is_active)
-       VALUES ($1, $2, true)
-       ON CONFLICT (salon_id, category_id)
-       DO UPDATE SET is_active = true, updated_at = now()`,
+    const enabledCategory = await query<QueryResultRow>(
+      `SELECT 1 FROM salon_service_categories ssc
+       JOIN service_categories sc ON sc.id = ssc.category_id AND sc.is_active
+       WHERE ssc.salon_id = $1 AND ssc.category_id = $2 AND ssc.is_active`,
       [salonId, categoryId],
     )
+    if (!enabledCategory[0]) throw new ApiError(400, 'This service category is disabled for the salon.')
 
     const service = await oneOrNotFound<Service>(
       `INSERT INTO services (
@@ -3469,8 +3557,8 @@ export const dataService = {
          description = COALESCE(EXCLUDED.description, services.description),
          duration_minutes = EXCLUDED.duration_minutes,
          price_minor = EXCLUDED.price_minor,
-         is_active = true,
          updated_at = now()
+       WHERE services.is_active AND services.category_id = EXCLUDED.category_id
        RETURNING *`,
       [
         salonId,
@@ -3483,7 +3571,7 @@ export const dataService = {
         input.currencyCode,
         input.isPubliclyBookable,
       ],
-      'Service could not be ensured',
+      'This service is unavailable. Choose an active service.',
     )
 
     if (input.assignToActiveProviders) {
@@ -3661,15 +3749,38 @@ export const dataService = {
         client,
         `SELECT s.*, sc.code AS category_code
          FROM services s
-         JOIN service_categories sc ON sc.id = s.category_id
+         JOIN service_categories sc ON sc.id = s.category_id AND sc.is_active
+         JOIN salon_service_categories ssc
+           ON ssc.salon_id = s.salon_id AND ssc.category_id = s.category_id AND ssc.is_active
          WHERE s.salon_id = $1
            AND s.id = ANY($2::uuid[])
-           AND s.is_active`,
-        [input.salonId, input.serviceIds],
+           AND s.is_active
+           AND ($3::text <> 'public_booking' OR s.is_publicly_bookable)
+         FOR SHARE OF ssc, sc, s`,
+        [input.salonId, input.serviceIds, input.source],
       )
 
       if (services.length !== new Set(input.serviceIds).size) {
         throw new ApiError(400, 'One or more services are unavailable for this professional.')
+      }
+
+      if (input.source === 'public_booking') {
+        const email = input.publicBookingEmail?.trim().toLowerCase()
+        if (!email) throw new ApiError(403, 'Verify your email before booking an appointment.')
+        // Lock the current client address through the booking transaction: a
+        // previously verified, different address must not authorize this client.
+        const clientRows = await client.query<{ email: string | null }>(
+          `SELECT c.email FROM clients c
+           JOIN salons s ON s.id = c.salon_id AND s.is_active AND s.booking_enabled AND s.deleted_at IS NULL
+           JOIN salon_settings ss ON ss.salon_id = s.id AND ss.allow_public_booking
+           WHERE c.salon_id = $1 AND c.id = $2 AND c.deleted_at IS NULL
+           FOR SHARE OF c, s, ss`,
+          [input.salonId, input.clientId],
+        )
+        if (clientRows.rows[0]?.email?.trim().toLowerCase() !== email) {
+          throw new ApiError(403, 'The client email does not match the verified booking email. Please check your details.')
+        }
+        await assertPublicBookingEmailVerified(input.salonId, email, client)
       }
 
       if (input.professionalId) {
@@ -4245,12 +4356,19 @@ export const dataService = {
       if (serviceIds.length) {
         const assignments = await clientRows<QueryResultRow>(
           client,
-          `SELECT service_id
-           FROM professional_services
-           WHERE salon_id = $1
-             AND professional_id = $2
-             AND service_id = ANY($3::uuid[])
-             AND is_active = true`,
+          `SELECT ps.service_id
+           FROM professional_services ps
+           JOIN services s ON s.salon_id = ps.salon_id AND s.id = ps.service_id AND s.is_active
+           JOIN service_categories sc ON sc.id = s.category_id AND sc.is_active
+           JOIN salon_service_categories ssc
+             ON ssc.salon_id = s.salon_id AND ssc.category_id = s.category_id AND ssc.is_active
+           JOIN professionals p ON p.salon_id = ps.salon_id AND p.id = ps.professional_id
+           WHERE ps.salon_id = $1
+             AND ps.professional_id = $2
+             AND ps.service_id = ANY($3::uuid[])
+             AND ps.is_active
+             AND p.status = 'active' AND p.deleted_at IS NULL
+           FOR SHARE OF ssc, sc, s`,
           [salonId, input.professionalId, serviceIds],
         )
         if (assignments.length !== serviceIds.length) {
@@ -4546,6 +4664,11 @@ export const dataService = {
              ON offered.salon_id = offered_ps.salon_id
             AND offered.id = offered_ps.service_id
             AND offered.is_active
+           JOIN service_categories offered_category ON offered_category.id = offered.category_id AND offered_category.is_active
+           JOIN salon_service_categories offered_salon_category
+             ON offered_salon_category.salon_id = offered.salon_id
+            AND offered_salon_category.category_id = offered.category_id
+            AND offered_salon_category.is_active
            WHERE offered_ps.salon_id = p.salon_id
              AND offered_ps.professional_id = p.id
              AND offered_ps.is_active
@@ -4563,6 +4686,7 @@ export const dataService = {
     if (!filters.date) {
       return rows.map((row) => ({
         ...row,
+        languages: normalizeLanguages((row.languages ?? []) as string[]),
         eligible: true,
         durationMinutes: row.duration_override_minutes ?? row.service_duration_minutes,
       }))
@@ -4583,6 +4707,7 @@ export const dataService = {
       if (hasSlot && duration > 0) {
         eligible.push({
           ...row,
+          languages: normalizeLanguages((row.languages ?? []) as string[]),
           eligible: true,
           durationMinutes: row.duration_override_minutes ?? row.service_duration_minutes,
         })
@@ -4600,6 +4725,9 @@ export const dataService = {
     }>(
       `SELECT s.duration_minutes, ps.duration_override_minutes, p.full_name AS professional_name, sal.timezone
        FROM services s
+       JOIN service_categories sc ON sc.id = s.category_id AND sc.is_active
+       JOIN salon_service_categories ssc
+         ON ssc.salon_id = s.salon_id AND ssc.category_id = s.category_id AND ssc.is_active
        JOIN salons sal
          ON sal.id = s.salon_id AND sal.deleted_at IS NULL
        JOIN professional_services ps
@@ -4640,6 +4768,8 @@ export const dataService = {
     )
     const providerDay = providerHours[0]
     const salonDay = salonHours[0]
+    // A provider's custom schedule is independent; inherit salon hours only
+    // when there is no custom entry for the requested day.
     const openRaw = providerDay
       ? (providerDay.is_working ? providerDay.starts_at : null)
       : (salonDay?.is_open ? salonDay.opens_at : null)

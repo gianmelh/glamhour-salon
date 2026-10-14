@@ -98,6 +98,9 @@ export function AppointmentDetailsPage() {
   }
 
   const data = appointment.data
+  const confirmationCode = data.source === 'public_booking'
+    ? `A${data.id.replace(/-/g, '').slice(0, 5).toUpperCase()}`
+    : null
   const status = timedAppointmentStatus(data)
   const service = data.services?.[0]
   const client = clients.data.find((item) => item.id === data.client_id)
@@ -164,6 +167,12 @@ export function AppointmentDetailsPage() {
         <Badge tone="primary">{status.toUpperCase()}</Badge>
         <h2 className="mt-6 max-w-full break-words text-[30px] font-bold leading-9">{appointmentService(data)}</h2>
         <p className="mt-2 text-base text-white/80">with {data.professional_name ?? 'Professional'}</p>
+        {confirmationCode && (
+          <div className="mt-5 border-t border-white/20 pt-4">
+            <p className="text-xs text-white/80">Confirmation code</p>
+            <p className="mt-1 font-mono text-lg font-bold tracking-widest">{confirmationCode}</p>
+          </div>
+        )}
       </Card>
 
       <ScreenSection title="Information">

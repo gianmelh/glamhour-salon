@@ -11,6 +11,7 @@ export type LashPreviewStickerTransform = {
   yPct: number
   scale: number
   rotationDeg: number
+  /** Start, middle, and end controls; older seven-point drafts are normalized on load. */
   warpPoints?: Array<{
     xPct: number
     yPct: number

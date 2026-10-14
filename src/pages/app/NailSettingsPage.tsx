@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ChevronLeft, Clock3, Plus, Save, Trash2, UserRound } from 'lucide-react'
-import { Avatar, Badge, Button, Card, EmptyState, ErrorState, Input, LoadingState, Select } from '../../components'
+import { Avatar, Badge, Button, Card, EmptyState, ErrorState, Input, LoadingState, ProviderDialog, Select } from '../../components'
 import { MutationError } from '../../components/screen/MutationError'
 import { ScreenSection } from '../../components/screen/ScreenSection'
-import { useAppointments, useNailSettings, useServices } from '../../hooks/useGlamhourData'
+import { ProviderLanguages } from '../../components/screen/ProviderLanguages'
+import { ProviderWeeklySchedule } from '../../components/screen/ProviderWeeklySchedule'
+import { normalizeProfessionalDraft } from '../../components/screen/professionalDraft'
+import { normalizeLanguages, providerLanguageCode, providerScheduleErrors } from '../../lib/provider-settings'
+import { useAppointments, useNailSettings, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { cn } from '../../lib/cn'
+import { syncStoredOnboardingCategories } from '../../lib/service-category-settings'
 import { glamhourApi } from '../../services/glamhour-api'
 import type {
   Appointment, NailMaterialInput, NailSettingsResponse, NailSettingsServiceInput,
@@ -15,8 +20,6 @@ import type {
 
 type ProviderDraft = UpsertProfessionalInput & { id?: string; photoName?: string }
 
-const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-const languageOptions = ['English', 'Spanish', 'Portuguese', 'Arabic']
 const treatmentCategories = [
   { code: 'nails', name: 'Nails' },
   { code: 'lashes', name: 'Lashes' },
@@ -83,7 +86,7 @@ function providerDraft(provider: ProfessionalWithNailSettings | undefined, setti
     email: provider.email ?? '',
     phone: provider.phone ?? '',
     avatarUrl: provider.avatar_url,
-    languages: provider.languages,
+    languages: normalizeLanguages(provider.languages),
     status: provider.status === 'inactive' ? 'inactive' : 'active',
     salonEarningsPercent: Number(provider.salon_earnings_percent),
     professionalEarningsPercent: Number(provider.professional_earnings_percent),
@@ -102,6 +105,7 @@ export function NailSettingsPage() {
   const navigate = useNavigate()
   const settings = useNailSettings()
   const allServices = useServices()
+  const enabledCategories = useServiceCategories()
   const appointments = useAppointments()
   const [categoryEnabled, setCategoryEnabled] = useState(true)
   const [services, setServices] = useState<NailSettingsServiceInput[]>([])
@@ -129,17 +133,25 @@ export function NailSettingsPage() {
     setMaterials(settings.data.materials.map(materialInputFromResponse))
   }, [settings.data])
 
+  useEffect(() => {
+    const salonId = settings.data?.salon?.id
+    if (!salonId || !enabledCategories.data || enabledCategories.loading || enabledCategories.isFallback || enabledCategories.error) return
+    syncStoredOnboardingCategories(salonId, enabledCategories.data.map((category) => category.id))
+  }, [settings.data?.salon?.id, enabledCategories.data, enabledCategories.loading, enabledCategories.isFallback, enabledCategories.error])
+
   const serviceOptions = useMemo(() => [
     { label: 'Any Nail service', value: '' },
     ...services.map((service) => ({ label: service.name, value: service.id ?? '' })).filter((option) => option.value),
   ], [services])
 
-  if (settings.loading || allServices.loading) return <LoadingState label="Loading Nail settings..." />
+  if (settings.loading || allServices.loading || enabledCategories.loading) return <LoadingState label="Loading Nail settings..." />
   if (!settings.data && settings.error) return <ErrorState description={settings.error.message} onRetry={settings.retry} />
   if (!settings.data) return <ErrorState description="Nail settings could not be loaded." onRetry={settings.retry} />
+  if (!allServices.data || !enabledCategories.data || allServices.isFallback || enabledCategories.isFallback) return <ErrorState description={allServices.error?.message ?? enabledCategories.error?.message ?? 'Provider services could not be loaded.'} onRetry={() => { allServices.retry(); enabledCategories.retry() }} />
 
   const data = settings.data
-  const providerServices = allServices.data ?? data.services
+  const enabledCategoryIds = new Set(enabledCategories.data.map((category) => category.id))
+  const providerServices = allServices.data.filter((service) => service.is_active && enabledCategoryIds.has(service.category_id))
   const staffLimitReached = data.activeStaffCount >= data.staffLimit
 
   const saveAll = async (forceDisable = false) => {
@@ -148,17 +160,19 @@ export function NailSettingsPage() {
     setCategoryEnabled(result.category.isEnabled)
     setServices(result.services.map(serviceInputFromResponse))
     setMaterials(result.materials.map(materialInputFromResponse))
+    settings.setData(result)
+    enabledCategories.retry()
+    allServices.retry()
     setMessage('Your Nail service settings were saved.')
   }
 
   const openProvider = (provider?: ProfessionalWithNailSettings) => setEditor(providerDraft(provider, data))
 
-  const submitProvider = async () => {
-    if (!editor) return
+  const submitProvider = async (draft: ProviderDraft) => {
     setMessage('')
     const payload = {
-      ...editor,
-      serviceAssignments: editor.serviceAssignments.filter((assignment) => assignment.isActive),
+      ...draft,
+      serviceAssignments: draft.serviceAssignments.filter((assignment) => assignment.isActive && providerServices.some((service) => service.id === assignment.serviceId)),
     }
     await saveProvider.mutate(payload)
     setEditor(null)
@@ -204,7 +218,7 @@ export function NailSettingsPage() {
             <p className="text-sm font-bold text-[#11172a]">Nails category</p>
             <p className="mt-1 text-xs leading-5 text-[#68738b]">{data.category.description ?? 'Manicures, pedicures, acrylics, and nail art.'}</p>
           </div>
-          <Switch checked={categoryEnabled} onChange={setCategoryEnabled} />
+          <Switch label="Enable Nails category" checked={categoryEnabled} onChange={setCategoryEnabled} />
         </div>
         {!categoryEnabled && (
           <p className="rounded-md bg-warning-soft px-3 py-2 text-xs text-warning">Future Nail appointments must be reviewed before disabling this category.</p>
@@ -284,7 +298,7 @@ export function NailSettingsPage() {
           draft={editor}
           loading={saveProvider.loading}
           salonSchedule={data.salonSchedule}
-          services={providerServices.filter((service) => service.is_active)}
+          services={providerServices}
           error={saveProvider.error}
           onCancel={() => setEditor(null)}
           onChange={setEditor}
@@ -378,7 +392,7 @@ function ProviderCard({ provider, services, futureAppointments, onEdit, onDelete
         <Avatar name={provider.full_name} src={provider.avatar_url ?? undefined} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-[#11172a]">{provider.full_name}</p>
-          <div className="mt-1 flex flex-wrap gap-1">{provider.languages.map((language) => <Badge key={language}>{language}</Badge>)}</div>
+          <div className="mt-1 flex flex-wrap gap-1">{normalizeLanguages(provider.languages).map((language) => <Badge aria-label={language} key={language} title={language}>{providerLanguageCode(language)}</Badge>)}</div>
           <p className="mt-2 inline-flex items-center gap-1 text-xs text-[#68738b]"><Clock3 className="size-3.5" /> {provider.use_salon_schedule ? 'Standard Salon Hours' : 'Custom Working Hours'}</p>
         </div>
         <Badge tone={provider.status === 'active' ? 'success' : 'warning'}>{provider.status}</Badge>
@@ -398,23 +412,32 @@ function ProviderCard({ provider, services, futureAppointments, onEdit, onDelete
   )
 }
 
-function ProviderEditor({ draft, services, salonSchedule, loading, error, onChange, onSubmit, onCancel }: {
+function ProviderEditor({ draft: initialDraft, services, salonSchedule, loading, error, onChange, onSubmit, onCancel }: {
   draft: ProviderDraft
   services: NailSettingsResponse['services']
   salonSchedule: Record<string, { enabled: boolean; open: string; close: string }>
   loading: boolean
   error: Error | null
   onChange: (draft: ProviderDraft) => void
-  onSubmit: () => void
+  onSubmit: (draft: ProviderDraft) => void
   onCancel: () => void
 }) {
+  const availableServiceIds = new Set(services.map((service) => service.id))
+  const normalizedDraft = normalizeProfessionalDraft(initialDraft, salonSchedule)
+  const draft = {
+    ...normalizedDraft,
+    serviceAssignments: normalizedDraft.serviceAssignments.filter((assignment) => availableServiceIds.has(assignment.serviceId)),
+  }
+  const scheduleValid = draft.useSalonSchedule || Object.keys(providerScheduleErrors(draft.schedule!)).length === 0
   const selectedIds = new Set(draft.serviceAssignments.filter((assignment) => assignment.isActive).map((assignment) => assignment.serviceId))
+  const canSave = Boolean(draft.fullName.trim()) && draft.languages.length > 0 && scheduleValid && selectedIds.size > 0
   const update = (patch: Partial<ProviderDraft>) => onChange({ ...draft, ...patch })
   const selectedServices = services.filter((service) => selectedIds.has(service.id))
   const servicesByCategory = treatmentCategories.reduce<Record<string, NailSettingsResponse['services']>>((result, category) => {
     result[category.code] = services.filter((service) => service.category_code === category.code)
     return result
   }, {})
+  const assignableCategories = treatmentCategories.filter((category) => servicesByCategory[category.code].length > 0)
   const categoryIsSelected = (categoryCode: string) => {
     const categoryServices = servicesByCategory[categoryCode] ?? []
     return categoryServices.length > 0 && categoryServices.every((service) => selectedIds.has(service.id))
@@ -456,14 +479,20 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
   }
 
   return (
-    <Card className="fixed inset-x-3 bottom-3 z-20 max-h-[88dvh] overflow-y-auto bg-[#f2f5ff] p-5 shadow-2xl">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-lg font-bold text-[#11172a]">Provider</p>
-          <p className="text-xs text-[#68738b]">Enter the details of the staff member.</p>
+    <ProviderDialog
+      title={draft.id ? 'Edit provider' : 'Add provider'}
+      description="Enter the details of the staff member."
+      onClose={onCancel}
+      actions={(
+        <div className="space-y-3">
+          <MutationError error={error} />
+          <div className="grid grid-cols-2 gap-3">
+            <Button onClick={onCancel} variant="outline">Back</Button>
+            <Button disabled={!canSave} loading={loading} onClick={() => onSubmit(draft)}>Save provider</Button>
+          </div>
         </div>
-        <Button onClick={onCancel} size="sm" variant="ghost">Close</Button>
-      </div>
+      )}
+    >
       <div className="space-y-4">
         <PhotoPicker draft={draft} onChange={update} />
         <Input label="Full name" placeholder="Enter full name..." value={draft.fullName} onChange={(event) => update({ fullName: event.target.value })} />
@@ -473,18 +502,7 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
         </div>
         <div>
           <p className="mb-2 text-xs font-semibold text-[#11172a]">Languages</p>
-          <div className="flex flex-wrap gap-2">
-            {languageOptions.map((language) => (
-              <button
-                className={cn('rounded-md border px-3 py-2 text-xs font-semibold', draft.languages.includes(language) ? 'border-primary bg-lavender text-primary' : 'border-border bg-surface text-[#68738b]')}
-                key={language}
-                onClick={() => update({ languages: draft.languages.includes(language) ? draft.languages.filter((item) => item !== language) : [...draft.languages, language] })}
-                type="button"
-              >
-                {language}
-              </button>
-            ))}
-          </div>
+          <ProviderLanguages languages={draft.languages} onChange={(languages) => update({ languages })} />
         </div>
         <Card className="space-y-3">
           <div className="flex items-center justify-between gap-3">
@@ -492,25 +510,24 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
               <p className="text-sm font-bold text-[#11172a]">Working Hours</p>
               <p className="text-xs text-[#68738b]">Set my schedule same than salon schedule</p>
             </div>
-            <Switch checked={draft.useSalonSchedule} onChange={(checked) => update({ useSalonSchedule: checked, schedule: checked ? salonSchedule : draft.schedule })} />
+            <Switch label="Use the salon schedule" checked={draft.useSalonSchedule} onChange={(checked) => update({ useSalonSchedule: checked, schedule: checked ? salonSchedule : draft.schedule })} />
           </div>
         </Card>
-        {draft.useSalonSchedule && <WeeklySchedule readOnly schedule={salonSchedule} onChange={() => undefined} />}
-        {!draft.useSalonSchedule && <WeeklySchedule schedule={draft.schedule ?? salonSchedule} onChange={(schedule) => update({ schedule })} />}
+        {draft.useSalonSchedule && <ProviderWeeklySchedule readOnly schedule={salonSchedule} salonSchedule={salonSchedule} onChange={() => undefined} />}
+        {!draft.useSalonSchedule && <ProviderWeeklySchedule schedule={draft.schedule ?? salonSchedule} salonSchedule={salonSchedule} onChange={(schedule) => update({ schedule })} />}
         <Card className="space-y-3">
           <p className="text-sm font-bold text-[#11172a]">Services & Treatments</p>
           <div className="grid grid-cols-1 gap-2">
-            {treatmentCategories.map((category) => {
+            {assignableCategories.map((category) => {
               const categoryServices = servicesByCategory[category.code] ?? []
               const selected = categoryIsSelected(category.code)
               return (
                 <button
+                  aria-pressed={selected}
                   className={cn(
                     'flex items-center justify-between gap-3 rounded-md border px-3 py-3 text-left text-sm font-semibold',
                     selected ? 'border-primary bg-[#f2edff] text-[#11172a]' : 'border-border bg-surface text-[#68738b]',
-                    !categoryServices.length && 'opacity-55',
                   )}
-                  disabled={!categoryServices.length}
                   key={category.code}
                   onClick={() => toggleCategory(category.code)}
                   type="button"
@@ -519,12 +536,18 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
                     <CheckBox checked={selected} /> {category.name}
                   </span>
                   <span className="text-xs font-medium text-[#68738b]">
-                    {categoryServices.length ? `${categoryServices.length} services` : 'No services'}
+                    {categoryServices.length} services
                   </span>
                 </button>
               )
             })}
           </div>
+          {!services.length && (
+            <p className="text-xs text-[#68738b]">No assignable services found. Enable a service category in Settings, then add active services.</p>
+          )}
+          {services.length > 0 && selectedIds.size === 0 && (
+            <p className="text-xs font-semibold text-amber-700">Select at least one service to make this provider bookable.</p>
+          )}
           {selectedServices.length > 0 && (
             <div className="space-y-2 border-t border-border pt-3">
               <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#68738b]">Provider durations</p>
@@ -549,13 +572,8 @@ function ProviderEditor({ draft, services, salonSchedule, loading, error, onChan
             </div>
           )}
         </Card>
-        <MutationError error={error} />
-        <div className="grid grid-cols-2 gap-3">
-          <Button onClick={onCancel} variant="outline">Back</Button>
-          <Button loading={loading} onClick={onSubmit}>Save provider</Button>
-        </div>
       </div>
-    </Card>
+    </ProviderDialog>
   )
 }
 
@@ -582,39 +600,6 @@ function PhotoPicker({ draft, onChange }: { draft: ProviderDraft; onChange: (pat
   )
 }
 
-function WeeklySchedule({ schedule, onChange, readOnly = false }: {
-  schedule: Record<string, { enabled: boolean; open: string; close: string }>
-  onChange: (schedule: Record<string, { enabled: boolean; open: string; close: string }>) => void
-  readOnly?: boolean
-}) {
-  return (
-    <Card className="space-y-4">
-      <div>
-        <p className="text-lg font-bold text-[#11172a]">Weekly Schedule</p>
-        <p className="text-xs leading-5 text-[#68738b]">{readOnly ? 'Salon schedule is inherited by this provider' : 'Configure opening and closing times for each day'}</p>
-      </div>
-      {weekdays.map((day) => {
-        const value = schedule[day] ?? { enabled: false, open: '09:00', close: '18:00' }
-        return (
-          <div className="border-b border-border pb-3 last:border-b-0" key={day}>
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-[#11172a]">{day}</p>
-              <Switch checked={value.enabled} disabled={readOnly} onChange={(checked) => onChange({ ...schedule, [day]: { ...value, enabled: checked } })} />
-            </div>
-            {value.enabled && (
-              <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <Input aria-label={`${day} opening time`} readOnly={readOnly} type="time" value={value.open} onChange={(event) => onChange({ ...schedule, [day]: { ...value, open: event.target.value } })} />
-                <span className="text-xs text-[#68738b]">to</span>
-                <Input aria-label={`${day} closing time`} readOnly={readOnly} type="time" value={value.close} onChange={(event) => onChange({ ...schedule, [day]: { ...value, close: event.target.value } })} />
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </Card>
-  )
-}
-
 function ReassignPanel({ provider, providers, appointments, message, loading, error, onCancel, onSubmit }: {
   provider: ProfessionalWithNailSettings
   providers: ProfessionalWithNailSettings[]
@@ -627,8 +612,7 @@ function ReassignPanel({ provider, providers, appointments, message, loading, er
 }) {
   const [replacementProviderId, setReplacementProviderId] = useState(providers[0]?.id ?? '')
   return (
-    <Card className="fixed inset-x-3 bottom-3 z-30 max-h-[80dvh] overflow-y-auto p-5 shadow-2xl">
-      <p className="text-lg font-bold text-[#11172a]">Cannot be deleted</p>
+    <ProviderDialog title="Cannot be deleted" onClose={onCancel}>
       <p className="mt-2 text-xs leading-5 text-[#68738b]">{message}</p>
       <p className="mt-3 text-xs font-semibold text-[#11172a]">{appointments.length} future appointments for {provider.full_name}</p>
       {providers.length ? (
@@ -646,13 +630,14 @@ function ReassignPanel({ provider, providers, appointments, message, loading, er
           <Button fullWidth onClick={onCancel} variant="outline">Cancel</Button>
         </div>
       )}
-    </Card>
+    </ProviderDialog>
   )
 }
 
-function Switch({ checked, onChange, disabled = false }: { checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) {
+function Switch({ checked, onChange, disabled = false, label }: { label?: string; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) {
   return (
     <button
+      aria-label={label}
       aria-pressed={checked}
       className={cn('relative h-8 w-14 shrink-0 rounded-full transition', checked ? 'bg-[#7a3fe0]' : 'bg-[#d8d8d8]', disabled && 'cursor-not-allowed opacity-60')}
       disabled={disabled}

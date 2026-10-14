@@ -1,5 +1,5 @@
 import type { BookingCategoryCode } from './types'
-import type { Service, ServiceCategory } from '../../../types/api'
+import type { ServiceCategory } from '../../../types/api'
 
 export const CATEGORY_ORDER: BookingCategoryCode[] = ['nails', 'lashes', 'cosmetology', 'micropigmentation']
 
@@ -86,22 +86,12 @@ export const categoryCopy = {
   },
 } as const
 
-export function buildAppointmentCategories(categories: ServiceCategory[], services: Service[]) {
-  return CATEGORY_ORDER.map((code, index) => {
-    const category = categories.find((item) => item.code === code)
-    if (category) return category
-    const service = services.find((item) => item.category_code === code)
-    return {
-      id: service?.category_id ?? code,
-      code,
-      name: service?.category_name ?? categoryNames[code],
-      description: categoryDescriptions[code],
-      icon_key: null,
-      sort_order: (index + 1) * 10,
-      is_active: true,
-      created_at: '',
-      updated_at: '',
-    } satisfies ServiceCategory
+export function buildAppointmentCategories(categories: ServiceCategory[]) {
+  // This is the salon's enabled catalog. Missing categories must stay missing;
+  // a service or a saved draft is not evidence that a category is still offered.
+  return CATEGORY_ORDER.flatMap((code) => {
+    const category = categories.find((item) => item.code === code && item.is_active)
+    return category ? [category] : []
   })
 }
 

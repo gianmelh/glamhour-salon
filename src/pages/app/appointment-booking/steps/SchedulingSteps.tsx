@@ -4,6 +4,7 @@ import { Button, Card, Input, LoadingState } from '../../../../components'
 import { MutationError } from '../../../../components/screen/MutationError'
 import { cn } from '../../../../lib/cn'
 import { clampToToday, localDateString } from '../../../../lib/date'
+import { normalizeLanguages } from '../../../../lib/provider-settings'
 import type { AvailabilitySlot, Client, EligibleProvider, Service, ServiceCategory } from '../../../../types/api'
 import { buildReviewSections } from '../reviewSummary'
 import { ReviewRow, StepShell } from '../components/shared'
@@ -32,7 +33,7 @@ export function ProviderStep({ providers, selectedProviderId, loading, onSelect,
                 <UserRound className="size-5 text-[#7a3fe0]" />
                 <div>
                   <p className="font-bold">{provider.full_name}</p>
-                  <p className="text-xs text-[#68738b]">{provider.durationMinutes} min · {provider.languages.join(', ') || 'Provider'}</p>
+                  <p className="text-xs text-[#68738b]">{provider.durationMinutes} min · {normalizeLanguages(provider.languages).join(', ') || 'Provider'}</p>
                 </div>
               </div>
             </Card>

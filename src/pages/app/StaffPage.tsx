@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Plus, UsersRound } from 'lucide-react'
-import { Badge, Button, Card, DataSourceNotice, EmptyState, ErrorState, LoadingState, PageTitle, ProfessionalEditorModal, StaffCard, emptyProfessionalDraft, type ProfessionalDraft } from '../../components'
+import { Badge, Button, Card, DataSourceNotice, EmptyState, ErrorState, LoadingState, PageTitle, ProfessionalEditorModal, StaffCard, emptyProfessionalDraft, professionalDraftFromProvider, type ProfessionalDraft } from '../../components'
 import { useNailSettings, useProfessionals, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { staffCardProps } from '../../lib/view-models'
@@ -13,6 +13,7 @@ export function StaffPage() {
   const nailSettings = useNailSettings()
   const [editor, setEditor] = useState<ProfessionalDraft | null>(null)
   const [message, setMessage] = useState('')
+  const [editorError, setEditorError] = useState('')
   const saveProvider = useMutation((input: ProfessionalDraft) => (
     input.id ? glamhourApi.updateProfessional(input.id, input) : glamhourApi.createProfessional(input)
   ))
@@ -23,30 +24,47 @@ export function StaffPage() {
   )
   const assignableServices = useMemo(() => {
     const list = (services.data ?? []).filter((service) => service.is_active)
-    if (!enabledCategoryIds.size) return list
     return list.filter((service) => enabledCategoryIds.has(service.category_id))
   }, [enabledCategoryIds, services.data])
 
-  if (professionals.loading || services.loading || categories.loading) return <LoadingState label="Loading professionals..." />
+  if (professionals.loading || services.loading || categories.loading || nailSettings.loading) return <LoadingState label="Loading professionals..." />
   if (!professionals.data && professionals.error) {
     return <ErrorState description={professionals.error.message} onRetry={professionals.retry} />
   }
 
+  if (!nailSettings.data) return <ErrorState description={nailSettings.error?.message ?? 'Salon hours could not be loaded.'} onRetry={nailSettings.retry} />
+  if (!services.data || !categories.data || services.isFallback || categories.isFallback) return <ErrorState description={services.error?.message ?? categories.error?.message ?? 'Provider services could not be loaded.'} onRetry={() => { services.retry(); categories.retry() }} />
+
   const activeCount = professionals.data?.filter((professional) => professional.status === 'active').length ?? 0
   const staffLimitReached = activeCount >= 10
 
-  const salonSchedule = nailSettings.data?.salonSchedule
+  const providerSettings = nailSettings.data
+  const salonSchedule = providerSettings.salonSchedule
 
-  const openEditor = () => setEditor(emptyProfessionalDraft(salonSchedule))
+  const openEditor = () => {
+    setEditorError('')
+    setEditor(emptyProfessionalDraft(salonSchedule))
+  }
+  const editProvider = (professionalId: string) => {
+    const provider = providerSettings.providers.find((person) => person.id === professionalId)
+    if (!provider) {
+      setEditorError('Professional details could not be loaded. Please try again after refreshing.')
+      nailSettings.retry()
+      return
+    }
+    setEditorError('')
+    setEditor(professionalDraftFromProvider(provider, salonSchedule))
+  }
 
-  const submitProvider = async () => {
-    if (!editor) return
+  const submitProvider = async (draft: ProfessionalDraft) => {
     setMessage('')
     const payload = {
-      ...editor,
-      serviceAssignments: editor.serviceAssignments.filter((assignment) => assignment.isActive),
+      ...draft,
+      serviceAssignments: draft.serviceAssignments.filter((assignment) => assignment.isActive && assignableServices.some((service) => service.id === assignment.serviceId)),
     }
-    const saved = await saveProvider.mutate(payload)
+    // The editor displays mutation errors and keeps the draft available for retry.
+    const saved = await saveProvider.mutate(payload).catch(() => null)
+    if (!saved) return
     professionals.setData((current) => {
       const list = current ?? []
       const index = list.findIndex((item) => item.id === saved.id)
@@ -58,7 +76,8 @@ export function StaffPage() {
       return [...list, saved].sort((a, b) => a.full_name.localeCompare(b.full_name))
     })
     setEditor(null)
-    setMessage(editor.id ? 'Provider updated successfully.' : 'Provider added successfully.')
+    setMessage(draft.id ? 'Provider updated successfully.' : 'Provider added successfully.')
+    nailSettings.retry()
   }
 
   return (
@@ -75,6 +94,7 @@ export function StaffPage() {
       />
 
       {message && <p className="rounded-md bg-success-soft px-3 py-2 text-xs font-medium text-success">{message}</p>}
+      {editorError && <p className="rounded-md bg-danger-soft px-3 py-2 text-xs font-medium text-danger" role="alert">{editorError}</p>}
 
       <Card className="flex items-center gap-3" tone="lavender">
         <UsersRound className="size-6 text-primary" />
@@ -95,7 +115,7 @@ export function StaffPage() {
       {professionals.data?.length ? (
         <div className="space-y-3">
           {professionals.data.map((person) => (
-            <StaffCard key={person.id} {...staffCardProps(person)} />
+            <StaffCard key={person.id} {...staffCardProps(person)} onEdit={() => editProvider(person.id)} />
           ))}
         </div>
       ) : (

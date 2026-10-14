@@ -42,7 +42,7 @@ createRoot(document.getElementById('root')).render(
 const server = await createServer({
   cacheDir: 'node_modules/.vite-browser-translation-regression',
   define: { 'import.meta.env.VITE_API_URL': JSON.stringify('/__mock_api__') },
-  server: { host: '127.0.0.1', port: 5187 },
+  server: { host: '127.0.0.1', port: 5187, hmr: false, watch: null },
   plugins: [{
     name: 'local-translation-regression',
     configureServer(vite) {
@@ -133,7 +133,7 @@ try {
     const clientGate = new Promise((resolve) => { releaseClient = resolve })
     let conflict = outcome === 'conflict'
     let availabilityRequests = 0
-    const service = { id: 'service-local', category_id: 'category-local', name: 'Manicure', category_name: 'Nails', category_code: 'nails', duration_minutes: 60 }
+    const service = { id: 'service-local', category_id: 'category-local', name: 'Manicure', category_name: 'Nails', category_code: 'nails', duration_minutes: 60, is_active: true, is_publicly_bookable: true }
     await page.route(`${origin}/__mock_api__/**`, async (route) => {
       const request = route.request()
       const url = new URL(request.url())
@@ -141,17 +141,18 @@ try {
       const respond = (data) => route.fulfill({ json: { data } })
       if (path === '/__mock_api__/public-booking/local-salon') return respond({
         salon: { id: 'salon-local', name: 'Local regression salon', timezone: 'UTC', booking_enabled: true, allow_public_booking: true },
-        services: [service], categories: [],
+        services: [service], categories: [{ id: 'category-local', code: 'nails', name: 'Nails', is_active: true }],
       })
       if (path.endsWith('/providers/eligible')) return respond([
-        { id: 'provider-local', full_name: 'Local Specialist', languages: ['English'], services_offered: ['Manicure'], durationMinutes: 60 },
+        { id: 'provider-local', full_name: 'Local Specialist', languages: ['en', 'English', 'es', ' Spanish ', 'pt', 'Portuguese', 'Arabic', 'French'], services_offered: ['Manicure'], durationMinutes: 60 },
       ])
       if (path.endsWith('/availability')) {
         availabilityRequests += 1
         const date = url.searchParams.get('date')
         return respond({ slots: [{ startsAt: `${date}T16:00:00Z`, endsAt: `${date}T17:00:00Z`, available: true, label: '4:00 PM' }] })
       }
-      if (path.endsWith('/clients/find-or-create')) {
+      if (path.endsWith('/public-booking/local-salon/email-verification/status')) return respond({ verified: true })
+      if (path.endsWith('/public-booking/local-salon/clients/find-or-create')) {
         requests.push({ path, body: request.postDataJSON() })
         await clientGate
         return respond({ id: 'client-local' })
@@ -173,11 +174,20 @@ try {
       await page.getByRole('button', { name: 'Nails' }).click()
       await page.getByRole('button', { name: '4:00 PM', exact: true }).click()
       await page.getByRole('button', { name: 'Continue', exact: true }).click()
-      await page.getByRole('button', { name: /Local Specialist/ }).click()
+      const providerCard = page.getByRole('button', { name: /Local Specialist/ })
+      await providerCard.waitFor()
+      for (const language of ['English', 'Spanish', 'Portuguese']) {
+        assert.equal(await providerCard.getByText(language, { exact: true }).count(), 1, `public provider card displays ${language} once`)
+      }
+      for (const unsupported of ['en', 'es', 'pt', 'Arabic', 'French']) {
+        assert.equal(await providerCard.getByText(unsupported, { exact: true }).count(), 0, `public provider card hides ${unsupported}`)
+      }
+      await providerCard.click()
       await page.getByRole('button', { name: 'Continue', exact: true }).click()
       await page.getByLabel('Email', { exact: true }).fill('local@example.test')
       await page.getByLabel('Full name', { exact: true }).fill('Local Client')
       await page.getByLabel('Phone', { exact: true }).fill('5551234567')
+      await page.getByRole('button', { name: 'Confirm appointment' }).and(page.locator(':enabled')).waitFor()
       if (translated) await translateText(page.locator('main'))
       await page.getByRole('button', { name: translated ? 'Confirmar cita' : 'Confirm appointment' }).click()
       await page.locator('button svg.animate-spin').waitFor({ timeout: 3000 }).catch(() => {
@@ -202,10 +212,12 @@ try {
       assert.deepEqual(errors, [])
       assert.equal(requests.length, 2)
       assert.equal(requests[0].body.fullName, 'Local Client')
+      assert.equal(requests[0].body.email, 'local@example.test')
       assert.equal(requests[1].body.clientId, 'client-local')
       assert.equal(requests[1].body.professionalId, 'provider-local')
       assert.deepEqual(requests[1].body.serviceIds, ['service-local'])
       assert.equal(requests[1].body.source, 'public_booking')
+      assert.equal(requests[1].body.publicBookingEmail, 'local@example.test')
       console.log(`PASS public booking ${outcome} (${translated ? 'translated' : 'original'})`)
     } finally {
       releaseClient()

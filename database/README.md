@@ -13,6 +13,11 @@ This directory contains the PostgreSQL database architecture and mockup-derived 
 7. `migrations/007_service_materials.sql` - service materials catalog
 8. `migrations/008_appointment_clinical_architecture.sql` - clinical questionnaires, signatures, category details
 9. `migrations/009_service_slug_uniqueness.sql` - stable `services.slug` unique per salon for idempotent booking upserts
+10. `migrations/010_quick_booking_and_statuses.sql` - quick booking and appointment statuses
+11. `migrations/011_client_appointment_overlap.sql` - prevent overlapping appointments for a client
+12. `migrations/012_stripe_subscriptions.sql` - subscription plans and billing
+13. `migrations/013_unique_client_contact.sql` - unique active client email and phone per salon
+14. `migrations/014_public_booking_email_verification.sql` - persistent verified booking emails and expiring verification codes
 
 ## Local Application
 
@@ -35,7 +40,11 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/006_password_rese
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/007_service_materials.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/008_appointment_clinical_architecture.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/009_service_slug_uniqueness.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/010_quick_booking_and_statuses.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/011_client_appointment_overlap.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/012_stripe_subscriptions.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/013_unique_client_contact.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/014_public_booking_email_verification.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/seeds/001_mockup_seed_data.sql
 ```
 

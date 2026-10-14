@@ -6,6 +6,11 @@ import { asyncHandler, validate } from './http.js'
 import { dataService } from './services/data-service.js'
 import { sendAppointmentConfirmationEmail } from './services/email-service.js'
 import {
+  getPublicBookingEmailStatus,
+  requestPublicBookingEmailCode,
+  verifyPublicBookingEmailCode,
+} from './services/public-booking-email-service.js'
+import {
   cancelSubscription,
   changeSubscriptionPlan,
   createBillingPortalSession,
@@ -39,6 +44,10 @@ import {
   registerFacebookSalonSchema,
   loginSchema,
   paginationSchema,
+  publicBookingEmailRequestSchema,
+  publicBookingEmailVerifySchema,
+  publicBookingSlugSchema,
+  publicFindOrCreateClientSchema,
   registerGoogleSalonSchema,
   registerSalonSchema,
   reassignProfessionalSchema,
@@ -52,6 +61,7 @@ import {
   updateAppointmentStatusSchema,
   updateAppointmentTreatmentDetailsSchema,
   updateSalonSettingsSchema,
+  updateServiceCategoriesSchema,
   uploadTreatmentMediaSchema,
   upsertProfessionalSchema,
   uuidSchema,
@@ -187,7 +197,45 @@ router.get('/salons/by-slug/:slug', asyncHandler(async (request, response) => {
 
 router.get('/public-booking/:slug', asyncHandler(async (request, response) => {
   const { slug } = validate(z.object({ slug: z.string().min(1) }), request.params)
+  response.set('Cache-Control', 'no-store')
   response.json({ data: await dataService.getPublicBooking(slug) })
+}))
+
+// Verification belongs to the salon resolved from its shareable link. The
+// existing public-booking checks also enforce enabled links and Premium access.
+router.use('/public-booking/:slug/email-verification', (_request, response, next) => {
+  response.set('Cache-Control', 'no-store')
+  next()
+})
+
+router.post('/public-booking/:slug/email-verification/status', asyncHandler(async (request, response) => {
+  const { slug } = validate(publicBookingSlugSchema, request.params)
+  const { email } = validate(publicBookingEmailRequestSchema, request.body)
+  const { salon } = await dataService.getPublicBooking(slug)
+  response.json({ data: await getPublicBookingEmailStatus(salon.id, email) })
+}))
+
+router.post('/public-booking/:slug/email-verification/request', asyncHandler(async (request, response) => {
+  const { slug } = validate(publicBookingSlugSchema, request.params)
+  const { email } = validate(publicBookingEmailRequestSchema, request.body)
+  const { salon } = await dataService.getPublicBooking(slug)
+  response.json({ data: await requestPublicBookingEmailCode(salon.id, email, salon.name) })
+}))
+
+router.post('/public-booking/:slug/email-verification/verify', asyncHandler(async (request, response) => {
+  const { slug } = validate(publicBookingSlugSchema, request.params)
+  const { email, code } = validate(publicBookingEmailVerifySchema, request.body)
+  const { salon } = await dataService.getPublicBooking(slug)
+  response.json({ data: await verifyPublicBookingEmailCode(salon.id, email, code) })
+}))
+
+router.post('/public-booking/:slug/clients/find-or-create', asyncHandler(async (request, response) => {
+  response.set('Cache-Control', 'no-store')
+  const { slug } = validate(publicBookingSlugSchema, request.params)
+  const body = validate(publicFindOrCreateClientSchema, request.body)
+  const { salon } = await dataService.getPublicBooking(slug)
+  const client = await dataService.findOrCreatePublicBookingClient(salon.id, body)
+  response.json({ data: { id: client.id } })
 }))
 
 router.get('/salons/:salonId', asyncHandler(async (request, response) => {
@@ -289,7 +337,14 @@ router.get('/salons/:salonId/clients/:clientId/health-profiles/:category', async
 
 router.get('/service-categories', asyncHandler(async (request, response) => {
   const query = validate(z.object({ salonId: uuidSchema.optional(), includeAll: z.enum(['true', 'false']).optional() }), request.query)
+  response.set('Cache-Control', 'no-store')
   response.json({ data: await dataService.listServiceCategories(query.salonId, query.includeAll === 'true') })
+}))
+
+router.put('/salons/:salonId/service-categories', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(updateServiceCategoriesSchema, request.body)
+  response.json({ data: await dataService.updateServiceCategories(salonId, body.categoryIds) })
 }))
 
 router.get('/salons/:salonId/appointment-categories', asyncHandler(async (request, response) => {
@@ -336,13 +391,9 @@ router.post('/salons/:salonId/appointments', asyncHandler(async (request, respon
   const { salonId } = validate(salonParamsSchema, request.params)
   const body = validate(createAppointmentSchema, request.body)
   const appointment = await dataService.createAppointment({ salonId, ...body })
-  response.status(201).json({ data: appointment })
-  void sendAppointmentConfirmationEmail(salonId, appointment.id).catch((error) => {
-    console.warn('Appointment confirmation dispatch failed.', {
-      appointmentId: appointment.id,
-      reason: error instanceof Error ? error.message : 'unknown_error',
-    })
-  })
+  // The helper preserves the saved appointment even when email delivery fails.
+  const confirmationEmail = await sendAppointmentConfirmationEmail(salonId, appointment.id)
+  response.status(201).json({ data: { ...appointment, confirmation_email: confirmationEmail } })
 }))
 
 router.post('/salons/:salonId/health-questionnaires', asyncHandler(async (request, response) => {

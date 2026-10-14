@@ -11,7 +11,11 @@
     "start:api": "tsx server/index.ts",
     "build": "tsc -b && vite build",
     "typecheck:api": "tsc -p tsconfig.server.json",
-    "test:regression": "node scripts/test-browser-translation.mjs && tsx scripts/test-internal-booking.mts && node scripts/test-registration-maps.mjs",
+    "test:regression": "node scripts/test-browser-translation.mjs && tsx scripts/test-internal-booking.mts && node scripts/test-registration-maps.mjs && npm run test:provider-settings && npm run test:lash-preview && npm run test:public-booking-email",
+    "test:appointment-confirmation-email": "node --import tsx scripts/test-appointment-confirmation-email.mts",
+    "test:public-booking-email": "npm run test:appointment-confirmation-email && node --import tsx scripts/test-public-booking-email.mts && node --import tsx scripts/test-public-booking-email-guards.mts && node --import tsx scripts/test-public-booking-email-ui.mts",
+    "test:lash-preview": "node --import tsx scripts/test-lash-curve.mts && node --import tsx scripts/test-lash-preview.mts",
+    "test:provider-settings": "node --import tsx scripts/test-provider-booking-guards.mts && node --import tsx scripts/test-category-lifecycle.mts && node scripts/test-service-catalog-pagination.mjs && node --import tsx scripts/test-booking-categories.mts && node --import tsx scripts/test-public-categories.mts && node scripts/test-category-settings.mjs && node --import tsx scripts/test-provider-settings.mts && node scripts/test-provider-dialog-layout.mjs",
     "lint": "eslint . -f json -o .eslint-report.json",
     "preview": "vite preview"
   },

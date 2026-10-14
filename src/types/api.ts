@@ -150,6 +150,7 @@ export interface ClinicalMedia {
 
 export interface Appointment extends Timestamped {
   id: string
+  confirmation_email?: { status: 'sent' | 'failed' | 'not_sent'; reason?: string }
   salon_id: string
   client_id: string
   professional_id: string | null
@@ -302,6 +303,15 @@ export interface PublicBookingPayload {
   categories: ServiceCategory[]
 }
 
+export interface PublicBookingEmailStatus {
+  verified: boolean
+}
+
+export interface PublicBookingEmailCodeResponse extends PublicBookingEmailStatus {
+  expiresInSeconds?: number
+  resendAfterSeconds?: number
+}
+
 export interface DashboardAppointment {
   id: string
   starts_at: string
@@ -425,6 +435,7 @@ export interface CreateAppointmentInput {
   startsAt: string
   endsAt: string
   source?: 'internal' | 'public_booking' | 'rebook'
+  publicBookingEmail?: string
   customerNotes?: string
   internalNotes?: string
   treatmentDetails?: Record<string, unknown>

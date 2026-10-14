@@ -99,3 +99,40 @@ recovery, retained clinical data, and date/time picker activation. Registration
 tests exercise the Google Maps branch with a simulated widget, including address
 selection, mobile styles and manual entry after search failures. Native iPhone
 keyboard behavior and the live Google widget still require a physical-device check.
+
+Provider settings and booking catalog checks can also be run independently with
+`npm run test:provider-settings` (or `PLAYWRIGHT_CHANNEL=chrome npm run test:provider-settings`).
+These cover custom provider hours independent of salon hours, optional salon
+schedule inheritance, language edits on legacy records (English, Spanish, and
+Portuguese only), provider save actions at mobile sizes, and disabled categories
+in provider assignments, new bookings, saved drafts, public booking, and
+rescheduling. Category settings cover disabling every category, re-enabling,
+failed saves, and stale onboarding drafts. Public booking rechecks the catalog on
+returning to the tab and before confirmation. Full service catalog loading is
+checked beyond 100 services and fails closed if any page cannot load, protecting
+provider assignments from partial catalogs. Existing treatment records remain
+editable after their category is disabled. Browser requests and database queries
+are mocked; these checks do not modify a live salon.
+
+Lash photo fitting checks run with `npm run test:lash-preview` (or
+`PLAYWRIGHT_CHANNEL=chrome npm run test:lash-preview`). They cover the three-point
+curve, older seven-point drafts, mouse and touch adjustment, rotation, and saved
+preview restoration using local lash images and a synthetic photo.
+
+Public booking now requires email verification before confirmation. A six-digit
+code expires after ten minutes; successfully verified addresses are remembered
+per salon, so later bookings do not send another code. Deploy migration
+`database/migrations/014_public_booking_email_verification.sql` before the API and
+configure SMTP as described in [server/README.md](server/README.md).
+
+Run `PLAYWRIGHT_CHANNEL=chrome npm run test:public-booking-email` for the email
+verification regressions. These use mocked PostgreSQL and SMTP, local HTTP routes,
+and a browser with external traffic blocked. They cover code expiry and attempt
+limits, resends, prior verification, stale responses after changing email, client
+contact conflicts, and server enforcement before public appointment creation.
+
+Appointment confirmation email checks also run in that suite, or separately with
+`npm run test:appointment-confirmation-email`. They cover SMTP acceptance/rejection,
+missing configuration, email content, database logging failures, and preserving a
+saved booking when email fails. Public booking now reports the email outcome and
+keeps the PDF ticket available when confirmation mail could not be sent.

@@ -67,24 +67,43 @@
 
 .lash-preview-warp-point {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
+  padding: 0;
   border: 2px solid #7344cd;
   border-radius: 999px;
   background: #ffffff;
   box-shadow: 0 2px 8px rgb(16 24 40 / 0.16);
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
   transform: translate(-50%, -50%);
+}
+
+.lash-preview-warp-point::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.lash-preview-warp-point:focus-visible {
+  outline: 2px solid #7344cd;
+  outline-offset: 3px;
 }
 
 .lash-preview-transform-handle {
   position: absolute;
+  display: grid;
+  place-items: center;
   z-index: 4;
   width: 18px;
   height: 18px;
   border: 2px solid #7344cd;
-  border-radius: 999px;
+  border-radius: 4px;
   background: #ffffff;
+  color: #7344cd;
+  font-size: 12px;
+  font-weight: 700;
   box-shadow: 0 2px 8px rgb(16 24 40 / 0.18);
   touch-action: none;
 }

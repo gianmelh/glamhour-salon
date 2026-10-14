@@ -102,7 +102,6 @@ export function HomePage() {
   )
   const assignableServices = useMemo(() => {
     const list = (services.data ?? []).filter((service) => service.is_active)
-    if (!enabledCategoryIds.size) return list
     return list.filter((service) => enabledCategoryIds.has(service.category_id))
   }, [enabledCategoryIds, services.data])
 
@@ -123,7 +122,7 @@ export function HomePage() {
   const staffLimitReached = data.emptyStateFlags.staffLimitReached
   const salonSchedule = nailSettings.data?.salonSchedule
   const providerResourcesLoading = professionals.loading || services.loading || categories.loading || nailSettings.loading
-  const providerResourcesFallback = professionals.isFallback || services.isFallback || categories.isFallback
+  const providerResourcesFallback = professionals.isFallback || services.isFallback || categories.isFallback || !nailSettings.data || !services.data || !categories.data
   const bookingUrl = publicBookingUrl(data.salon.slug)
   const hasPremiumAccess = subscription.data.hasPremiumAccess
 
@@ -136,13 +135,11 @@ export function HomePage() {
     setProviderEditor(emptyProfessionalDraft(salonSchedule))
   }
 
-  async function submitProvider() {
-    if (!providerEditor) return
-
+  async function submitProvider(draft: ProfessionalDraft) {
     setProviderMessage('')
     const payload = {
-      ...providerEditor,
-      serviceAssignments: providerEditor.serviceAssignments.filter((assignment) => assignment.isActive),
+      ...draft,
+      serviceAssignments: draft.serviceAssignments.filter((assignment) => assignment.isActive && assignableServices.some((service) => service.id === assignment.serviceId)),
     }
     const saved = await saveProvider.mutate(payload)
     professionals.setData((current) => [...(current ?? []), saved].sort((a, b) => a.full_name.localeCompare(b.full_name)))

@@ -134,6 +134,11 @@ export function NailsServicesScreen({ categories, services, appointments, onSele
       </section>
 
       <div className="mt-4 space-y-4">
+        {!cards.length && (
+          <p className="rounded-[16px] border border-[#d0d5dd] bg-white p-5 text-sm text-[#666]">
+            No service categories are available. Enable a category in Settings before scheduling an appointment.
+          </p>
+        )}
         {cards.map((card) => (
           <ServiceCategoryCard card={card} key={card.code} onSelect={() => onSelect(card.category)} />
         ))}

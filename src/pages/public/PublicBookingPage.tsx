@@ -1,14 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Languages, MapPin, Scissors } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { Button, ErrorState, LoadingState } from '../../components'
 import { ApiClientError } from '../../lib/api'
 import { deferTask } from '../../lib/defer'
+import { normalizeLanguages } from '../../lib/provider-settings'
+import { usePublicBookingEmailVerification } from '../../hooks/usePublicBookingEmailVerification'
 import { addMinutesIso, formatZonedDate, formatZonedTime, normalizeTimeZone, zonedDateString } from '../../lib/salon-time'
 import { glamhourApi } from '../../services/glamhour-api'
-import type { AvailabilitySlot, EligibleProvider, PublicBookingPayload, Service } from '../../types/api'
+import type { Appointment, AvailabilitySlot, EligibleProvider, PublicBookingPayload, Service } from '../../types/api'
 
 type Step = 'service' | 'schedule' | 'provider' | 'details' | 'success'
+
+function availablePublicServices(payload: PublicBookingPayload) {
+  const enabledCategoryIds = new Set(payload.categories.filter((category) => category.is_active).map((category) => category.id))
+  return payload.services.filter((service) => (
+    enabledCategoryIds.has(service.category_id) && service.is_active && service.is_publicly_bookable
+  ))
+}
 
 function nextBookableDates(timeZone: string) {
   const today = zonedDateString(new Date(), timeZone)
@@ -42,7 +51,11 @@ export function PublicBookingPage() {
   const [availabilityVersion, setAvailabilityVersion] = useState(0)
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ fullName: '', phone: '', email: '', notes: '' })
+  const [emailTouched, setEmailTouched] = useState(false)
+  const emailVerification = usePublicBookingEmailVerification(salonSlug, form.email, step === 'details')
+  const submissionVersion = useRef(0)
   const [confirmationCode, setConfirmationCode] = useState('')
+  const [confirmationEmail, setConfirmationEmail] = useState<Appointment['confirmation_email']>()
   const [calendarMonth, setCalendarMonth] = useState('')
 
   const timeZone = normalizeTimeZone(payload?.salon.timezone)
@@ -58,7 +71,8 @@ export function PublicBookingPage() {
   }, [payload])
   const serviceGroups = useMemo(() => {
     const groups = new Map<string, Service[]>()
-    payload?.services.forEach((item) => {
+    if (!payload) return []
+    availablePublicServices(payload).forEach((item) => {
       const key = item.category_name ?? item.name
       groups.set(key, [...(groups.get(key) ?? []), item])
     })
@@ -66,28 +80,42 @@ export function PublicBookingPage() {
   }, [payload])
 
   useEffect(() => {
+    const submissions = submissionVersion
     let active = true
-    deferTask(() => setLoading(true))
-    glamhourApi.publicBooking(salonSlug)
-      .then((data) => {
-        if (!active) return
-        setPayload(data)
-        const firstDate = nextBookableDates(normalizeTimeZone(data.salon.timezone))[0] ?? ''
-        setDate(firstDate)
-        setCalendarMonth(firstDate.slice(0, 7))
-        setError(null)
-      })
-      .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason : new Error('Booking link could not be loaded.'))
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => { active = false }
+    let requestVersion = 0
+    deferTask(() => { setLoading(true); setBusy(false) })
+    const refreshCatalog = () => {
+      if (document.visibilityState === 'hidden') return
+      const version = ++requestVersion
+      glamhourApi.publicBooking(salonSlug)
+        .then((data) => {
+          if (!active || version !== requestVersion) return
+          setPayload(data)
+          const firstDate = nextBookableDates(normalizeTimeZone(data.salon.timezone))[0] ?? ''
+          setDate((current) => current || firstDate)
+          setCalendarMonth((current) => current || firstDate.slice(0, 7))
+          setError(null)
+        })
+        .catch((reason) => {
+          if (active && version === requestVersion) setError(reason instanceof Error ? reason : new Error('Booking link could not be loaded.'))
+        })
+        .finally(() => {
+          if (active && version === requestVersion) setLoading(false)
+        })
+    }
+    refreshCatalog()
+    window.addEventListener('focus', refreshCatalog)
+    document.addEventListener('visibilitychange', refreshCatalog)
+    return () => {
+      ++submissions.current
+      active = false
+      window.removeEventListener('focus', refreshCatalog)
+      document.removeEventListener('visibilitychange', refreshCatalog)
+    }
   }, [salonSlug])
 
   useEffect(() => {
-    if (!payload || !service) {
+    if (!payload || !service || !availablePublicServices(payload).some((item) => item.id === service.id)) {
       deferTask(() => setProviders([]))
       deferTask(() => setAvailability([]))
       deferTask(() => setProviderSlots({}))
@@ -109,7 +137,23 @@ export function PublicBookingPage() {
   }, [payload, service])
 
   useEffect(() => {
-    if (!payload || !service || !date || providers.length === 0) {
+    if (!payload || step === 'success') return
+    if (service && !availablePublicServices(payload).some((item) => item.id === service.id)) {
+      deferTask(() => {
+        setService(null)
+        setServiceCategory(null)
+        setProvider(null)
+        setSlot(null)
+        setStep('service')
+        setSubmitError(new Error('This service is no longer available. Please choose another service.'))
+      })
+    } else if (serviceCategory && !serviceGroups.some(([category]) => category === serviceCategory)) {
+      deferTask(() => setServiceCategory(null))
+    }
+  }, [payload, service, serviceCategory, serviceGroups, step])
+
+  useEffect(() => {
+    if (!payload || !service || !availablePublicServices(payload).some((item) => item.id === service.id) || !date || providers.length === 0) {
       deferTask(() => setAvailability([]))
       deferTask(() => setProviderSlots({}))
       deferTask(() => setAvailabilityError(null))
@@ -161,17 +205,35 @@ export function PublicBookingPage() {
   }
 
   const submit = async () => {
-    if (!service || !provider || !slot || !form.fullName.trim() || !form.phone.trim()) return
+    if (!service || !provider || !slot || !form.fullName.trim() || !form.phone.trim() || !emailVerification.valid || !emailVerification.verified || busy) return
+    const version = ++submissionVersion.current
+    const bookingEmail = emailVerification.normalizedEmail
     setBusy(true)
     setSubmitError(null)
     try {
-      const client = await glamhourApi.findOrCreateClient({
+      // Verification belongs to the current salon/email and is always checked on the server.
+      const verified = await emailVerification.checkStatus()
+      if (version !== submissionVersion.current) return
+      if (!verified) {
+        setSubmitError(new Error('Verify your email before confirming your appointment.'))
+        return
+      }
+      // The salon may have disabled this category since the link was opened.
+      // Recheck before creating a client; the API also validates the final booking.
+      const currentCatalog = await glamhourApi.publicBooking(salonSlug)
+      if (version !== submissionVersion.current) return
+      if (!availablePublicServices(currentCatalog).some((item) => item.id === service.id)) {
+        setPayload(currentCatalog)
+        return
+      }
+      const client = await glamhourApi.publicFindOrCreateClient(salonSlug, {
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
-        email: form.email.trim() || undefined,
+        email: bookingEmail,
         notes: 'Created from public booking link.',
         mergeNotes: 'Used public booking link.',
-      }, payload.salon.id)
+      })
+      if (version !== submissionVersion.current) return
       const appointment = await glamhourApi.createAppointment({
         clientId: client.id,
         professionalId: provider.id,
@@ -179,11 +241,15 @@ export function PublicBookingPage() {
         startsAt: slot.startsAt,
         endsAt: slot.endsAt || addMinutesIso(slot.startsAt, provider.durationMinutes ?? service.duration_minutes),
         source: 'public_booking',
+        publicBookingEmail: bookingEmail,
         customerNotes: form.notes.trim() || undefined,
       }, payload.salon.id)
+      if (version !== submissionVersion.current) return
       setConfirmationCode(`A${appointment.id.replace(/-/g, '').slice(0, 5).toUpperCase()}`)
+      setConfirmationEmail(appointment.confirmation_email)
       setStep('success')
     } catch (reason) {
+      if (version !== submissionVersion.current) return
       const isProfessionalConflict = reason instanceof ApiClientError
         && reason.status === 409
         && (reason.code === 'APPOINTMENT_CONFLICT' || reason.message === 'The professional is unavailable for that time.')
@@ -197,13 +263,24 @@ export function PublicBookingPage() {
         setSubmitError(new Error('That time was just booked. The available times have been refreshed.'))
       } else {
         setSubmitError(reason instanceof Error ? reason : new Error('Appointment could not be requested.'))
+        if (reason instanceof ApiClientError && [400, 403, 404].includes(reason.status)) {
+          // Also recover if the category changed between the catalog check and POST.
+          try {
+            setPayload(await glamhourApi.publicBooking(salonSlug))
+          } catch (refreshError) {
+            setError(refreshError instanceof Error ? refreshError : new Error('Booking link could not be loaded.'))
+          }
+        }
       }
     } finally {
-      setBusy(false)
+      if (version === submissionVersion.current) setBusy(false)
     }
   }
 
   const bookAnotherService = () => {
+    ++submissionVersion.current
+    emailVerification.invalidate()
+    setEmailTouched(false)
     setService(null)
     setServiceCategory(null)
     setProvider(null)
@@ -215,6 +292,7 @@ export function PublicBookingPage() {
     setAvailabilityVersion((current) => current + 1)
     setForm({ fullName: '', phone: '', email: '', notes: '' })
     setConfirmationCode('')
+    setConfirmationEmail(undefined)
     setSubmitError(null)
     setStep('service')
   }
@@ -264,6 +342,7 @@ export function PublicBookingPage() {
           <section className="space-y-4">
             <ScreenHeader title="Services" subtitle="Select a category to schedule an appointment" />
             <div className="space-y-3 pt-1">
+              {!serviceGroups.length && <p className="rounded-md bg-[#f1efff] px-3 py-4 text-sm text-[#596275]">No services are available for online booking right now.</p>}
               {serviceGroups.map(([category, items]) => (
                 <button className="flex min-h-[52px] w-full items-center gap-3 rounded-md bg-[#f1efff] px-3 text-left" key={category} onClick={() => items.length === 1 ? selectService(items[0]) : setServiceCategory(category)} type="button">
                   <ServiceIcon service={items[0]} />
@@ -374,7 +453,7 @@ export function PublicBookingPage() {
 
         {step === 'details' && service && provider && slot && (
           <section className="space-y-4">
-            <ScreenHeader onBack={() => setStep('provider')} title="Details" subtitle="To continue your appointment confirmation" />
+            <ScreenHeader onBack={busy || emailVerification.phase === 'sending' || emailVerification.phase === 'verifying' ? undefined : () => setStep('provider')} title="Details" subtitle="To continue your appointment confirmation" />
             <div className="space-y-3">
               <label className="block text-[9px] font-bold text-[#596275]">Preferred language
                 <select className="mt-1 min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-2 text-[10px] font-semibold text-[#101827]">
@@ -383,11 +462,42 @@ export function PublicBookingPage() {
                   <option>Portuguese</option>
                 </select>
               </label>
-              <Field label="Email"><input className="min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-[10px] font-semibold outline-none focus:border-[#8b5cf6]" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} type="email" value={form.email} /></Field>
-              <Field label="Full name"><input className="min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-[10px] font-semibold outline-none focus:border-[#8b5cf6]" onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))} value={form.fullName} /></Field>
-              <Field label="Phone"><input className="min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-[10px] font-semibold outline-none focus:border-[#8b5cf6]" onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} type="tel" value={form.phone} /></Field>
+              <Field label="Email"><input aria-describedby={emailTouched && !emailVerification.valid ? 'public-booking-email-error' : undefined} aria-invalid={emailTouched && !emailVerification.valid} autoComplete="email" className="min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-[10px] font-semibold outline-none focus:border-[#8b5cf6]" disabled={busy} maxLength={320} onBlur={() => setEmailTouched(true)} onChange={(event) => {
+                const email = event.target.value
+                if (email.trim().toLowerCase() !== emailVerification.normalizedEmail) {
+                  ++submissionVersion.current
+                  emailVerification.invalidate()
+                  setSubmitError(null)
+                }
+                setForm((current) => ({ ...current, email }))
+              }} required type="email" value={form.email} /></Field>
+              {emailTouched && !emailVerification.valid && <p className="text-[10px] font-semibold text-[#c24141]" id="public-booking-email-error" role="alert">{form.email.trim() ? 'Enter a valid email address.' : 'Email is required to confirm your appointment.'}</p>}
+              {emailVerification.valid && (
+                <div className="space-y-3 rounded-md border border-[#ddd6fe] bg-[#faf8ff] p-3">
+                  {emailVerification.verified ? (
+                    <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[#21855b]" role="status"><CheckCircle2 className="size-4" /> Email verified.</p>
+                  ) : (
+                    <>
+                      <p className="text-[11px] text-[#596275]" role="status">{emailVerification.phase === 'checking' ? 'Checking email verification...' : emailVerification.codeSent ? `A verification code was sent to ${emailVerification.normalizedEmail}. Check your inbox or spam folder.` : 'Verify your email to confirm your appointment.'}</p>
+                      {emailVerification.codeSent && (
+                        <>
+                          <Field label="Verification code"><input autoComplete="one-time-code" className="min-h-10 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-sm tracking-[0.25em] outline-none focus:border-[#8b5cf6]" disabled={busy || emailVerification.phase === 'verifying' || emailVerification.phase === 'sending'} inputMode="numeric" maxLength={6} onChange={(event) => emailVerification.setCode(event.target.value)} pattern="[0-9]{6}" placeholder="000000" type="text" value={emailVerification.code} /></Field>
+                          {emailVerification.expiresInSeconds === 0 ? <p className="text-[10px] font-semibold text-[#c24141]">This code has expired. Request a new code.</p> : emailVerification.expiresInSeconds !== null && <p className="text-[10px] text-[#596275]">Code expires in {Math.floor(emailVerification.expiresInSeconds / 60)}:{String(emailVerification.expiresInSeconds % 60).padStart(2, '0')}.</p>}
+                          <Button disabled={busy || emailVerification.code.length !== 6 || emailVerification.expiresInSeconds === 0 || emailVerification.phase === 'sending'} fullWidth loading={emailVerification.phase === 'verifying'} onClick={() => void emailVerification.verifyCode()} size="sm">Verify email</Button>
+                        </>
+                      )}
+                      <Button disabled={busy || emailVerification.phase === 'checking' || emailVerification.phase === 'verifying' || emailVerification.resendInSeconds > 0} fullWidth loading={emailVerification.phase === 'sending'} onClick={() => void emailVerification.requestCode()} size="sm" variant="outline">{emailVerification.codeSent ? 'Resend code' : 'Send code'}</Button>
+                      {emailVerification.resendInSeconds > 0 && <p className="text-[10px] text-[#596275]">You can request another code in {emailVerification.resendInSeconds} seconds.</p>}
+                      {emailVerification.phase === 'error' && !emailVerification.codeSent && <Button disabled={busy} fullWidth onClick={() => void emailVerification.checkStatus()} size="sm" variant="ghost">Check email again</Button>}
+                    </>
+                  )}
+                  {emailVerification.error && <p className="text-[10px] font-semibold text-[#c24141]" role="alert">{emailVerification.error}</p>}
+                </div>
+              )}
+              <Field label="Full name"><input className="min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-[10px] font-semibold outline-none focus:border-[#8b5cf6]" disabled={busy} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))} value={form.fullName} /></Field>
+              <Field label="Phone"><input className="min-h-8 w-full rounded-md border border-[#e1e4ec] bg-white px-3 text-[10px] font-semibold outline-none focus:border-[#8b5cf6]" disabled={busy} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} type="tel" value={form.phone} /></Field>
             </div>
-            <FlowButton disabled={!form.fullName.trim() || !form.phone.trim()} loading={busy} onClick={submit}>Confirm appointment</FlowButton>
+            <FlowButton disabled={!form.fullName.trim() || !form.phone.trim() || !emailVerification.valid || !emailVerification.verified} loading={busy} onClick={submit}>Confirm appointment</FlowButton>
           </section>
         )}
 
@@ -396,7 +506,12 @@ export function PublicBookingPage() {
             <div className="mx-auto mt-3 grid size-9 place-items-center rounded-md bg-[#eee9ff] text-[#7c3aed]">
               <CheckCircle2 className="size-5" />
             </div>
-            <ScreenHeader title="Booking Confirmed!" subtitle={form.email ? `Confirmation details will be sent to ${form.email}` : 'Your appointment has been scheduled'} centered />
+            <ScreenHeader title="Booking Confirmed!" subtitle={confirmationEmail?.status === 'sent' ? `Confirmation email sent to ${form.email.trim().toLowerCase()}` : 'Your appointment has been scheduled.'} centered />
+            {(confirmationEmail?.status === 'failed' || confirmationEmail?.status === 'not_sent') && (
+              <p className="rounded-md border border-[#f6d6a8] bg-[#fff9ed] px-3 py-3 text-left text-[11px] leading-5 text-[#854d0e]" role="status">
+                We couldn&apos;t send the confirmation email. Download your PDF ticket below. You don&apos;t need to book again.
+              </p>
+            )}
             <div className="rounded-md border border-[#e1e4ec] bg-white px-4 py-3">
               <p className="text-[9px] font-bold text-[#8a93a5]">Confirmation code</p>
               <p className="mt-1 text-[18px] font-extrabold tracking-[0.12em] text-[#101827]">{confirmationCode || 'A1JPQ'}</p>
@@ -452,7 +567,7 @@ function calendarCells(month: string) {
 
 function ScreenHeader({ title, subtitle, onBack, centered = false }: { title: string; subtitle: string; onBack?: () => void; centered?: boolean }) {
   return (
-    <header className={`relative ${centered ? 'text-center' : ''}`}>
+    <header className={`relative ${onBack ? 'pl-7' : ''} ${centered ? 'text-center' : ''}`}>
       {onBack && (
         <button aria-label="Back" className="absolute -left-1 top-0 grid size-6 place-items-center rounded-full text-[#101827]" onClick={onBack} type="button">
           <ChevronLeft className="size-4" />
@@ -491,7 +606,8 @@ function ProviderAvatar({ provider, size = 'md' }: { provider: EligibleProvider;
 }
 
 function providerLanguages(provider: EligibleProvider) {
-  return provider.languages?.length ? provider.languages : ['Not specified']
+  const languages = normalizeLanguages(provider.languages ?? [])
+  return languages.length ? languages : ['Not specified']
 }
 
 function providerServices(provider: EligibleProvider, selectedService: Service) {

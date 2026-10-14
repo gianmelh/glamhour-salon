@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { normalizeLanguages } from '../src/lib/provider-settings.js'
 
 export const uuidSchema = z.string().regex(
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
@@ -12,6 +13,10 @@ export const paginationSchema = z.object({
 })
 
 export const salonParamsSchema = z.object({ salonId: uuidSchema })
+export const updateServiceCategoriesSchema = z.object({
+  categoryIds: z.array(uuidSchema),
+})
+
 export const salonResourceParamsSchema = z.object({ salonId: uuidSchema, id: uuidSchema })
 
 export const appointmentQuerySchema = paginationSchema.extend({
@@ -72,6 +77,7 @@ export const createAppointmentSchema = z.object({
   startsAt: isoDateTimeSchema,
   endsAt: isoDateTimeSchema,
   source: z.enum(['internal', 'public_booking', 'rebook']).default('internal'),
+  publicBookingEmail: z.string().trim().email().max(320).transform((email) => email.toLowerCase()).optional(),
   customerNotes: z.string().max(5000).optional(),
   internalNotes: z.string().max(5000).optional(),
   treatmentDetails: z.record(z.string(), z.unknown()).optional(),
@@ -79,6 +85,9 @@ export const createAppointmentSchema = z.object({
   treatmentRecommendations: z.string().max(5000).optional(),
   priceOverrideMinor: z.number().int().min(0).optional(),
   createdByUserId: uuidSchema.optional(),
+}).refine((value) => value.source !== 'public_booking' || Boolean(value.publicBookingEmail), {
+  message: 'A verified email is required for public booking.',
+  path: ['publicBookingEmail'],
 }).refine((value) => new Date(value.startsAt) < new Date(value.endsAt), {
   message: 'startsAt must be before endsAt',
 })
@@ -204,6 +213,15 @@ export const findOrCreateClientSchema = createClientSchema.extend({
   mergeNotes: z.string().max(5000).optional(),
 })
 
+const publicBookingEmailSchema = z.string().trim().email().max(320).transform((email) => email.toLowerCase())
+
+export const publicBookingSlugSchema = z.object({ slug: z.string().trim().min(1).max(160) })
+export const publicBookingEmailRequestSchema = z.object({ email: publicBookingEmailSchema })
+export const publicBookingEmailVerifySchema = publicBookingEmailRequestSchema.extend({
+  code: z.string().trim().regex(/^\d{6}$/, 'Enter the six-digit verification code.'),
+})
+export const publicFindOrCreateClientSchema = findOrCreateClientSchema.extend({ email: publicBookingEmailSchema })
+
 const serviceWriteBaseSchema = z.object({
   categoryId: uuidSchema.optional(),
   categoryCode: z.string().trim().min(1).max(60).optional(),
@@ -239,10 +257,12 @@ export const updateSalonSettingsSchema = z.object({
   message: 'At least one setting must be provided',
 })
 
+const scheduleTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+
 const scheduleDaySchema = z.object({
   enabled: z.boolean(),
-  open: z.string().regex(/^\d{2}:\d{2}$/),
-  close: z.string().regex(/^\d{2}:\d{2}$/),
+  open: scheduleTimeSchema,
+  close: scheduleTimeSchema,
 }).refine((value) => !value.enabled || value.open < value.close, {
   message: 'Closing time must be after opening time',
 })
@@ -288,12 +308,17 @@ const providerServiceAssignmentSchema = z.object({
   priceOverrideMinor: z.number().int().min(0).optional().nullable(),
 })
 
+const providerLanguageSchema = z.string().trim().min(1).max(40).refine(
+  (language) => normalizeLanguages([language]).length === 1,
+  { message: 'Choose English, Spanish, or Portuguese.' },
+)
+
 export const upsertProfessionalSchema = z.object({
   fullName: z.string().trim().min(1).max(160),
   email: z.string().trim().email().max(320).or(z.literal('')).optional(),
   phone: z.string().trim().max(40).optional(),
   avatarUrl: z.string().max(3_000_000).optional().nullable(),
-  languages: z.array(z.string().trim().min(1).max(40)).default([]),
+  languages: z.array(providerLanguageSchema).transform(normalizeLanguages).default([]),
   status: z.enum(['active', 'inactive']).default('active'),
   salonEarningsPercent: z.number().min(0).max(100),
   professionalEarningsPercent: z.number().min(0).max(100),
@@ -302,6 +327,9 @@ export const upsertProfessionalSchema = z.object({
   serviceAssignments: z.array(providerServiceAssignmentSchema).default([]),
 }).refine((value) => Math.abs(value.salonEarningsPercent + value.professionalEarningsPercent - 100) < 0.001, {
   message: 'Salon earnings and provider earnings must add up to 100%.',
+}).refine((value) => value.useSalonSchedule || value.schedule !== undefined, {
+  message: 'Provide a custom schedule or use the salon schedule.',
+  path: ['schedule'],
 })
 
 export const reassignProfessionalSchema = z.object({
@@ -311,8 +339,8 @@ export const reassignProfessionalSchema = z.object({
 
 const onboardingDaySchema = z.object({
   enabled: z.boolean(),
-  open: z.string().regex(/^\d{2}:\d{2}$/),
-  close: z.string().regex(/^\d{2}:\d{2}$/),
+  open: scheduleTimeSchema,
+  close: scheduleTimeSchema,
 })
 
 export const saveOnboardingSchema = z.object({
@@ -336,7 +364,7 @@ export const saveOnboardingSchema = z.object({
       email: z.string().trim().email().max(320).or(z.literal('')),
       phone: z.string().trim().max(40),
       photoPreview: z.string().max(3_000_000).optional(),
-      languages: z.array(z.string().trim().min(1).max(10)).min(1),
+      languages: z.array(providerLanguageSchema).min(1).transform(normalizeLanguages),
       salonPercent: z.string().trim().min(1),
       professionalPercent: z.string().trim().min(1),
       serviceIds: z.array(z.string().min(1)),

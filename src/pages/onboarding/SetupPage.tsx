@@ -5,11 +5,14 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, DataSourceNotice, ErrorState, Input, LoadingState } from '../../components'
-import { fallbackCategories } from '../../data/fallback-data'
+import { ProviderLanguages } from '../../components/screen/ProviderLanguages'
+import { ProviderWeeklySchedule } from '../../components/screen/ProviderWeeklySchedule'
+import { normalizeLanguages, normalizeProviderSchedule, providerLanguageCode, providerScheduleErrors } from '../../lib/provider-settings'
 import { useProfessionals, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
 import { ApiClientError } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { glamhourApi } from '../../services/glamhour-api'
+import { syncStoredOnboardingCategories } from '../../lib/service-category-settings'
 import type { Professional, Service, ServiceCategory } from '../../types/api'
 import { cosmetologyServiceTypes } from '../app/appointment-booking/categories/cosmetology/cosmetologyDetailsSpec'
 import { micropigmentationProcedureGroups } from '../app/appointment-booking/categories/micropigmentation/micropigmentationDetailsSpec'
@@ -28,6 +31,7 @@ type OnboardingState = {
   salonId?: string
   salonName?: string
   email?: string
+  returnTo?: '/app/settings'
 }
 
 type DraftService = {
@@ -153,16 +157,6 @@ const stepHeaderSubtitles: Partial<Record<Step, string>> = {
 
 function persistedOnboardingStep(step: Step): PersistedOnboardingStep {
   return step === 'durations' ? 'services' : step
-}
-
-const languageLabels: Record<string, string> = {
-  en: 'English',
-  es: 'Spanish',
-  pt: 'Portuguese',
-}
-
-function formatLanguageLabel(language: string) {
-  return languageLabels[language] ?? language
 }
 
 function formatTimeDisplay(value: string) {
@@ -308,6 +302,11 @@ function sanitizeStoredDraft(draft: OnboardingDraft | null, categories: ServiceC
   const legacyMaterialNames = new Set(nailServiceSetupItems.map((name) => name.toLowerCase()))
   const sanitizedDraft = {
     ...draft,
+    providers: draft.providers.map((provider) => ({
+      ...provider,
+      languages: normalizeLanguages(provider.languages),
+      schedule: provider.useSalonSchedule ? draft.schedule : normalizeProviderSchedule(provider.schedule),
+    })),
     selectedCategoryIds: draft.selectedCategoryIds.filter((id) => categoryIds.has(id)),
     services: draft.services
       .map(normalizeStoredService)
@@ -319,7 +318,7 @@ function sanitizeStoredDraft(draft: OnboardingDraft | null, categories: ServiceC
       }),
   }
 
-  return sanitizedDraft.selectedCategoryIds.length ? withRequiredDraftServices(sanitizedDraft, categories) : null
+  return withRequiredDraftServices(sanitizedDraft, categories)
 }
 
 function getProviderCategoryServices(draft: OnboardingDraft) {
@@ -375,10 +374,8 @@ function syncProviderWithSalonServices(provider: DraftProvider, salonServices: D
   } : provider
 }
 
-function createDraft(categories: ServiceCategory[], services: Service[], professionals: Professional[]): OnboardingDraft {
-  const selectedCategoryIds = [...new Set(services
-    .filter((service) => service.is_active)
-    .map((service) => service.category_id))]
+function createDraft(categories: ServiceCategory[], enabledCategories: ServiceCategory[], services: Service[], professionals: Professional[]): OnboardingDraft {
+  const selectedCategoryIds = enabledCategories.map((category) => category.id)
   const categoryById = new Map(categories.map((category) => [category.id, category]))
   const serviceDrafts: DraftService[] = services.length
     ? services
@@ -460,7 +457,7 @@ function createDraft(categories: ServiceCategory[], services: Service[], profess
         name: professional.full_name,
         email: professional.email ?? '',
         phone: professional.phone ?? '',
-        languages: professional.languages.length ? professional.languages : ['en'],
+        languages: normalizeLanguages(professional.languages.length ? professional.languages : ['English']),
         salonPercent: professional.salon_earnings_percent.split('.')[0] ?? '60',
         professionalPercent: professional.professional_earnings_percent.split('.')[0] ?? '40',
         categoryIds: [...new Set(activeServiceIds.map((serviceId) => serviceDraftById.get(serviceId)?.categoryId).filter((categoryId): categoryId is string => Boolean(categoryId)))],
@@ -479,7 +476,7 @@ function createBlankProvider(schedule: Record<string, DraftDay>, salonServices: 
     name: '',
     email: '',
     phone: '',
-    languages: ['en'],
+    languages: ['English'],
     salonPercent: '40',
     professionalPercent: '60',
     categoryIds: [...new Set(salonServices.map((service) => service.categoryId))],
@@ -498,45 +495,51 @@ export function SetupPage() {
   const salonId = onboardingState.salonId ?? window.sessionStorage.getItem('glamhour:active-salon-id') ?? undefined
   const salonName = onboardingState.salonName ?? 'your salon'
   const currentStep = steps.includes(step as Step) ? step as Step : 'categories'
+  const isManagingCategories = currentStep === 'categories' && onboardingState.returnTo === '/app/settings'
   const categories = useServiceCategories(salonId, { includeAll: true })
+  const enabledCategories = useServiceCategories(salonId)
   const services = useServices(salonId)
   const professionals = useProfessionals(salonId)
-  const categoryData = categories.data?.length ? categories.data : fallbackCategories
-  const [draftOverride, setDraftOverride] = useState<OnboardingDraft | null>(() => readStoredDraft(salonId))
+  const categoryData = categories.data
+  const [draftOverride, setDraftOverride] = useState<OnboardingDraft | null>(() => isManagingCategories ? null : readStoredDraft(salonId))
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const sanitizedDraftOverride = useMemo(() => {
-    if (!categoryData.length) {
+    if (!categoryData) {
       return null
     }
 
     return sanitizeStoredDraft(draftOverride, categoryData)
   }, [categoryData, draftOverride])
   const generatedDraft = useMemo(() => {
-    if (!categoryData.length || !services.data || !professionals.data) {
+    if (!categoryData || !enabledCategories.data) {
       return null
     }
+    if (isManagingCategories) {
+      return { selectedCategoryIds: enabledCategories.data.map((category) => category.id), services: [], schedule: defaultSchedule, providers: [] }
+    }
+    if (!services.data || !professionals.data) return null
 
-    return createDraft(categoryData, services.data, professionals.data)
-  }, [categoryData, professionals.data, services.data])
+    return createDraft(categoryData, enabledCategories.data, services.data, professionals.data)
+  }, [categoryData, enabledCategories.data, isManagingCategories, professionals.data, services.data])
   const draft = sanitizedDraftOverride ?? generatedDraft
 
   useEffect(() => {
-    if (draftOverride) {
+    if (draftOverride && !isManagingCategories) {
       window.localStorage.setItem(storageKey(salonId), JSON.stringify(draftOverride))
     }
-  }, [draftOverride, salonId])
+  }, [draftOverride, isManagingCategories, salonId])
 
-  const loading = categories.loading || services.loading || professionals.loading || !draft
+  const loading = categories.loading || enabledCategories.loading || (!isManagingCategories && (services.loading || professionals.loading))
   if (loading) return <div className="min-h-dvh bg-canvas p-4"><LoadingState label="Loading salon setup..." /></div>
-  if (!services.data || !professionals.data) return <div className="min-h-dvh bg-canvas p-4"><ErrorState description="Salon setup data could not be loaded." onRetry={() => { categories.retry(); services.retry(); professionals.retry() }} /></div>
+  if (!categoryData || !enabledCategories.data || (!isManagingCategories && (!services.data || !professionals.data)) || !draft) return <div className="min-h-dvh bg-canvas p-4"><ErrorState description="Salon setup data could not be loaded." onRetry={() => { categories.retry(); enabledCategories.retry(); services.retry(); professionals.retry() }} /></div>
 
   const stepIndex = Math.max(0, steps.indexOf(currentStep))
   const visibleStepNumber = Math.min(stepIndex + 1, setupStepCount)
-  const canContinue = isStepComplete(currentStep, draft)
-  const headerSubtitle = stepHeaderSubtitles[currentStep] ?? "Let's get your business ready for clients."
+  const canContinue = isManagingCategories || isStepComplete(currentStep, draft)
+  const headerSubtitle = isManagingCategories ? 'Choose the categories your salon offers.' : stepHeaderSubtitles[currentStep] ?? "Let's get your business ready for clients."
   const isTeamEditor = currentStep === 'team' && Boolean(draft.activeProviderId)
-  const primaryActionLabel = currentStep === 'complete' ? 'Go to calendar' : currentStep === 'team' ? (isTeamEditor ? 'Add provider' : 'Finish') : 'Continue'
+  const primaryActionLabel = isManagingCategories ? 'Save categories' : currentStep === 'complete' ? 'Go to calendar' : currentStep === 'team' ? (isTeamEditor ? 'Add provider' : 'Finish') : 'Continue'
 
   function updateDraft(updater: (current: OnboardingDraft) => OnboardingDraft) {
     setDraftOverride((current) => {
@@ -553,13 +556,21 @@ export function SetupPage() {
     setIsSaving(true)
     setSaveError('')
     try {
+      const savedDraft = {
+        ...draft,
+        providers: draft.providers.map((provider) => ({
+          ...provider,
+          languages: normalizeLanguages(provider.languages),
+          schedule: provider.useSalonSchedule ? draft.schedule : normalizeProviderSchedule(provider.schedule),
+        })),
+      }
       if (isLocalSalonId(salonId)) {
-        window.localStorage.setItem(storageKey(salonId), JSON.stringify(draft))
+        window.localStorage.setItem(storageKey(salonId), JSON.stringify(savedDraft))
       } else {
         await glamhourApi.saveOnboarding({
           step: persistedOnboardingStep(nextStep),
           completed,
-          draft,
+          draft: savedDraft,
         }, salonId)
       }
     } catch (error) {
@@ -576,6 +587,21 @@ export function SetupPage() {
 
   async function goNext() {
     if (!canContinue || isSaving) {
+      return
+    }
+
+    if (isManagingCategories) {
+      setIsSaving(true)
+      setSaveError('')
+      try {
+        const enabled = await glamhourApi.updateServiceCategories({ categoryIds: draft!.selectedCategoryIds }, salonId)
+        if (salonId) syncStoredOnboardingCategories(salonId, enabled.map((category) => category.id))
+        navigate('/app/settings', { replace: true })
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'Categories could not be saved. Please try again.')
+      } finally {
+        setIsSaving(false)
+      }
       return
     }
 
@@ -611,6 +637,10 @@ export function SetupPage() {
   }
 
   function goBack() {
+    if (isManagingCategories) {
+      navigate('/app/settings')
+      return
+    }
     if (stepIndex === 0) {
       navigate('/register')
       return
@@ -640,14 +670,14 @@ export function SetupPage() {
         <header>
           <div className="flex items-end justify-between gap-3">
             <div>
-              <h1 className="text-[28px] font-bold leading-none tracking-[-0.02em] text-[#10172a]">Salon Setup</h1>
-              <p className="mt-2 whitespace-nowrap text-[16px] leading-5 text-[#747d96]">{headerSubtitle}</p>
+              <h1 className="text-[28px] font-bold leading-none tracking-[-0.02em] text-[#10172a]">{isManagingCategories ? 'Service categories' : 'Salon Setup'}</h1>
+              <p className={cn('mt-2 text-[16px] leading-5 text-[#747d96]', !isManagingCategories && 'whitespace-nowrap')}>{headerSubtitle}</p>
             </div>
-            <p className="shrink-0 pb-1 text-[12px] font-medium text-[#626b84]">Step {visibleStepNumber} of {setupStepCount}</p>
+            {!isManagingCategories && <p className="shrink-0 pb-1 text-[12px] font-medium text-[#626b84]">Step {visibleStepNumber} of {setupStepCount}</p>}
           </div>
-          <div className="mt-5 h-2 rounded-full bg-white/75">
+          {!isManagingCategories && <div className="mt-5 h-2 rounded-full bg-white/75">
             <div className="h-full rounded-full bg-[#6734c7] transition-all" style={{ width: `${(visibleStepNumber / setupStepCount) * 100}%` }} />
-          </div>
+          </div>}
         </header>
 
         <div className="mt-8 flex-1">
@@ -670,7 +700,7 @@ export function SetupPage() {
           >
             {primaryActionLabel}
           </Button>
-          {stepIndex > 0 && (
+          {(stepIndex > 0 || isManagingCategories) && (
             <Button
               className="mt-3 min-h-11 rounded-xl border-0 bg-white/85 text-[13px] font-medium text-[#6734c7] shadow-[0_8px_18px_rgb(67_47_129_/_0.12)] hover:bg-white"
               disabled={isSaving}
@@ -707,6 +737,7 @@ function CategoriesStep({ categories, draft, updateDraft }: { categories: Servic
           const selected = draft.selectedCategoryIds.includes(category.id)
           return (
             <button
+              aria-pressed={selected}
               className={cn(
                 'flex min-h-[104px] w-full items-start gap-3 rounded-2xl border px-4 py-4 text-left transition',
                 selected ? 'border-[#e8ddff] bg-[#eee8ff]' : 'border-[#d7dce8] bg-white',
@@ -1376,52 +1407,6 @@ function ScheduleTimeInput({ value, onCommit }: { value: string; onCommit: (valu
   )
 }
 
-function ProviderWeeklySchedule({ schedule, updateDay, readOnly = false }: { schedule: Record<string, DraftDay>; updateDay: (day: string, patch: Partial<DraftDay>) => void; readOnly?: boolean }) {
-  return (
-    <div className="mt-4 rounded-2xl border border-[#d7dce8] bg-white px-5 py-6 shadow-[0_3px_10px_rgb(34_42_66_/_0.03)]">
-      <h3 className="text-[22px] font-bold leading-7 text-[#10172a]">Weekly Schedule</h3>
-      <p className="mt-2 text-[15px] leading-5 text-[#6f7890]">{readOnly ? 'Using the salon schedule.' : 'Configure opening and closing times for each day'}</p>
-      <div className="mt-7">
-        {weekDays.map((day) => {
-          const daySchedule = schedule[day]
-          return (
-            <div className="border-b border-[#e7eaf2] py-4 first:pt-0 last:pb-0" key={day}>
-              <div className="flex items-center justify-between gap-4">
-                <p className="text-[14px] font-bold leading-5 text-[#1b2133]">{day}</p>
-                <button
-                  aria-label={daySchedule.enabled ? `Disable ${day}` : `Enable ${day}`}
-                  aria-pressed={daySchedule.enabled}
-                  className={cn('relative h-7 w-12 rounded-full transition', daySchedule.enabled ? 'bg-[#7a3fe0]' : 'bg-[#e1e1e1]')}
-                  disabled={readOnly}
-                  onClick={() => updateDay(day, { enabled: !daySchedule.enabled })}
-                  type="button"
-                >
-                  <span className={cn('absolute top-0.5 size-6 rounded-full bg-white shadow-[0_2px_6px_rgb(27_31_47_/_0.18)] transition-all', daySchedule.enabled ? 'left-[22px]' : 'left-0.5')} />
-                </button>
-              </div>
-              {daySchedule.enabled && (
-                <div className="mt-4 grid grid-cols-[88px_auto_88px] items-center gap-3">
-                  {readOnly ? <ReadOnlyTime value={daySchedule.open} /> : <ScheduleTimeInput onCommit={(value) => updateDay(day, { open: value })} value={daySchedule.open} />}
-                  <span className="text-center text-[14px] font-medium text-[#7b8498]">to</span>
-                  {readOnly ? <ReadOnlyTime value={daySchedule.close} /> : <ScheduleTimeInput onCommit={(value) => updateDay(day, { close: value })} value={daySchedule.close} />}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function ReadOnlyTime({ value }: { value: string }) {
-  return (
-    <span className="grid min-h-10 w-full place-items-center rounded-lg bg-[#f4f6fb] px-2 text-center text-[13px] font-medium text-[#7b8498]">
-      {formatTimeDisplay(value)}
-    </span>
-  )
-}
-
 function TeamStep({ categories, draft, updateDraft }: { categories: ServiceCategory[]; draft: OnboardingDraft; updateDraft: (updater: (current: OnboardingDraft) => OnboardingDraft) => void }) {
   const activeProvider = draft.providers.find((provider) => provider.id === draft.activeProviderId)
   const salonConfiguredServices = getSalonConfiguredServices(draft)
@@ -1507,7 +1492,7 @@ function ProviderSummaryCard({ categories, draft, provider, onEdit }: { categori
     ...providerCategoryServices.map((service) => service.categoryId),
   ])
   const providerCategories = categories.filter((category) => categoryIds.has(category.id))
-  const languageChips = provider.languages.length ? provider.languages.map(formatLanguageLabel) : ['English']
+  const languageChips = normalizeLanguages(provider.languages)
   const scheduleLabel = provider.useSalonSchedule === false ? 'Custom Working Hours' : 'Standard Salon Hours'
 
   return (
@@ -1525,7 +1510,7 @@ function ProviderSummaryCard({ categories, draft, provider, onEdit }: { categori
           <p className="mt-1 text-[12px] font-medium leading-4 text-[#1b2133]">Languages</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {languageChips.map((language) => (
-              <span className="rounded-md bg-[#f0f2fb] px-2 py-1 text-[11px] font-medium leading-none text-[#69748c]" key={language}>{language}</span>
+              <span aria-label={language} className="rounded-md bg-[#f0f2fb] px-2 py-1 text-[11px] font-medium leading-none text-[#69748c]" key={language} title={language}>{providerLanguageCode(language)}</span>
             ))}
           </div>
         </div>
@@ -1723,25 +1708,7 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
 
         <div>
           <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-[#242a39]"><Languages className="size-4 text-[#7a3fe0]" /> Languages</p>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              ['en', 'English'],
-              ['es', 'Spanish'],
-              ['pt', 'Portuguese'],
-            ].map(([language, label]) => {
-              const selected = provider.languages.includes(language)
-              return (
-                <button
-                  className={cn('min-h-9 rounded-md border text-[11px] font-semibold', selected ? 'border-[#7a3fe0] bg-[#eee8ff] text-[#5d2caf]' : 'border-[#dde1ec] bg-white text-[#8b92a1]')}
-                  key={language}
-                  onClick={() => updateProvider({ languages: selected ? provider.languages.filter((item) => item !== language) : [...provider.languages, language] })}
-                  type="button"
-                >
-                  {label}
-                </button>
-              )
-            })}
-          </div>
+          <ProviderLanguages languages={provider.languages} onChange={(languages) => updateProvider({ languages })} />
         </div>
 
         <div>
@@ -1764,18 +1731,15 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
             <ProviderWeeklySchedule
               readOnly
               schedule={salonSchedule}
-              updateDay={() => undefined}
+              salonSchedule={salonSchedule}
+              onChange={() => undefined}
             />
           )}
           {!usesSalonSchedule && (
             <ProviderWeeklySchedule
               schedule={provider.schedule}
-              updateDay={(day, patch) => updateProvider({
-                schedule: {
-                  ...provider.schedule,
-                  [day]: { ...provider.schedule[day], ...patch },
-                },
-              })}
+              salonSchedule={salonSchedule}
+              onChange={(schedule) => updateProvider({ schedule })}
             />
           )}
         </div>
@@ -1894,6 +1858,8 @@ function isStepComplete(step: Step, draft: OnboardingDraft) {
     return draft.providers.length > 0 && draft.providers.every((provider) => (
       provider.name.trim()
       && (!hasAssignableServices || provider.serviceIds.length > 0)
+      && normalizeLanguages(provider.languages).length > 0
+      && (provider.useSalonSchedule || Object.keys(providerScheduleErrors(normalizeProviderSchedule(provider.schedule))).length === 0)
       && Number(provider.salonPercent) + Number(provider.professionalPercent) === 100
     ))
   }

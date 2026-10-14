@@ -74,6 +74,10 @@ All salon routes expect the UUID from `salons.id`.
 | GET | `/api/salons` | List salons |
 | GET | `/api/salons/:salonId` | Salon details |
 | GET | `/api/salons/by-slug/:slug` | Salon by public slug |
+| POST | `/api/public-booking/:slug/email-verification/status` | Check whether an email was verified for this salon |
+| POST | `/api/public-booking/:slug/email-verification/request` | Send a six-digit code if verification is needed |
+| POST | `/api/public-booking/:slug/email-verification/verify` | Validate an email using its code |
+| POST | `/api/public-booking/:slug/clients/find-or-create` | Resolve a public booking client only after email verification |
 | GET | `/api/salons/:salonId/professionals` | List staff/professionals |
 | GET | `/api/salons/:salonId/professionals/:id` | Professional details |
 | GET | `/api/salons/:salonId/clients?search=` | Search/list clients |
@@ -98,6 +102,57 @@ All salon routes expect the UUID from `salons.id`.
 | GET | `/api/salons/:salonId/reviews?publicOnly=true` | List reviews |
 
 List endpoints accept `limit` and `offset`. Appointment and sales endpoints support date, provider, client, and status filters as applicable.
+
+## Public booking email verification
+
+Apply `database/migrations/014_public_booking_email_verification.sql` before deploying
+the updated API. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and
+`SMTP_FROM` (and `SMTP_SECURE` for the mail provider). Public verification fails
+closed if SMTP is missing or rejects delivery; codes are never returned by the API
+or logged, including in development.
+
+Status and request accept `{ "email": "client@domain.com" }`; verify also requires
+a six-digit `code`. Emails are trimmed and normalized to lowercase. Codes expire
+after ten minutes, permit five attempts, and can be resent after sixty seconds,
+with up to five sends per address and one hundred per salon per hour. Failed
+deliveries also count toward these limits. A new code replaces the old one.
+Successful verification persists per salon and email: future bookings with that
+address do not request another code. Existing client emails are not automatically
+marked verified. This records email validation, not a client login session.
+
+Appointment requests with `source: "public_booking"` require `publicBookingEmail`.
+The booking transaction checks both the saved verification and the client's
+current email. Changing email requires verification of the new address. Public
+client resolution rejects conflicting email/phone records instead of overwriting
+another client's contact information. Internal salon bookings retain their
+existing behavior.
+
+## Appointment confirmation email
+
+After saving an appointment, the API waits for its confirmation email attempt and
+returns `data.confirmation_email` with `status: "sent" | "failed" | "not_sent"` and
+an optional machine-readable `reason`. The appointment remains saved (HTTP 201)
+if email fails; do not repeat the booking request to retry email. `sent` means the
+SMTP server accepted the message, not that delivery to the inbox was verified.
+
+The same SMTP settings above send the appointment details and confirmation code.
+Each attempt is recorded in `notifications` with
+`event_type = 'appointment_confirmation'`: `sent` with `provider_message_id`,
+`failed` on an SMTP/preparation error, or `canceled` when email is missing,
+undeliverable or SMTP is not configured. Failures before appointment lookup, or
+failures writing the audit record, are logged by appointment ID without customer
+content. An audit write failure does not change an accepted email to `failed` or
+trigger a duplicate send. The auxiliary lookup and audit queries each limit their
+response wait to five seconds.
+
+The public booking success screen uses the returned status. If mail failed, it
+keeps the confirmed appointment and offers its existing PDF ticket. A response
+from an older API without email status shows neutral confirmation text.
+
+Run `npm run test:appointment-confirmation-email` for isolated route and SMTP
+regressions; this does not send real email. After deployment, verify delivery with
+a designated test inbox and check the notification/provider message ID. SMTP
+acceptance alone cannot confirm receipt or placement outside spam.
 
 ## Examples
 

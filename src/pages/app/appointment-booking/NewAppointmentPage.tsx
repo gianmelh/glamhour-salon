@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Button, ErrorState, LoadingState } from '../../../components'
+import { Button, EmptyState, ErrorState, LoadingState } from '../../../components'
 import { useAppointments, useClients, useProfessionals, useSalon, useServiceCategories, useServices } from '../../../hooks/useGlamhourData'
 import { useMutation } from '../../../hooks/useMutation'
 import { ApiClientError } from '../../../lib/api'
@@ -128,7 +128,6 @@ function AppointmentConflictAlert({ error, serviceName, timeZone, onSelectSlot }
 function resolveCategoryServiceId(
   draft: AppointmentDraft,
   categoryServices: Service[],
-  services: Service[],
 ) {
   if (draft.categoryCode === 'cosmetology') {
     const serviceType = typeof draft.details.serviceType === 'string' ? draft.details.serviceType : undefined
@@ -145,7 +144,7 @@ function resolveCategoryServiceId(
     }
   }
 
-  return services.find((service) => service.id === draft.serviceId)?.id
+  return categoryServices.find((service) => service.id === draft.serviceId)?.id
     ?? categoryServices.find((service) => service.is_active)?.id
     ?? categoryServices[0]?.id
     ?? ''
@@ -230,8 +229,12 @@ function detailsForSelectedService(categoryCode: string, service: Service, detai
 
 export function NewAppointmentPage() {
   const navigate = useNavigate()
+  const initialDraft = useMemo(() => readInitialDraft(), [])
+  const [draft, setDraft] = useState<AppointmentDraft>(initialDraft)
+  const [step, setStep] = useState<BookingStep>(() => initialBookingStep(initialDraft))
+  const isEditingTreatment = Boolean(draft.appointmentId && draft.mode !== 'reschedule')
   const salon = useSalon()
-  const categories = useServiceCategories()
+  const categories = useServiceCategories(undefined, { includeAll: isEditingTreatment })
   const services = useServices()
   const clients = useClients()
   const appointments = useAppointments()
@@ -247,9 +250,6 @@ export function NewAppointmentPage() {
     treatmentDetails: input.treatmentDetails,
     treatmentNotes: input.treatmentNotes,
   }))
-  const initialDraft = useMemo(() => readInitialDraft(), [])
-  const [draft, setDraft] = useState<AppointmentDraft>(initialDraft)
-  const [step, setStep] = useState<BookingStep>(() => initialBookingStep(initialDraft))
   const [eligibleProviders, setEligibleProviders] = useState<EligibleProvider[]>([])
   const [providerLoading, setProviderLoading] = useState(false)
   const [availability, setAvailability] = useState<AvailabilitySlot[]>([])
@@ -261,12 +261,38 @@ export function NewAppointmentPage() {
   const [nowTimestamp] = useState(() => Date.now())
   const devLashesBootstrapped = useRef(false)
   const salonTimeZone = salon.data?.timezone ?? DEFAULT_SALON_TIMEZONE
+  const catalogUnavailable = categories.isFallback || Boolean(categories.error) || services.isFallback || Boolean(services.error)
+  const appointmentCategories = useMemo(() => buildAppointmentCategories(catalogUnavailable ? [] : categories.data ?? []), [catalogUnavailable, categories.data])
+  // Existing treatment records remain editable after their category is retired.
+  // New bookings and rescheduling must use the currently enabled catalog.
+  const selectedCategory = (catalogUnavailable ? [] : isEditingTreatment ? categories.data ?? [] : appointmentCategories)
+    .find((category) => category.code === draft.categoryCode || category.id === draft.categoryId)
   const allServices = useMemo(() => {
     const byId = new Map<string, Service>()
     for (const service of services.data ?? []) byId.set(service.id, service)
     for (const service of localServices) byId.set(service.id, service)
-    return [...byId.values()]
-  }, [localServices, services.data])
+    return [...byId.values()].filter((service) => (
+      (service.is_active && appointmentCategories.some((category) => category.id === service.category_id))
+      || (isEditingTreatment && service.category_id === selectedCategory?.id)
+    ))
+  }, [appointmentCategories, isEditingTreatment, localServices, selectedCategory?.id, services.data])
+  const categoryServices = allServices.filter((service) => service.category_id === selectedCategory?.id)
+  const draftServiceAvailable = categoryServices.some((service) => service.id === draft.serviceId)
+  const selectedService = categoryServices.find((service) => service.id === draft.serviceId) ?? categoryServices[0]
+
+  useEffect(() => {
+    const refreshCatalog = () => {
+      if (isEditingTreatment || document.visibilityState === 'hidden') return
+      categories.retry()
+      services.retry()
+    }
+    window.addEventListener('focus', refreshCatalog)
+    document.addEventListener('visibilitychange', refreshCatalog)
+    return () => {
+      window.removeEventListener('focus', refreshCatalog)
+      document.removeEventListener('visibilitychange', refreshCatalog)
+    }
+  }, [categories.retry, isEditingTreatment, services.retry])
 
   useEffect(() => {
     scrollMainToTop()
@@ -302,7 +328,7 @@ export function NewAppointmentPage() {
   }, [categories.data, clients.data, services.data])
 
   useEffect(() => {
-    if (!draft.serviceId) {
+    if (!selectedCategory || !draftServiceAvailable) {
       deferTask(() => setEligibleProviders([]))
       return
     }
@@ -320,10 +346,10 @@ export function NewAppointmentPage() {
       if (active) setProviderLoading(false)
     })
     return () => { active = false }
-  }, [draft.categoryId, draft.date, draft.serviceId])
+  }, [draft.categoryId, draft.date, draft.serviceId, draftServiceAvailable, selectedCategory])
 
   useEffect(() => {
-    if (!draft.providerId || !draft.serviceId || !appointmentDraftDate(draft)) {
+    if (!selectedCategory || !draftServiceAvailable || !draft.providerId || !appointmentDraftDate(draft)) {
       deferTask(() => setAvailability([]))
       return
     }
@@ -342,18 +368,18 @@ export function NewAppointmentPage() {
       if (active) setAvailabilityLoading(false)
     })
     return () => { active = false }
-  }, [draft.date, draft.providerId, draft.serviceId, salonTimeZone])
+  }, [draft.date, draft.providerId, draft.serviceId, draftServiceAvailable, salonTimeZone, selectedCategory])
 
   useEffect(() => {
     if (step !== 'appointment-details') return
     if (!categories.data || !clients.data || !allServices.length) return
+    if (draft.serviceId && !draftServiceAvailable) return
 
-    const appointmentCategories = buildAppointmentCategories(categories.data, allServices)
-    const category = appointmentCategories.find((item) => item.code === draft.categoryCode || item.id === draft.categoryId)
+    const category = selectedCategory
     const categoryServices = allServices.filter((service) => (
       (service.category_id === draft.categoryId || service.category_code === draft.categoryCode) && service.is_active
     ))
-    const service = allServices.find((item) => item.id === draft.serviceId) ?? categoryServices[0]
+    const service = categoryServices.find((item) => item.id === draft.serviceId) ?? categoryServices[0]
     const client = clients.data.find((item) => item.id === draft.clientId)
 
     if (!category) {
@@ -369,13 +395,13 @@ export function NewAppointmentPage() {
       return
     }
 
-    const resolvedServiceId = resolveCategoryServiceId(draft, categoryServices, allServices)
+    const resolvedServiceId = resolveCategoryServiceId(draft, categoryServices)
     // Cosmetology/Micropigmentation: also clear a stale serviceId when type has no active match.
     const clearsStaleService = draft.categoryCode === 'cosmetology' || draft.categoryCode === 'micropigmentation'
     if (resolvedServiceId !== draft.serviceId && (resolvedServiceId || clearsStaleService)) {
       deferTask(() => setDraft((current) => ({ ...current, serviceId: resolvedServiceId })))
     }
-  }, [allServices, categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, draft.details.serviceType, draft.details.procedure, step])
+  }, [allServices, categories.data, clients.data, draft.categoryCode, draft.categoryId, draft.clientId, draft.serviceId, draft.details.serviceType, draft.details.procedure, draftServiceAvailable, selectedCategory, step])
 
   const clientVisitByClientId = useMemo(() => {
     const canceledStatuses = new Set(['canceled', 'cancelled', 'no_show'])
@@ -407,8 +433,29 @@ export function NewAppointmentPage() {
 
   const loading = salon.loading || categories.loading || services.loading || clients.loading || appointments.loading || professionals.loading
   if (loading) return <LoadingState label="Loading appointment flow..." />
-  if (!salon.data || !categories.data || !services.data || !clients.data || !appointments.data || !professionals.data) {
+  if (catalogUnavailable || !salon.data || !categories.data || !services.data || !clients.data || !appointments.data || !professionals.data) {
     return <ErrorState description="Appointment data could not be loaded." onRetry={() => { salon.retry(); categories.retry(); services.retry(); clients.retry(); appointments.retry(); professionals.retry() }} />
+  }
+
+  const unavailableSelection = (draft.categoryCode || draft.categoryId) && !selectedCategory
+    || (!isEditingTreatment && draft.serviceId && !draftServiceAvailable)
+  if (unavailableSelection) {
+    return (
+      <div className="p-5">
+        <EmptyState
+          title="Service no longer available"
+          description={draft.appointmentId
+            ? 'This service or category is no longer offered by the salon. Return to the appointment to review its details.'
+            : 'This service or category is no longer offered by the salon. Choose an available category to continue.'}
+          action={<Button onClick={() => {
+            const appointmentId = draft.appointmentId
+            setDraft({ ...emptyDraft(), date: draft.date, entryPoint: draft.entryPoint })
+            setStep('categories')
+            if (appointmentId) navigate(`/app/appointments/${appointmentId}`)
+          }}>{draft.appointmentId ? 'Return to appointment' : 'Choose an available category'}</Button>}
+        />
+      </div>
+    )
   }
 
   const currentSalonDraft = {
@@ -426,12 +473,6 @@ export function NewAppointmentPage() {
     return <LoadingState label="Refreshing appointment flow..." />
   }
 
-  const appointmentCategories = buildAppointmentCategories(categories.data, allServices)
-  const selectedCategory = appointmentCategories.find((category) => category.code === draft.categoryCode || category.id === draft.categoryId)
-  const categoryServices = allServices.filter((service) => (
-    (service.category_id === draft.categoryId || service.category_code === draft.categoryCode) && service.is_active
-  ))
-  const selectedService = allServices.find((service) => service.id === draft.serviceId) ?? categoryServices[0]
   const selectedClient = clients.data.find((client) => client.id === draft.clientId)
   const isHomeQuickFlow = draft.entryPoint === 'home' && !draft.appointmentId
   const scheduleProviders = eligibleProviders.length
@@ -455,7 +496,7 @@ export function NewAppointmentPage() {
     const nextDetails = sanitizeDetailsForCategory(draft.categoryCode, restDetails)
     const patchedDraft = { ...draft, ...patch, details: nextDetails }
     const nextServiceId = patch.serviceId
-      ?? resolveCategoryServiceId(patchedDraft, categoryServices, allServices)
+      ?? resolveCategoryServiceId(patchedDraft, categoryServices)
 
     setDraft((current) => ({
       ...current,
@@ -487,6 +528,13 @@ export function NewAppointmentPage() {
   }
 
   const goBack = () => {
+    if (isEditingTreatment && draft.appointmentId) {
+      const appointmentId = draft.appointmentId
+      setDraft(emptyDraft())
+      window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
+      navigate(`/app/appointments/${appointmentId}`)
+      return
+    }
     const order: BookingStep[] = isHomeQuickFlow
       ? ['categories', 'service', 'quick-create', 'success']
       : ['categories', 'client', 'service', 'provider', 'appointment-details', 'review', 'success']
@@ -533,7 +581,7 @@ export function NewAppointmentPage() {
     let typedServiceId = (
       draft.categoryCode === 'cosmetology' || draft.categoryCode === 'micropigmentation'
     )
-      ? resolveCategoryServiceId(draft, categoryServices, allServices)
+      ? resolveCategoryServiceId(draft, categoryServices)
       : ''
 
     if (draft.categoryCode === 'cosmetology' && !typedServiceId && serviceType && selectedCategory) {
@@ -692,6 +740,10 @@ export function NewAppointmentPage() {
       navigate(`/app/calendar?date=${zonedDateString(appointment.starts_at, salonTimeZone)}`)
     } catch (reason) {
       setConfirmError(reason instanceof Error ? reason : new Error('Appointment could not be scheduled.'))
+      if (reason instanceof ApiClientError && [400, 404, 409].includes(reason.status)) {
+        categories.retry()
+        services.retry()
+      }
     } finally {
       setConfirmLoading(false)
     }
@@ -768,6 +820,10 @@ export function NewAppointmentPage() {
       navigate(`/app/appointments/${comingUpAppointment.id}`)
     } catch (reason) {
       setConfirmError(reason instanceof Error ? reason : new Error('Appointment could not be scheduled.'))
+      if (reason instanceof ApiClientError && [400, 404, 409].includes(reason.status)) {
+        categories.retry()
+        services.retry()
+      }
     } finally {
       setConfirmLoading(false)
     }

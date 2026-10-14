@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useServiceCategories } from '../../../../hooks/useGlamhourData'
 import { nailsBookingAssets } from '../../nails-booking/assets'
 import type { BookingCategoryCode } from '../types'
 import { registrationFlowLayout } from '../registrationFlowLayout'
@@ -12,9 +13,15 @@ const categoryTabs: Array<{ code: BookingCategoryCode; label: string; icon: stri
 ]
 
 export function RegistrationCategoryTabs({ activeCategory }: { activeCategory: BookingCategoryCode }) {
+  const categories = useServiceCategories()
+  const enabledCodes = new Set(
+    categories.loading || categories.error || categories.isFallback
+      ? []
+      : (categories.data ?? []).filter((category) => category.is_active).map((category) => category.code),
+  )
   return (
-    <div className="flex gap-[8px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {categoryTabs.map((tab) => (
+    <div aria-busy={categories.loading} aria-label="Available service categories" role="group" className="flex gap-[8px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {categoryTabs.filter((tab) => enabledCodes.has(tab.code)).map((tab) => (
         <CategoryTab active={tab.code === activeCategory} icon={tab.icon} key={tab.code}>
           {tab.label}
         </CategoryTab>
