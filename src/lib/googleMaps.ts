@@ -29,12 +29,12 @@ type GooglePlaceAutocompleteElement = HTMLElement & {
   placeholder: string
   value?: string
   addEventListener: (
-    type: 'gmp-select' | 'input',
+    type: 'gmp-select' | 'gmp-error' | 'input',
     listener: ((event: GooglePlaceSelectEvent) => void) | ((event: Event) => void),
     options?: boolean | AddEventListenerOptions,
   ) => void
   removeEventListener: (
-    type: 'gmp-select' | 'input',
+    type: 'gmp-select' | 'gmp-error' | 'input',
     listener: ((event: GooglePlaceSelectEvent) => void) | ((event: Event) => void),
     options?: boolean | EventListenerOptions,
   ) => void
@@ -105,21 +105,30 @@ export function loadGoogleMapsPlaces(apiKey: string) {
 export async function attachGooglePlaceAutocomplete({
   apiKey,
   container,
+  onError,
   onQueryChange,
   onPlaceSelect,
   placeholder,
+  signal,
 }: {
   apiKey: string
   container: HTMLElement
+  onError?: (error: unknown) => void
   onQueryChange?: (value: string) => void
   onPlaceSelect: (place: GoogleSelectedPlace) => void
   placeholder: string
+  signal?: AbortSignal
 }) {
   await loadGoogleMapsPlaces(apiKey)
 
   const mapsWindow = window as GoogleMapsWindow
   const placesLibrary = await mapsWindow.google?.maps?.importLibrary?.('places')
   const PlaceAutocompleteElement = placesLibrary?.PlaceAutocompleteElement
+
+  // An older, cancelled effect must not replace a newer widget in this container.
+  if (signal?.aborted) {
+    return () => {}
+  }
 
   if (!PlaceAutocompleteElement) {
     throw new Error('Google Places could not initialize. Enable Places API (New) for this key.')
@@ -128,6 +137,7 @@ export async function attachGooglePlaceAutocomplete({
   const autocomplete = new PlaceAutocompleteElement()
   autocomplete.placeholder = placeholder
   autocomplete.className = 'google-place-autocomplete'
+  let isActive = true
 
   const handleInput = (event: Event) => {
     const input = event.composedPath().find((item): item is HTMLInputElement => item instanceof HTMLInputElement)
@@ -135,29 +145,42 @@ export async function attachGooglePlaceAutocomplete({
   }
 
   const handlePlaceSelect = async (event: GooglePlaceSelectEvent) => {
-    const place = event.placePrediction?.toPlace()
-    if (!place) {
-      return
-    }
+    try {
+      const place = event.placePrediction?.toPlace()
+      if (!place) {
+        return
+      }
 
-    await place.fetchFields({ fields: ['displayName', 'formattedAddress', 'id'] })
-    const formattedAddress = place.formattedAddress ?? place.displayName ?? ''
+      await place.fetchFields({ fields: ['displayName', 'formattedAddress', 'id'] })
+      const formattedAddress = place.formattedAddress ?? place.displayName ?? ''
 
-    if (formattedAddress) {
-      onPlaceSelect({
-        formattedAddress,
-        placeId: place.id ?? '',
-      })
+      if (isActive && formattedAddress) {
+        onPlaceSelect({
+          formattedAddress,
+          placeId: place.id ?? '',
+        })
+      }
+    } catch (error) {
+      if (isActive) {
+        onError?.(error)
+      }
     }
+  }
+
+  const handleError = () => {
+    onError?.(new Error('Google Places search is unavailable.'))
   }
 
   container.replaceChildren(autocomplete)
   autocomplete.addEventListener('input', handleInput)
   autocomplete.addEventListener('gmp-select', handlePlaceSelect)
+  autocomplete.addEventListener('gmp-error', handleError)
 
   return () => {
+    isActive = false
     autocomplete.removeEventListener('input', handleInput)
     autocomplete.removeEventListener('gmp-select', handlePlaceSelect)
+    autocomplete.removeEventListener('gmp-error', handleError)
     autocomplete.remove()
   }
 }

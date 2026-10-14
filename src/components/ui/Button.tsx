@@ -54,7 +54,8 @@ export function Button({
       {...props}
     >
       {loading ? <LoaderCircle className="size-4 animate-spin" /> : leadingIcon}
-      {children}
+      {/* Keep a stable sibling for the spinner when browser translation replaces text nodes. */}
+      <span className="contents">{children}</span>
       {!loading && trailingIcon}
     </button>
   )

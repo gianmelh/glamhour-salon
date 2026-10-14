@@ -119,8 +119,6 @@
   }
 
   .google-place-autocomplete {
-    position: relative;
-    z-index: 20;
     width: 100%;
     min-height: 2.75rem;
     color: #1b2133;
@@ -132,6 +130,15 @@
   .google-place-autocomplete::part(input) {
     color: #1b2133;
     font-size: 12px;
+  }
+
+  @media (max-width: 640px) {
+    /* Keep iOS from zooming the widget while it opens its mobile search UI. */
+    .google-place-autocomplete,
+    .google-place-autocomplete input,
+    .google-place-autocomplete::part(input) {
+      font-size: 16px;
+    }
   }
 }
 

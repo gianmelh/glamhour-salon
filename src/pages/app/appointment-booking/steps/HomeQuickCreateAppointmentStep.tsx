@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { Button, Card, Input, MutationError } from '../../../../components'
 import { formatMoney, formatShortDate } from '../../../../lib/format'
 import { localDateString } from '../../../../lib/date'
+import { openNativePicker } from '../../../../lib/native-picker'
 import { applyClientAccess, clientUsageLabel } from '../../../../lib/client-access'
 import { addMinutesIso, zonedDateTimeToIso } from '../../../../lib/salon-time'
 import { glamhourApi } from '../../../../services/glamhour-api'
@@ -150,12 +151,7 @@ export function HomeQuickCreateAppointmentStep({
   }
 
   const openDatePicker = () => {
-    const input = dateInputRef.current
-    if (!input) return
-    input.focus()
-    if (typeof input.showPicker === 'function') {
-      input.showPicker()
-    }
+    openNativePicker(dateInputRef.current)
   }
 
   const openDatePickerFromKeyboard = (event: React.KeyboardEvent<HTMLSpanElement>) => {

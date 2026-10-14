@@ -132,6 +132,7 @@ export function RegistrationPage() {
   const [selectedPlaceId, setSelectedPlaceId] = useState("");
   const [mapsError, setMapsError] = useState("");
   const useGoogleMapsLocation = Boolean(googleMapsApiKey) && !canUseManualLocationFallback();
+  const useGoogleMapsAutocomplete = useGoogleMapsLocation && !mapsError;
   const [mapsLoading, setMapsLoading] = useState(useGoogleMapsLocation);
   const [submitted, setSubmitted] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
@@ -189,24 +190,35 @@ export function RegistrationPage() {
   ]);
 
   useEffect(() => {
-    if (!useGoogleMapsLocation) {
-      setMapsLoading(false);
-      setMapsError("");
+    if (!useGoogleMapsAutocomplete) {
       return;
     }
 
     const container = locationAutocompleteRef.current;
-    if (!container || !googleMapsApiKey || !useGoogleMapsLocation) {
+    if (!container || !googleMapsApiKey) {
       return;
     }
 
     let isMounted = true;
     let cleanupAutocomplete: (() => void) | undefined;
+    const mapsController = new AbortController();
+    const handleMapsError = () => {
+      if (isMounted) {
+        setMapsLoading(false);
+        setMapsError("Address search is unavailable. Please enter your salon's full address.");
+      }
+    };
 
     attachGooglePlaceAutocomplete({
       apiKey: googleMapsApiKey,
       container,
+      signal: mapsController.signal,
+      onError: handleMapsError,
       onQueryChange: (value) => {
+        if (!isMounted) {
+          return;
+        }
+
         setSalonLocation(value);
         setSelectedPlaceId("");
       },
@@ -221,27 +233,22 @@ export function RegistrationPage() {
       },
     })
       .then((cleanup) => {
+        if (!isMounted) {
+          cleanup();
+          return;
+        }
+
         cleanupAutocomplete = cleanup;
-        if (isMounted) {
-          setMapsLoading(false);
-        }
+        setMapsLoading(false);
       })
-      .catch((error: unknown) => {
-        if (isMounted) {
-          setMapsLoading(false);
-          setMapsError(
-            error instanceof Error
-              ? error.message
-              : "Google Maps could not load. Check the API key, billing, and allowed domains."
-          );
-        }
-      });
+      .catch(handleMapsError);
 
     return () => {
       isMounted = false;
+      mapsController.abort();
       cleanupAutocomplete?.();
     };
-  }, [useGoogleMapsLocation]);
+  }, [useGoogleMapsAutocomplete]);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0] ?? null;
@@ -572,7 +579,7 @@ export function RegistrationPage() {
 
               <label className="block text-[11px] font-medium text-[#242a39]">
                 Salon Location
-                {useGoogleMapsLocation && !mapsError ? (
+                {useGoogleMapsAutocomplete ? (
                   <span
                     className={[
                       "relative mt-1 block rounded-lg border bg-white pl-9 text-[12px] text-[#1b2133] shadow-sm transition",
@@ -598,7 +605,7 @@ export function RegistrationPage() {
                     <input
                       aria-invalid={Boolean(errors.location)}
                       className={[
-                        "h-11 w-full rounded-lg border bg-white px-3 pl-9 text-[12px] text-[#1b2133] outline-none transition placeholder:text-[#a5acbb]",
+                        "h-11 w-full rounded-lg border bg-white px-3 pl-9 text-[16px] text-[#1b2133] outline-none transition placeholder:text-[#a5acbb] sm:text-[12px]",
                         errors.location
                           ? "border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10"
                           : "border-transparent focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10",
@@ -606,7 +613,6 @@ export function RegistrationPage() {
                       onChange={(event) => {
                         setSalonLocation(event.target.value);
                         setSelectedPlaceId("");
-                        setMapsError("");
                       }}
                       placeholder="Search salon location..."
                       value={salonLocation}
@@ -615,12 +621,12 @@ export function RegistrationPage() {
                 )}
               </label>
               <p className="-mt-2 text-[10px] text-[#8b92a1]">
-                {useGoogleMapsLocation
+                {useGoogleMapsAutocomplete
                   ? "We use Google Maps to verify your salon's location."
-                  : "Google Maps verification is temporarily disabled."}
+                  : "Enter your salon's full address."}
               </p>
               {useGoogleMapsLocation && mapsError && (
-                <p className="-mt-2 text-[11px] text-[#ff3b4f]">{mapsError}</p>
+                <p className="-mt-2 text-[11px] text-[#ff3b4f]" role="alert">{mapsError}</p>
               )}
               {errors.location && (
                 <p className="-mt-2 text-[11px] text-[#ff3b4f]">

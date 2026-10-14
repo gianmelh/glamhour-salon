@@ -81,3 +81,21 @@ Implemented mutations:
 - `npm run typecheck:api` - backend TypeScript check
 - `npm run build` - frontend and project TypeScript build
 - `npm run lint` - lint frontend and backend
+
+## Local browser regression checks
+
+```bash
+npx playwright install chromium
+npm run test:regression
+```
+
+To use an installed Chrome instead, run
+`PLAYWRIGHT_CHANNEL=chrome npm run test:regression`.
+
+The tests start local Vite servers, mock API responses and block external requests.
+They require no API server or database and send no emails. Coverage includes
+browser-translated buttons, internal and public appointment submission, error
+recovery, retained clinical data, and date/time picker activation. Registration
+tests exercise the Google Maps branch with a simulated widget, including address
+selection, mobile styles and manual entry after search failures. Native iPhone
+keyboard behavior and the live Google widget still require a physical-device check.

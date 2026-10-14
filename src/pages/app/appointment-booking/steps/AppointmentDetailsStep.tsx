@@ -3,6 +3,7 @@ import { Calendar, CircleAlert, Clock, Hand, Phone, UserRound, X } from 'lucide-
 import { Button, Card, MutationError } from '../../../../components'
 import { cn } from '../../../../lib/cn'
 import { localDateString } from '../../../../lib/date'
+import { openNativePicker } from '../../../../lib/native-picker'
 import type { Client, Service, ServiceCategory } from '../../../../types/api'
 import { healthQuestionnaires } from '../health-questionnaires'
 
@@ -253,6 +254,7 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
                 className="absolute inset-0 size-full cursor-pointer opacity-0"
                 min={minDate}
                 onChange={(event) => onDateChange?.(event.target.value)}
+                onClick={(event) => openNativePicker(event.currentTarget)}
                 type="date"
                 value={date}
               />
@@ -268,6 +270,7 @@ export function AppointmentDetailsStep({ category, service, client, date, time, 
               <input
                 className="absolute inset-0 size-full cursor-pointer opacity-0"
                 onChange={(event) => onTimeChange?.(event.target.value)}
+                onClick={(event) => openNativePicker(event.currentTarget)}
                 type="time"
                 value={time}
               />
