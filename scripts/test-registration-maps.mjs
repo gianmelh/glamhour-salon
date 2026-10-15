@@ -16,12 +16,26 @@ async function createPage(mode = 'healthy') {
   const page = await context.newPage()
   const pageErrors = []
   const submissions = []
+  let mapsScriptRequests = 0
   page.on('pageerror', (error) => pageErrors.push(error.message))
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname.endsWith('/auth/register') && route.request().method() === 'POST') {
       submissions.push(route.request().postDataJSON())
       return route.fulfill({ json: { data: { user: { id: 'test-user' }, salon: { id: 'test-salon', name: 'Test salon' } } } })
+    }
+    if (url.origin === 'https://maps.googleapis.com' && url.pathname === '/maps/api/js') {
+      mapsScriptRequests += 1
+      if (mode === 'script-error-retry' && mapsScriptRequests === 1) return route.abort('failed')
+      // Exercise our actual script/callback loader, but serve a local fixture:
+      // no Google script, RPC, key, or billing request ever leaves this test.
+      const callback = url.searchParams.get('callback')
+      assert.ok(callback, 'Maps loader declares its readiness callback')
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/javascript',
+        body: `window.__installMapsSdk(); window[${JSON.stringify(callback)}]();`,
+      })
     }
     if (url.origin !== new URL(baseUrl).origin) return route.abort()
     if (url.pathname === '/src/pages/auth/RegistrationPage.tsx') {
@@ -57,15 +71,18 @@ async function createPage(mode = 'healthy') {
       get value() { return this.shadowRoot.querySelector('input').value }
     }
     customElements.define('test-place-autocomplete', TestAutocomplete)
-    window.google = { maps: { importLibrary: async () => {
-      if (initialMode === 'initialization-error') throw new Error('Simulated Maps failure')
-      if (initialMode === 'delayed') await new Promise((resolve) => { window.__pendingMapsLoads.push(resolve) })
-      window.__resolvedMapsLoads += 1
-      return { PlaceAutocompleteElement: TestAutocomplete }
-    } } }
+    window.__installMapsSdk = () => {
+      window.google = { maps: { importLibrary: async () => {
+        if (initialMode === 'initialization-error') throw new Error('Simulated Maps failure')
+        if (initialMode === 'delayed') await new Promise((resolve) => { window.__pendingMapsLoads.push(resolve) })
+        window.__resolvedMapsLoads += 1
+        return { PlaceAutocompleteElement: TestAutocomplete }
+      } } }
+    }
+    if (!['late-auth-error', 'script-error-retry'].includes(initialMode)) window.__installMapsSdk()
   }, mode)
   await page.goto(`${baseUrl}/register`)
-  return { context, page, pageErrors, submissions }
+  return { context, page, pageErrors, submissions, mapsScriptRequests: () => mapsScriptRequests }
 }
 
 async function uploadDocument(page) {
@@ -153,6 +170,65 @@ try {
     await fixture.context.close()
   }
 
+  const lateAuth = await createPage('late-auth-error')
+  await uploadDocument(lateAuth.page)
+  await lateAuth.page.getByRole('textbox', { name: 'Search salon location' }).fill('123')
+  assert.equal(lateAuth.mapsScriptRequests(), 1, 'StrictMode effects share one real loader request')
+  await lateAuth.page.evaluate(() => {
+    if (typeof window.gm_authFailure !== 'function') throw new Error('Authentication failure bridge was not installed')
+    // Authentication can fail after the callback already resolved the loader.
+    window.gm_authFailure()
+  })
+  await lateAuth.page.getByRole('alert').waitFor()
+  const lateAuthAddress = lateAuth.page.locator('input[placeholder="Search salon location..."]')
+  await lateAuthAddress.waitFor()
+  assert.equal(await lateAuthAddress.inputValue(), '123')
+  assert.equal(await lateAuth.page.locator('test-place-autocomplete').count(), 0, 'late authentication failure removes the querying widget')
+  await lateAuthAddress.fill('123 Manual Street')
+  await lateAuth.page.evaluate(() => {
+    const staleWidget = window.__mapsElements.at(-1)
+    const event = new Event('gmp-select')
+    event.placePrediction = { toPlace: () => ({
+      id: 'stale-place', formattedAddress: 'Stale result must be ignored', fetchFields: async () => {},
+    }) }
+    staleWidget.dispatchEvent(event)
+    staleWidget.dispatchEvent(new Event('gmp-error'))
+    window.gm_authFailure()
+  })
+  assert.equal(await lateAuthAddress.inputValue(), '123 Manual Street', 'stale widget events and repeated auth failure cannot replace manual input')
+  await lateAuth.page.getByText('ownership.png', { exact: true }).waitFor()
+  await checkSubmission(lateAuth, { formattedAddress: '123 Manual Street' })
+  await lateAuth.context.close()
+
+  const scriptRetry = await createPage('script-error-retry')
+  await uploadDocument(scriptRetry.page)
+  await scriptRetry.page.getByRole('alert').waitFor()
+  const retryAddress = scriptRetry.page.locator('input[placeholder="Search salon location..."]')
+  await retryAddress.fill('456 Manual Street')
+  assert.equal(scriptRetry.mapsScriptRequests(), 1)
+  const retryResult = await scriptRetry.page.evaluate(async () => {
+    const { loadGoogleMapsPlaces } = await import('/src/lib/googleMaps.ts')
+    let timer
+    try {
+      await Promise.race([
+        loadGoogleMapsPlaces('test-key'),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Loader retry never settled')), 3_000) }),
+      ])
+      return { ready: typeof window.google?.maps?.importLibrary === 'function' }
+    } catch (error) {
+      return { error: error.message }
+    } finally {
+      clearTimeout(timer)
+    }
+  })
+  assert.deepEqual(retryResult, { ready: true }, 'retry must not wait for events on an already-failed script')
+  assert.equal(scriptRetry.mapsScriptRequests(), 2, 'retry creates one fresh loader request')
+  assert.equal(await scriptRetry.page.locator('script[data-google-maps-places]').count(), 1, 'failed loader script is removed before replacement')
+  assert.equal(await scriptRetry.page.locator('test-place-autocomplete').count(), 0, 'loader recovery does not override the chosen manual fallback')
+  assert.equal(await retryAddress.inputValue(), '456 Manual Street')
+  await checkSubmission(scriptRetry, { formattedAddress: '456 Manual Street' })
+  await scriptRetry.context.close()
+
   const delayed = await createPage('delayed')
   await delayed.page.waitForFunction(() => window.__pendingMapsLoads.length > 0)
   await delayed.page.getByRole('button', { name: 'Back', exact: true }).click()
@@ -176,7 +252,7 @@ try {
   assert.equal(await outOfOrder.page.evaluate(() => window.__mapsElements.length), 1)
   assert.deepEqual(outOfOrder.pageErrors, [])
   await outOfOrder.context.close()
-  console.log('Registration Maps regression checks passed: mobile CSS, selection, three fallbacks, document retention, cancellation and reversed load order.')
+  console.log('Registration Maps regression checks passed: mobile CSS, selection, three fallbacks, late auth failure, failed-script retry, document retention, cancellation and reversed load order.')
 } finally {
   await browser?.close()
   await server?.close()

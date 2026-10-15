@@ -382,23 +382,29 @@ export function SignUpPage() {
 
           <form className="mt-7 space-y-3" noValidate onSubmit={handleSubmit}>
             <SignUpField
+              autoComplete="organization"
               error={errors.salonName}
               label="Salon name"
+              name="salonName"
               onChange={(value) => updateField('salonName', value)}
               placeholder="e.g. Beauty salon"
               value={form.salonName}
             />
             <SignUpField
+              autoComplete="email"
               error={errors.email}
               label="Email"
+              name="email"
               onChange={(value) => updateField('email', value)}
               placeholder="name@example.com"
               type="email"
               value={form.email}
             />
             <SignUpField
+              autoComplete="new-password"
               error={errors.password}
               label="Password"
+              name="password"
               onChange={(value) => updateField('password', value)}
               placeholder="Enter your password"
               trailingIcon={(
@@ -415,8 +421,10 @@ export function SignUpPage() {
               value={form.password}
             />
             <SignUpField
+              autoComplete="new-password"
               error={errors.confirmPassword}
               label="Confirm password"
+              name="confirmPassword"
               onChange={(value) => updateField('confirmPassword', value)}
               placeholder="Enter your password"
               trailingIcon={(
@@ -489,16 +497,20 @@ export function SignUpPage() {
 }
 
 function SignUpField({
+  autoComplete,
   error,
   label,
+  name,
   onChange,
   placeholder,
   trailingIcon,
   type = 'text',
   value,
 }: {
+  autoComplete: string
   error?: string
   label: string
+  name: string
   onChange: (value: string) => void
   placeholder: string
   trailingIcon?: ReactNode
@@ -511,6 +523,7 @@ function SignUpField({
       <span className="relative mt-1 block">
         <input
           aria-invalid={Boolean(error)}
+          autoComplete={autoComplete}
           className={[
             'h-11 w-full rounded-lg border bg-white px-3 text-[12px] text-[#1b2133] outline-none transition placeholder:text-[#a5acbb]',
             trailingIcon ? 'pr-11' : '',
@@ -518,6 +531,7 @@ function SignUpField({
               ? 'border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10'
               : 'border-[#c9ceda] focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10',
           ].join(' ')}
+          name={name}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           type={type}

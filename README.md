@@ -82,6 +82,30 @@ Implemented mutations:
 - `npm run build` - frontend and project TypeScript build
 - `npm run lint` - lint frontend and backend
 
+## Registration address search
+
+`VITE_GOOGLE_MAPS_API_KEY` is a browser key embedded at build time. In the
+Google Cloud project that owns that key:
+
+1. Enable **Maps JavaScript API** and **Places API (New)**. The legacy Places API
+   alone does not authorize the current autocomplete widget.
+2. Check that the project's billing account is active.
+3. Under Credentials, edit the key: use **Websites (HTTP referrers)** and allow
+   `https://dev.glamhourapp.com/*` for the development deployment. Add other
+   deployment domains only if this key is intentionally used there.
+4. Under API restrictions, allow both APIs above. Keep any other restrictions
+   required by the key's existing consumers.
+
+See Google's [setup instructions](https://developers.google.com/maps/documentation/javascript/get-api-key)
+and [API restriction mapping](https://developers.google.com/maps/api-security-best-practices).
+A generic `403` / `The caller does not have permission` does not identify which
+setting is wrong. Correct the key's project configuration, then reload and check
+address suggestions. If the key value changes, update the deployment environment
+and run `npm run build`; restarting the API alone does not update the browser key.
+
+Registration allows manual address entry if Maps fails, retaining the typed
+address and uploaded document. Local development uses manual entry by default.
+
 ## Local browser regression checks
 
 ```bash

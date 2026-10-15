@@ -439,12 +439,14 @@ export function RegistrationPage() {
                   Salon Name
                   <input
                     aria-invalid={Boolean(errors.salonName)}
+                    autoComplete="organization"
                     className={[
                       "mt-1 h-11 w-full rounded-lg border bg-white px-3 text-[12px] text-[#1b2133] outline-none transition placeholder:text-[#a5acbb]",
                       errors.salonName
                         ? "border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10"
                         : "border-transparent focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10",
                     ].join(" ")}
+                    name="salonName"
                     onChange={(event) => setSalonName(event.target.value)}
                     placeholder="Enter salon name"
                     value={salonName}
@@ -470,16 +472,20 @@ export function RegistrationPage() {
                     )}
                   <div className="mt-3 space-y-3">
                     <RegistrationField
+                      autoComplete="email"
                       error={errors.email}
                       label="Email"
+                      name="email"
                       onChange={(value) => updateAccountField("email", value)}
                       placeholder="name@example.com"
                       type="email"
                       value={accountDraft.email}
                     />
                     <RegistrationField
+                      autoComplete="new-password"
                       error={errors.password}
                       label="Password"
+                      name="password"
                       onChange={(value) =>
                         updateAccountField("password", value)
                       }
@@ -488,8 +494,10 @@ export function RegistrationPage() {
                       value={accountDraft.password}
                     />
                     <RegistrationField
+                      autoComplete="new-password"
                       error={errors.confirmPassword}
                       label="Confirm password"
+                      name="confirmPassword"
                       onChange={(value) =>
                         updateAccountField("confirmPassword", value)
                       }
@@ -707,15 +715,19 @@ function providerLabel(provider: "email" | "google" | "facebook" | "apple") {
 }
 
 function RegistrationField({
+  autoComplete,
   error,
   label,
+  name,
   onChange,
   placeholder,
   type = "text",
   value,
 }: {
+  autoComplete: string;
   error?: string;
   label: string;
+  name: string;
   onChange: (value: string) => void;
   placeholder: string;
   type?: string;
@@ -726,12 +738,14 @@ function RegistrationField({
       {label}
       <input
         aria-invalid={Boolean(error)}
+        autoComplete={autoComplete}
         className={[
           "mt-1 h-11 w-full rounded-lg border bg-[#f8f9ff] px-3 text-[12px] text-[#1b2133] outline-none transition placeholder:text-[#a5acbb]",
           error
             ? "border-[#ff5964] focus:border-[#ff5964] focus:ring-3 focus:ring-[#ff5964]/10"
             : "border-[#c9ceda] focus:border-[#232735] focus:ring-3 focus:ring-[#232735]/10",
         ].join(" ")}
+        name={name}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         type={type}
