@@ -23,30 +23,53 @@ const provider = { id: providerId, salon_id: salonId, full_name: 'Provider', sta
 const assignments = new Map([[services[0].id, true], [services[1].id, true], [services[2].id, true]])
 let enabled = new Set([ids[0], ids[1]])
 let transactionOpen = false
-let snapshot: Set<string> | undefined
+type OnboardingSession = NonNullable<Awaited<ReturnType<typeof dataService.getOnboarding>>>
+let savedOnboarding: OnboardingSession | null = null
+let snapshot: { enabled: Set<string>; salon: typeof salon; onboarding: OnboardingSession | null } | undefined
 let queries: string[] = []
 const effective = (service: typeof services[number]) => service.is_active && enabled.has(service.category_id)
 
 function runQuery(sql: string, values: readonly unknown[] = [], scope: 'pool' | 'client' = 'pool'): { rows: Record<string, unknown>[] } {
   queries.push(sql)
-  if (sql === 'BEGIN') { transactionOpen = true; snapshot = new Set(enabled); return { rows: [] } }
+  if (sql === 'BEGIN') { transactionOpen = true; snapshot = { enabled: new Set(enabled), salon: { ...salon }, onboarding: structuredClone(savedOnboarding) }; return { rows: [] } }
   if (sql === 'COMMIT') { transactionOpen = false; snapshot = undefined; return { rows: [] } }
-  if (sql === 'ROLLBACK') { enabled = snapshot ?? enabled; transactionOpen = false; snapshot = undefined; return { rows: [] } }
+  if (sql === 'ROLLBACK') {
+    if (snapshot) { enabled = snapshot.enabled; Object.assign(salon, snapshot.salon); savedOnboarding = snapshot.onboarding }
+    transactionOpen = false; snapshot = undefined
+    return { rows: [] }
+  }
   if (/^(CREATE|ALTER|DO)\b/.test(sql)) return { rows: [] }
   if (sql.includes('FROM salon_subscriptions')) return { rows: [{ plan_code: 'premium_monthly', status: 'active', provider: 'manual', current_period_end: '2099-01-01T00:00:00Z', entitlements_json: {} }] }
   if (sql.includes('SELECT count(*) FROM clients')) return { rows: [{ count: '1' }] }
   if (sql.includes('SELECT c.email FROM clients c')) return { rows: [{ email: 'client@glamhour.test' }] }
   if (sql.includes('FROM public_booking_email_verifications')) return { rows: [{ verified_at: new Date() }] }
+  if (sql.includes('LEFT JOIN onboarding_sessions os')) {
+    assert.equal(transactionOpen, false, 'draft recovery is a read outside a mutation')
+    assert.match(sql, /os.salon_id = s.id/)
+    assert.match(sql, /s.deleted_at IS NULL/)
+    return { rows: values[0] === salonId ? [{ session: structuredClone(savedOnboarding) }] : [] }
+  }
   if (sql.includes('FROM salons')) {
     if (scope === 'pool') assert.equal(transactionOpen, false, 'settings/public reads must occur after commit')
     return { rows: [{ ...salon }] }
   }
   if (sql.includes('UPDATE salons')) {
-    assert.equal(values[1], 'completed', 'editing setup keeps completed onboarding status')
+    if (values[3]) assert.equal(values[1], 'completed', 'editing setup keeps completed onboarding status')
     assert.match(sql, /WHEN \$4::boolean THEN booking_enabled/, 'editing setup preserves the public booking flag')
+    salon.onboarding_status = String(values[1])
+    if (!values[3] && values[1] === 'completed') salon.booking_enabled = true
     return { rows: [] }
   }
-  if (sql.includes('INSERT INTO onboarding_sessions')) return { rows: [] }
+  if (sql.includes('INSERT INTO onboarding_sessions')) {
+    const timestamp = '2030-01-01T00:00:00.000Z'
+    savedOnboarding = {
+      id: savedOnboarding?.id ?? '80000000-0000-4000-8000-000000000001', salon_id: String(values[0]),
+      current_step: String(values[1]), completed_steps: [...values[2] as string[]], draft_data: JSON.parse(String(values[3])),
+      completed_at: values[4] as string | null,
+      created_at: savedOnboarding?.created_at ?? timestamp, started_at: savedOnboarding?.started_at ?? timestamp, updated_at: timestamp,
+    }
+    return { rows: [] }
+  }
   if (sql.includes('SELECT id FROM service_categories WHERE id = ANY')) return { rows: categories.filter((row) => (values[0] as string[]).includes(row.id)).map(({ id }) => ({ id })) }
   if (sql.includes("SELECT id FROM service_categories WHERE code = 'nails'")) return { rows: [{ id: ids[0] }] }
   if (sql.includes('SELECT ssc.category_id')) return { rows: [...enabled].map((category_id) => ({ category_id })) }
@@ -82,7 +105,11 @@ function runQuery(sql: string, values: readonly unknown[] = [], scope: 'pool' | 
     return { rows: [{ ...provider, service_assignments: [...assignments].map(([service_id, is_active]) => ({ service_id, is_active })) }] }
   }
   if (sql.includes('UPDATE professionals')) {
-    assert.ok(sql.includes('WHERE salon_id = $1 AND id = $2'), 'configured setup must not deactivate all existing staff')
+    if (!sql.includes('WHERE salon_id = $1 AND id = $2')) {
+      assert.equal(values[1], 'inactive')
+      assert.equal(snapshot?.salon.booking_enabled, false, 'configured setup must not deactivate all existing staff')
+      assert.notEqual(snapshot?.salon.onboarding_status, 'completed')
+    }
     return { rows: [{ ...provider, languages: values[6] ?? ['English'] }] }
   }
   if (sql.includes('UPDATE professional_services')) {
@@ -208,10 +235,78 @@ try {
   assert.deepEqual(await publicServices(), [])
   console.log('PASS configured setup preserves an empty category selection and existing staff when saving stale schedule/team drafts')
 
+  queries = []
+  assert.deepEqual((await dataService.getOnboarding(salonId))?.draft_data.selectedCategoryIds, ids, 'recovery returns the saved draft independently of current category membership')
+  assert.deepEqual([...enabled], [], 'reading an old draft cannot re-enable configured categories')
+  assert.ok(!queries.some((sql) => /\b(?:INSERT|UPDATE|DELETE)\b/.test(sql)), 'draft recovery never writes settings')
+  console.log('PASS recovering an existing draft is read-only and cannot reactivate disabled categories')
+
   salon.allow_public_booking = false
   await assert.rejects(dataService.getPublicBooking(salon.slug), /Online booking is not available/)
   salon.allow_public_booking = true
   console.log('PASS public link respects the salon public-booking flag')
+
+  salon.onboarding_status = 'in_progress'
+  salon.booking_enabled = false
+  enabled = new Set()
+  savedOnboarding = null
+  assert.equal(await dataService.getOnboarding(salonId), null, 'an existing salon without a session can start setup')
+  await assert.rejects(dataService.getOnboarding('10000000-0000-4000-8000-000000000099'), (error: unknown) => error instanceof Error && 'status' in error && error.status === 404)
+  savedOnboarding = {
+    id: '80000000-0000-4000-8000-000000000001', salon_id: salonId, current_step: 'service_categories',
+    completed_steps: [], draft_data: {}, completed_at: null,
+    created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T00:00:00.000Z', started_at: '2030-01-01T00:00:00.000Z',
+  }
+  assert.deepEqual((await dataService.getOnboarding(salonId))?.draft_data, {}, 'initial registration sessions need not contain setup selections yet')
+  console.log('PASS recovery distinguishes no session, initial registration session and nonexistent salon')
+
+  const resumableDraft = {
+    selectedCategoryIds: [ids[1]],
+    services: [populatedStaleDraft.services[1]],
+    schedule: { Monday: { enabled: true, open: '09:00', close: '17:00' } },
+    providers: [{ ...populatedStaleDraft.providers[0], serviceIds: [services[1].id] }],
+  }
+  await dataService.saveOnboarding(salonId, { step: 'complete', completed: false, draft: resumableDraft })
+  assert.deepEqual([...enabled], [], 'new salon category membership is not materialized before completion')
+  assert.equal(salon.booking_enabled, false)
+  const recovered = await dataService.getOnboarding(salonId)
+  assert.ok(recovered)
+  assert.deepEqual(recovered.draft_data, resumableDraft, 'categories, services, hours and providers survive a new browser session')
+  assert.equal(recovered.current_step, 'complete')
+  assert.equal(recovered.completed_at, null)
+  console.log('PASS incomplete setup recovers its full saved draft even while persisted category membership is empty')
+
+  for (const [invalid, message] of [
+    [{ ...resumableDraft, selectedCategoryIds: [] }, /Select at least one service category/],
+    [{ ...resumableDraft, services: [] }, /Select at least one service\./],
+    [{ ...resumableDraft, providers: [] }, /Add at least one provider/],
+  ] as const) {
+    await assert.rejects(dataService.saveOnboarding(salonId, { step: 'complete', completed: true, draft: invalid }), message)
+    assert.deepEqual((await dataService.getOnboarding(salonId))?.draft_data, resumableDraft, 'invalid completion rolls back instead of replacing the recoverable draft')
+    assert.equal(salon.onboarding_status, 'in_progress')
+    assert.equal(salon.booking_enabled, false)
+    assert.deepEqual([...enabled], [])
+  }
+  await dataService.saveOnboarding(salonId, { step: 'complete', completed: true, draft: recovered.draft_data as typeof resumableDraft })
+  assert.equal(salon.onboarding_status, 'completed')
+  assert.equal(salon.booking_enabled, true)
+  assert.deepEqual([...enabled], [ids[1]], 'first completion uses recovered draft selections rather than empty membership')
+  assert.ok((await dataService.getOnboarding(salonId))?.completed_at)
+  console.log('PASS completion validates required selections, preserves the saved draft on failure and activates recovered new-salon categories')
+
+  const { apiRouter } = await import('../server/routes.ts')
+  const getRoute = apiRouter.stack.find((layer) => layer.route?.path === '/salons/:salonId/onboarding' && layer.route.methods.get)?.route
+  assert.ok(getRoute, 'onboarding recovery is available as a GET endpoint')
+  const headers = new Map<string, string>()
+  const response = await new Promise<{ data: OnboardingSession | null }>((resolve, reject) => {
+    getRoute.stack[0].handle({ params: { salonId } }, {
+      set(name: string, value: string) { headers.set(name.toLowerCase(), value); return this },
+      json(body: { data: OnboardingSession | null }) { resolve(body); return this },
+    }, reject)
+  })
+  assert.equal(headers.get('cache-control'), 'no-store')
+  assert.deepEqual(response.data?.draft_data, resumableDraft)
+  console.log('PASS real GET handler returns the recoverable session without caching it')
 } finally {
   await pool.end()
 }

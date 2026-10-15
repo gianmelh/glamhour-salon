@@ -249,6 +249,12 @@ router.get('/salons/:salonId/dashboard', asyncHandler(async (request, response) 
   response.json({ data: await dataService.getDashboard(salonId, query.date) })
 }))
 
+router.get('/salons/:salonId/onboarding', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  response.set('Cache-Control', 'no-store')
+  response.json({ data: await dataService.getOnboarding(salonId) })
+}))
+
 router.put('/salons/:salonId/onboarding', asyncHandler(async (request, response) => {
   const { salonId } = validate(salonParamsSchema, request.params)
   const body = validate(saveOnboardingSchema, request.body)

@@ -19,6 +19,12 @@ export const useSalon = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
   return useApiResource(useCallback(() => glamhourApi.salon(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackSalon))
 }
+export const useOnboarding = (salonId?: string, enabled = true) => {
+  const resolvedSalonId = useResolvedSalonId(salonId)
+  return useApiResource(useCallback(() => enabled && !resolvedSalonId.startsWith('local-salon-')
+    ? glamhourApi.onboarding(resolvedSalonId)
+    : Promise.resolve(null), [enabled, resolvedSalonId]))
+}
 export const useDashboard = (date?: string, salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
   return useApiResource(useCallback(() => glamhourApi.dashboard(resolvedSalonId, date), [date, resolvedSalonId]))

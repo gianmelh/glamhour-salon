@@ -9,6 +9,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { SettingsPage } from '/src/pages/app/SettingsPage.tsx';
+import { NailSettingsPage } from '/src/pages/app/NailSettingsPage.tsx';
 import { SetupPage } from '/src/pages/onboarding/SetupPage.tsx';
 import { glamhourApi } from '/src/services/glamhour-api.ts';
 import '/src/index.css';
@@ -22,12 +23,18 @@ window.originalDraft = { selectedCategoryIds: categories.map(c => c.id), service
 sessionStorage.setItem('glamhour:active-salon-id', salonId);
 localStorage.setItem('glamhour:onboarding:' + salonId, JSON.stringify(window.originalDraft));
 const freshSetup = new URLSearchParams(location.search).has('setup');
+const nailSettings = new URLSearchParams(location.search).has('nails');
 if (freshSetup) localStorage.removeItem('glamhour:onboarding:' + salonId);
-glamhourApi.categories = async (_salonId, options) => options?.includeAll ? categories : categories.filter(c => window.enabledIds.includes(c.id));
+if (nailSettings) window.enabledIds = [];
+glamhourApi.categories = async (_salonId, options) => {
+  if (!options?.includeAll && window.holdCategoryRefresh) await new Promise(resolve => { window.releaseCategories = resolve; });
+  return options?.includeAll ? categories : categories.filter(c => window.enabledIds.includes(c.id));
+};
 glamhourApi.services = async () => { if (window.failResources) throw new Error('Service catalog unavailable'); return services; };
 glamhourApi.professionals = async () => { if (window.failResources) throw new Error('Providers unavailable'); return []; };
 glamhourApi.notifications = async () => [];
 glamhourApi.salon = async () => ({ id: salonId, name: 'Category salon' });
+glamhourApi.onboarding = async () => null;
 glamhourApi.settings = async () => ({ appointment_interval_minutes: 30, settings_json: {} });
 glamhourApi.subscription = async () => ({ hasPremiumAccess: false, clientUsage: { count: 0, limit: 15, canCreateClient: true } });
 glamhourApi.updateServiceCategories = async ({ categoryIds }) => {
@@ -37,15 +44,38 @@ glamhourApi.updateServiceCategories = async ({ categoryIds }) => {
   return categories.filter(c => categoryIds.includes(c.id));
 };
 glamhourApi.saveOnboarding = async input => { window.onboardingWrites.push(input); return {}; };
-createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter, { initialEntries: [freshSetup ? '/onboarding/categories' : '/app/settings'] },
+const provider = {
+  id: 'provider-local', full_name: 'Saved Provider', email: '', phone: '', avatar_url: null,
+  languages: ['English', 'Spanish', 'Portuguese'], status: 'active', salon_earnings_percent: 40, professional_earnings_percent: 60,
+  use_salon_schedule: false, schedule: window.originalDraft.providers[0].schedule,
+  service_assignments: [{ service_id: 'nails-service', is_active: true, duration_override_minutes: 60 }],
+};
+const nailResponse = () => ({
+  salon: { id: salonId, name: 'Category salon', currencyCode: 'USD', timezone: 'UTC' },
+  category: { ...categories[0], isEnabled: window.enabledIds.includes('nails') },
+  services: services.filter(service => service.category_id === 'nails'), materials: [],
+  salonSchedule: window.originalDraft.schedule, providers: [provider], activeStaffCount: 1, staffLimit: 10,
+});
+window.nailWrites = [];
+window.providerWrites = [];
+glamhourApi.nailSettings = async () => nailResponse();
+glamhourApi.appointments = async () => [];
+glamhourApi.updateNailSettings = async input => {
+  window.nailWrites.push(input);
+  window.enabledIds = [...window.enabledIds.filter(id => id !== 'nails'), ...(input.categoryEnabled ? ['nails'] : [])];
+  return nailResponse();
+};
+glamhourApi.updateProfessional = async (id, input) => { window.providerWrites.push({ id, ...input }); return provider; };
+createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter, { initialEntries: [freshSetup ? '/onboarding/categories' : nailSettings ? '/app/settings/services/nails' : '/app/settings'] },
   React.createElement(Routes, null,
     React.createElement(Route, { path: '/app/settings', element: React.createElement(SettingsPage) }),
+    React.createElement(Route, { path: '/app/settings/services/nails', element: React.createElement(NailSettingsPage) }),
     React.createElement(Route, { path: '/onboarding/:step', element: React.createElement(SetupPage) }))));
 </script></body></html>`
 
 const server = await createServer({
   cacheDir: 'node_modules/.vite-category-settings',
-  server: { host: '127.0.0.1', port: 5194 },
+  server: { host: '127.0.0.1', port: 5194, hmr: false },
   plugins: [{
     name: 'category-settings-regression',
     configureServer(vite) {
@@ -137,8 +167,41 @@ try {
   await categoryButton('Lashes').click()
   for (const name of ['Nails', 'Lashes', 'Cosmetology', 'Micropigmentation']) assert.equal(await categoryButton(name).getAttribute('aria-pressed'), 'false')
   assert.deepEqual((await storedDraft()).selectedCategoryIds, [])
-  assert.deepEqual(errors, [])
   console.log('PASS onboarding initializes from enabled catalog and preserves deliberate empty draft selection')
+
+  await page.goto(`${origin}/__category_settings__?nails`)
+  await page.getByRole('heading', { name: 'Nail Services', exact: true }).waitFor()
+  const original = await page.evaluate(() => window.originalDraft)
+  assert.deepEqual(await storedDraft(), original)
+  const nailToggle = page.getByRole('button', { name: 'Enable Nails category', exact: true })
+  assert.equal(await nailToggle.getAttribute('aria-pressed'), 'false')
+  await nailToggle.click()
+  assert.deepEqual(await storedDraft(), original)
+  await page.evaluate(() => { window.holdCategoryRefresh = true })
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await page.waitForFunction(() => typeof window.releaseCategories === 'function')
+  assert.deepEqual(await storedDraft(), original)
+  await page.evaluate(() => { window.holdCategoryRefresh = false; window.releaseCategories() })
+  await page.getByText('Your Nail service settings were saved.', { exact: true }).waitFor()
+  await page.waitForFunction(() => JSON.stringify(JSON.parse(localStorage.getItem('glamhour:onboarding:salon-category-test')).selectedCategoryIds) === '["nails"]')
+  assert.deepEqual(await storedDraft(), { ...original, selectedCategoryIds: ['nails'] })
+  console.log('PASS Nail settings mount and unsaved toggle preserve onboarding; explicit save waits for refreshed membership')
+
+  // Saving a provider also refreshes settings, but must not touch onboarding categories.
+  await page.evaluate(() => localStorage.setItem('glamhour:onboarding:salon-category-test', JSON.stringify(window.originalDraft)))
+  await page.getByRole('button', { name: 'Edit', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Save provider', exact: true }).click()
+  await page.getByText('Provider settings were saved.', { exact: true }).waitFor()
+  assert.equal(await page.evaluate(() => window.providerWrites.length), 1)
+  assert.deepEqual(await storedDraft(), original)
+  await nailToggle.click()
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await page.getByText('Your Nail service settings were saved.', { exact: true }).waitFor()
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('glamhour:onboarding:salon-category-test')).selectedCategoryIds.length === 0)
+  assert.deepEqual(await storedDraft(), { ...original, selectedCategoryIds: [] })
+  assert.deepEqual(await page.evaluate(() => window.nailWrites.map(input => input.categoryEnabled)), [true, false])
+  assert.deepEqual(errors, [])
+  console.log('PASS provider save preserves onboarding; explicitly disabling Nails synchronizes the empty selection')
   await context.close()
 } finally {
   await browser?.close()

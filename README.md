@@ -124,6 +124,12 @@ tests exercise the Google Maps branch with a simulated widget, including address
 selection, mobile styles and manual entry after search failures. Native iPhone
 keyboard behavior and the live Google widget still require a physical-device check.
 
+Run `PLAYWRIGHT_CHANNEL=chrome npm run test:onboarding` to check initial salon
+setup, recovery of saved server drafts, final-step validation and failed-save
+retries. These checks mock the API/database and do not create a real salon.
+The recovery endpoint uses the existing `onboarding_sessions` table; deploying
+this change requires restarting the API as well as rebuilding the frontend.
+
 Provider settings and booking catalog checks can also be run independently with
 `npm run test:provider-settings` (or `PLAYWRIGHT_CHANNEL=chrome npm run test:provider-settings`).
 These cover custom provider hours independent of salon hours, optional salon

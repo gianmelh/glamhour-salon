@@ -8,7 +8,7 @@ import { Button, Card, DataSourceNotice, ErrorState, Input, LoadingState } from 
 import { ProviderLanguages } from '../../components/screen/ProviderLanguages'
 import { ProviderWeeklySchedule } from '../../components/screen/ProviderWeeklySchedule'
 import { normalizeLanguages, normalizeProviderSchedule, providerLanguageCode, providerScheduleErrors } from '../../lib/provider-settings'
-import { useProfessionals, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
+import { useOnboarding, useProfessionals, useSalon, useServiceCategories, useServices } from '../../hooks/useGlamhourData'
 import { ApiClientError } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { glamhourApi } from '../../services/glamhour-api'
@@ -201,11 +201,20 @@ function isLocalSalonId(salonId?: string) {
 function readStoredDraft(salonId?: string) {
   try {
     const savedDraft = window.localStorage.getItem(storageKey(salonId))
-    return savedDraft ? JSON.parse(savedDraft) as OnboardingDraft : null
+    const draft: unknown = savedDraft ? JSON.parse(savedDraft) : null
+    return isOnboardingDraft(draft) ? draft : null
   } catch {
-    window.localStorage.removeItem(storageKey(salonId))
     return null
   }
+}
+
+function isOnboardingDraft(value: unknown): value is OnboardingDraft {
+  if (!value || typeof value !== 'object') return false
+  const draft = value as Partial<OnboardingDraft>
+  return Array.isArray(draft.selectedCategoryIds)
+    && Array.isArray(draft.services)
+    && Array.isArray(draft.providers)
+    && Boolean(draft.schedule && typeof draft.schedule === 'object' && !Array.isArray(draft.schedule))
 }
 
 function serviceIdSuffix(name: string) {
@@ -337,6 +346,10 @@ function getSalonConfiguredServices(draft: OnboardingDraft) {
     && selectedCategoryIds.has(service.categoryId)
     && service.selected
     && service.name.trim()
+    && service.price.trim() !== ''
+    && Number.isFinite(Number(service.price))
+    && Number(service.price) >= 0
+    && Number.isInteger(Number(service.duration))
     && Number(service.duration) > 0
   ))
 }
@@ -496,6 +509,8 @@ export function SetupPage() {
   const salonName = onboardingState.salonName ?? 'your salon'
   const currentStep = steps.includes(step as Step) ? step as Step : 'categories'
   const isManagingCategories = currentStep === 'categories' && onboardingState.returnTo === '/app/settings'
+  const salon = useSalon(salonId)
+  const onboarding = useOnboarding(salonId, !isManagingCategories)
   const categories = useServiceCategories(salonId, { includeAll: true })
   const enabledCategories = useServiceCategories(salonId)
   const services = useServices(salonId)
@@ -504,13 +519,20 @@ export function SetupPage() {
   const [draftOverride, setDraftOverride] = useState<OnboardingDraft | null>(() => isManagingCategories ? null : readStoredDraft(salonId))
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const editingConfiguredSalon = salon.data?.onboarding_status === 'completed' || Boolean(salon.data?.booking_enabled)
+  const serverDraft = useMemo(() => {
+    if (!categoryData || editingConfiguredSalon || !isOnboardingDraft(onboarding.data?.draft_data)) return null
+    return sanitizeStoredDraft(onboarding.data.draft_data, categoryData)
+  }, [categoryData, editingConfiguredSalon, onboarding.data])
   const sanitizedDraftOverride = useMemo(() => {
     if (!categoryData) {
       return null
     }
 
-    return sanitizeStoredDraft(draftOverride, categoryData)
-  }, [categoryData, draftOverride])
+    // Registration sessions initially contain account metadata, not a setup draft.
+    // Finished salons use their current catalog instead of an old setup session.
+    return sanitizeStoredDraft(draftOverride, categoryData) ?? serverDraft
+  }, [categoryData, draftOverride, serverDraft])
   const generatedDraft = useMemo(() => {
     if (!categoryData || !enabledCategories.data) {
       return null
@@ -526,19 +548,24 @@ export function SetupPage() {
 
   useEffect(() => {
     if (draftOverride && !isManagingCategories) {
-      window.localStorage.setItem(storageKey(salonId), JSON.stringify(draftOverride))
+      try {
+        window.localStorage.setItem(storageKey(salonId), JSON.stringify(draftOverride))
+      } catch {
+        // Each successful step is also saved on the server.
+      }
     }
   }, [draftOverride, isManagingCategories, salonId])
 
-  const loading = categories.loading || enabledCategories.loading || (!isManagingCategories && (services.loading || professionals.loading))
+  const loading = categories.loading || enabledCategories.loading || (!isManagingCategories && (salon.loading || onboarding.loading || services.loading || professionals.loading))
   if (loading) return <div className="min-h-dvh bg-canvas p-4"><LoadingState label="Loading salon setup..." /></div>
-  if (!categoryData || !enabledCategories.data || (!isManagingCategories && (!services.data || !professionals.data)) || !draft) return <div className="min-h-dvh bg-canvas p-4"><ErrorState description="Salon setup data could not be loaded." onRetry={() => { categories.retry(); enabledCategories.retry(); services.retry(); professionals.retry() }} /></div>
+  if (!categoryData || !enabledCategories.data || (!isManagingCategories && (!salon.data || onboarding.error || !services.data || !professionals.data)) || !draft) return <div className="min-h-dvh bg-canvas p-4"><ErrorState description="Salon setup data could not be loaded." onRetry={() => { categories.retry(); enabledCategories.retry(); services.retry(); professionals.retry(); salon.retry(); onboarding.retry() }} /></div>
 
   const stepIndex = Math.max(0, steps.indexOf(currentStep))
   const visibleStepNumber = Math.min(stepIndex + 1, setupStepCount)
   const canContinue = isManagingCategories || isStepComplete(currentStep, draft)
   const headerSubtitle = isManagingCategories ? 'Choose the categories your salon offers.' : stepHeaderSubtitles[currentStep] ?? "Let's get your business ready for clients."
   const isTeamEditor = currentStep === 'team' && Boolean(draft.activeProviderId)
+  const incompleteStep = !editingConfiguredSalon ? firstIncompleteStep(draft) : undefined
   const primaryActionLabel = isManagingCategories ? 'Save categories' : currentStep === 'complete' ? 'Go to calendar' : currentStep === 'team' ? (isTeamEditor ? 'Add provider' : 'Finish') : 'Continue'
 
   function updateDraft(updater: (current: OnboardingDraft) => OnboardingDraft) {
@@ -550,7 +577,8 @@ export function SetupPage() {
 
   async function saveStep(nextStep: Step, completed: boolean) {
     if (!salonId || !draft) {
-      return
+      setSaveError('Your salon could not be identified. Please sign in again.')
+      return false
     }
 
     setIsSaving(true)
@@ -573,13 +601,14 @@ export function SetupPage() {
           draft: savedDraft,
         }, salonId)
       }
+      return true
     } catch (error) {
       setSaveError(
         error instanceof ApiClientError
           ? error.message
           : 'Onboarding could not be saved. Please try again.',
       )
-      throw error
+      return false
     } finally {
       setIsSaving(false)
     }
@@ -606,8 +635,16 @@ export function SetupPage() {
     }
 
     if (currentStep === 'complete') {
-      await saveStep('complete', true)
-      window.localStorage.removeItem(storageKey(salonId))
+      if (incompleteStep) {
+        navigate(`/onboarding/${incompleteStep}`, { state: { ...onboardingState, salonId, salonName } })
+        return
+      }
+      if (!await saveStep('complete', true)) return
+      try {
+        window.localStorage.removeItem(storageKey(salonId))
+      } catch {
+        // The server has confirmed completion, even if browser storage is unavailable.
+      }
       navigate('/app/home', { replace: true })
       return
     }
@@ -617,7 +654,7 @@ export function SetupPage() {
         return
       }
 
-      await saveStep('team', false)
+      if (!await saveStep('team', false)) return
       if (draft.activeProviderId) {
         updateDraft((current) => ({ ...current, activeProviderId: undefined }))
         return
@@ -630,7 +667,7 @@ export function SetupPage() {
     }
 
     const nextStep = steps[stepIndex + 1]
-    await saveStep(currentStep, false)
+    if (!await saveStep(currentStep, false)) return
     navigate(`/onboarding/${nextStep}`, {
       state: { ...onboardingState, salonId, salonName },
     })
@@ -656,8 +693,14 @@ export function SetupPage() {
       <main className="min-h-dvh bg-[linear-gradient(180deg,#77777d_0%,#8d8d95_45%,#5d35a9_100%)] px-5 py-7">
         <section className="mx-auto flex min-h-[calc(100dvh-56px)] w-full max-w-[375px] flex-col justify-center">
           <DataSourceNotice visible={categories.isFallback || services.isFallback || professionals.isFallback} />
-          <CompleteStep isSaving={isSaving} onGoToCalendar={goNext} />
-          {saveError && <p className="mt-4 rounded-md bg-[#fff0f0] px-3 py-2 text-[11px] text-[#e05252]">{saveError}</p>}
+          <CompleteStep isSaving={isSaving} incompleteStep={incompleteStep} onGoToCalendar={goNext} />
+          {incompleteStep && serverDraft && !firstIncompleteStep(serverDraft) && (
+            <Button className="mt-4" fullWidth variant="outline" onClick={() => {
+              setDraftOverride(serverDraft)
+              setSaveError('')
+            }}>Restore saved setup</Button>
+          )}
+          {saveError && <p role="alert" className="mt-4 rounded-md bg-[#fff0f0] px-3 py-2 text-[11px] text-[#e05252]">{saveError}</p>}
         </section>
       </main>
     )
@@ -687,7 +730,7 @@ export function SetupPage() {
           {currentStep === 'schedule' && <ScheduleStep draft={draft} updateDraft={updateDraft} />}
           {currentStep === 'team' && <TeamStep categories={categoryData} draft={draft} updateDraft={updateDraft} />}
         </div>
-        {saveError && <p className="mt-4 rounded-md bg-[#fff0f0] px-3 py-2 text-[11px] text-[#e05252]">{saveError}</p>}
+        {saveError && <p role="alert" className="mt-4 rounded-md bg-[#fff0f0] px-3 py-2 text-[11px] text-[#e05252]">{saveError}</p>}
 
         <div className="mt-8 pb-1">
           <Button
@@ -1818,14 +1861,14 @@ function ProviderEditor({ categories, draft, provider, salonSchedule, updateDraf
   )
 }
 
-function CompleteStep({ isSaving, onGoToCalendar }: { isSaving: boolean; onGoToCalendar: () => void }) {
+function CompleteStep({ isSaving, incompleteStep, onGoToCalendar }: { isSaving: boolean; incompleteStep?: Step; onGoToCalendar: () => void }) {
   return (
     <div className="mx-auto w-full max-w-[330px] rounded-[24px] bg-white px-6 pb-6 pt-7 text-center shadow-[0_28px_60px_rgb(24_20_43_/_0.30)]">
       <span className="mx-auto grid size-20 place-items-center rounded-full bg-[linear-gradient(180deg,#8a48e9_0%,#5d2caf_100%)] text-white shadow-[0_12px_26px_rgb(122_63_224_/_0.42)]">
-        <Check className="size-10 stroke-[3.2]" />
+        {incompleteStep ? <BriefcaseBusiness className="size-10" /> : <Check className="size-10 stroke-[3.2]" />}
       </span>
-      <h1 className="mt-7 text-[22px] font-bold leading-7 tracking-[-0.01em] text-[#10172a]">Your salon is ready to book</h1>
-      <p className="mx-auto mt-3 max-w-[245px] text-[15px] leading-5 text-[#777f91]">Your salon is fully set up and ready to welcome clients.</p>
+      <h1 className="mt-7 text-[22px] font-bold leading-7 tracking-[-0.01em] text-[#10172a]">{incompleteStep ? 'Finish your salon setup' : 'Your salon setup is ready to save'}</h1>
+      <p className="mx-auto mt-3 max-w-[245px] text-[15px] leading-5 text-[#777f91]">{incompleteStep ? `Review your ${incompleteStep === 'team' ? 'providers and assigned services' : incompleteStep} before finishing setup.` : 'Save your setup to start welcoming clients.'}</p>
       <Button
         className="mt-5 min-h-14 rounded-xl text-[16px] font-medium shadow-[0_12px_24px_rgb(67_47_129_/_0.30)]"
         fullWidth
@@ -1833,31 +1876,34 @@ function CompleteStep({ isSaving, onGoToCalendar }: { isSaving: boolean; onGoToC
         onClick={onGoToCalendar}
         size="lg"
       >
-        Go to calendar
+        {incompleteStep ? 'Continue setup' : 'Go to calendar'}
       </Button>
     </div>
   )
+}
+
+function firstIncompleteStep(draft: OnboardingDraft): Step | undefined {
+  return steps.find((step) => step !== 'complete' && !isStepComplete(step, draft))
 }
 
 function isStepComplete(step: Step, draft: OnboardingDraft) {
   if (step === 'categories') return draft.selectedCategoryIds.length > 0
   if (step === 'services') {
     const services = getSelectedProviderCategoryServices(draft)
-    if (!services.length) return true
-    return services.some((service) => service.selected && service.name.trim() && Number(service.price) > 0)
+    return services.some((service) => service.selected && service.name.trim() && service.price.trim() && Number.isFinite(Number(service.price)) && Number(service.price) >= 0)
   }
   if (step === 'durations') {
     const selectedServices = getSelectedProviderCategoryServices(draft)
       .filter((service) => service.selected && service.name.trim())
     if (!selectedServices.length) return false
-    return selectedServices.every((service) => Number(service.duration) > 0)
+    return selectedServices.every((service) => Number.isInteger(Number(service.duration)) && Number(service.duration) > 0)
   }
   if (step === 'schedule') return Object.values(draft.schedule).some((day) => day.enabled && day.open && day.close && day.open < day.close)
   if (step === 'team') {
-    const hasAssignableServices = getSelectedProviderCategoryServices(draft).length > 0
+    const assignableServiceIds = new Set(getSalonConfiguredServices(draft).map((service) => service.id))
     return draft.providers.length > 0 && draft.providers.every((provider) => (
       provider.name.trim()
-      && (!hasAssignableServices || provider.serviceIds.length > 0)
+      && provider.serviceIds.some((id) => assignableServiceIds.has(id))
       && normalizeLanguages(provider.languages).length > 0
       && (provider.useSalonSchedule || Object.keys(providerScheduleErrors(normalizeProviderSchedule(provider.schedule))).length === 0)
       && Number(provider.salonPercent) + Number(provider.professionalPercent) === 100

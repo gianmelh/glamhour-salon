@@ -578,6 +578,18 @@ export interface SaveOnboardingInput {
   }
 }
 
+export interface OnboardingSession extends Timestamped {
+  id: string
+  salon_id: string
+  // Registration sessions may still use the legacy "service_categories" step.
+  current_step: string
+  completed_steps: string[]
+  // Initial registration metadata does not yet contain a salon setup draft.
+  draft_data: Partial<SaveOnboardingInput['draft']>
+  started_at: string
+  completed_at: string | null
+}
+
 export interface RegisterSalonInput {
   salonName: string
   email: string

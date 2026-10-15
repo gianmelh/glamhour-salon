@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import type { PoolClient, QueryResultRow } from 'pg'
 import { ApiError } from '../errors.js'
 import { normalizeLanguages } from '../../src/lib/provider-settings.js'
+import type { OnboardingSession } from '../../src/types/api.js'
 import { query, withTransaction } from '../db.js'
 import { config } from '../config.js'
 import { sendPasswordResetCode } from './email-service.js'
@@ -2118,6 +2119,20 @@ export const dataService = {
 
     const enabledCategoryIds = new Set(categories.map((category) => category.id))
     return { salon, services: services.filter((service) => enabledCategoryIds.has(service.category_id)), categories }
+  },
+
+  async getOnboarding(salonId: string): Promise<OnboardingSession | null> {
+    const row = await oneOrNotFound<{ session: OnboardingSession | null }>(
+      `SELECT CASE WHEN os.id IS NULL THEN NULL ELSE to_jsonb(os) END AS session
+       FROM salons s
+       LEFT JOIN onboarding_sessions os ON os.salon_id = s.id
+       WHERE s.id = $1 AND s.deleted_at IS NULL`,
+      [salonId],
+      'Salon not found',
+    )
+    // Draft selections are saved before catalog membership is materialized at
+    // completion. Return them intact so another browser can resume setup.
+    return row.session
   },
 
   saveOnboarding(salonId: string, input: SaveOnboardingInput): Promise<Salon> {

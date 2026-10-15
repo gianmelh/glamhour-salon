@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ChevronLeft, Clock3, Plus, Save, Trash2, UserRound } from 'lucide-react'
 import { Avatar, Badge, Button, Card, EmptyState, ErrorState, Input, LoadingState, ProviderDialog, Select } from '../../components'
@@ -15,7 +15,7 @@ import { syncStoredOnboardingCategories } from '../../lib/service-category-setti
 import { glamhourApi } from '../../services/glamhour-api'
 import type {
   Appointment, NailMaterialInput, NailSettingsResponse, NailSettingsServiceInput,
-  ProfessionalWithNailSettings, UpsertProfessionalInput,
+  ProfessionalWithNailSettings, ServiceCategory, UpsertProfessionalInput,
 } from '../../types/api'
 
 type ProviderDraft = UpsertProfessionalInput & { id?: string; photoName?: string }
@@ -106,6 +106,7 @@ export function NailSettingsPage() {
   const settings = useNailSettings()
   const allServices = useServices()
   const enabledCategories = useServiceCategories()
+  const pendingCategorySync = useRef<{ salonId: string; previousCategories: ServiceCategory[] | undefined } | null>(null)
   const appointments = useAppointments()
   const [categoryEnabled, setCategoryEnabled] = useState(true)
   const [services, setServices] = useState<NailSettingsServiceInput[]>([])
@@ -134,9 +135,11 @@ export function NailSettingsPage() {
   }, [settings.data])
 
   useEffect(() => {
-    const salonId = settings.data?.salon?.id
-    if (!salonId || !enabledCategories.data || enabledCategories.loading || enabledCategories.isFallback || enabledCategories.error) return
-    syncStoredOnboardingCategories(salonId, enabledCategories.data.map((category) => category.id))
+    const pending = pendingCategorySync.current
+    if (!pending || pending.salonId !== settings.data?.salon?.id || !enabledCategories.data
+      || enabledCategories.data === pending.previousCategories || enabledCategories.loading || enabledCategories.isFallback || enabledCategories.error) return
+    syncStoredOnboardingCategories(pending.salonId, enabledCategories.data.map((category) => category.id))
+    pendingCategorySync.current = null
   }, [settings.data?.salon?.id, enabledCategories.data, enabledCategories.loading, enabledCategories.isFallback, enabledCategories.error])
 
   const serviceOptions = useMemo(() => [
@@ -160,6 +163,9 @@ export function NailSettingsPage() {
     setCategoryEnabled(result.category.isEnabled)
     setServices(result.services.map(serviceInputFromResponse))
     setMaterials(result.materials.map(materialInputFromResponse))
+    // Only an explicit saved change supersedes an in-progress onboarding draft.
+    // Wait for refreshed membership; the pre-save catalog may still be empty.
+    pendingCategorySync.current = { salonId: result.salon.id, previousCategories: enabledCategories.data }
     settings.setData(result)
     enabledCategories.retry()
     allServices.retry()
