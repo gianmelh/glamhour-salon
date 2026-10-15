@@ -62,7 +62,11 @@ export function LashesRegistrationFlow({
   }, [onChange, selectedServiceId, services])
 
   const setStep = (nextStep: LashesRegistrationStep) => {
-    onChange({ details: { [LASHES_REGISTRATION_STEP_KEY]: nextStep } })
+    onChange({ details: (current) => {
+      const next: Record<string, unknown> = { ...current, [LASHES_REGISTRATION_STEP_KEY]: nextStep }
+      if (nextStep === 'lash-map' || nextStep === 'details') delete next.previewReturnStep
+      return next
+    } })
   }
 
   const setDetails = (
@@ -76,12 +80,28 @@ export function LashesRegistrationFlow({
   }
 
   const goBack = () => {
+    if (details.previewReturnStep === 'lash-map' && ['photo-preview', 'photo-method', 'select-variant'].includes(step)) {
+      setStep('lash-map')
+      return
+    }
     const previous = getPreviousLashesRegistrationStep(step, details)
     if (previous === 'exit') {
       onBack()
       return
     }
     setStep(previous)
+  }
+
+  const openPreviewFromLashMap = () => {
+    if (completingRef.current) return
+    setContinueError('')
+    setDetails((current) => ({
+      ...current,
+      previewReturnStep: 'lash-map',
+      [LASHES_REGISTRATION_STEP_KEY]: current.photoPreviewUrl && current.photoStorageKey
+        ? 'photo-preview'
+        : current.variant ? 'photo-method' : 'select-variant',
+    }))
   }
 
   const goNext = (options?: { skipCapture?: boolean }) => {
@@ -302,6 +322,7 @@ export function LashesRegistrationFlow({
               onBack={goBack}
               onChange={setDetails}
               onContinue={continueFromLashMap}
+              onOpenPreview={openPreviewFromLashMap}
             />
             {continueError && (
               <p role="alert" className="mt-4 rounded-[12px] bg-[#fef3f2] px-4 py-3 text-sm text-[#b42318]">

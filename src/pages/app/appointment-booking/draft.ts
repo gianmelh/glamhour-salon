@@ -1,6 +1,7 @@
 import type { AppointmentDraft, BookingStep } from './types'
 import { sanitizeDetailsForCategory } from './categoryDetails'
 import { clampToToday, localDateString } from '../../../lib/date'
+import { LASHES_REGISTRATION_STEPS, type LashesRegistrationStep } from '../lashes-booking/lashesRegistrationFlow'
 
 export const APPOINTMENT_DRAFT_KEY = 'glamhour:new-appointment-draft'
 
@@ -38,6 +39,8 @@ export function readDraft(): AppointmentDraft {
 export function initialBookingStep(draft: AppointmentDraft): BookingStep {
   if (draft.appointmentId && draft.mode === 'reschedule') return 'provider'
   if (draft.appointmentId && draft.categoryCode && draft.serviceId) return 'service'
+  if (draft.categoryCode === 'lashes' && (draft.clientId || draft.entryPoint === 'home')
+    && LASHES_REGISTRATION_STEPS.includes(draft.details.registrationStep as LashesRegistrationStep)) return 'service'
   if (draft.entryPoint === 'home') {
     if (draft.categoryCode && draft.serviceId) return 'quick-create'
     if (draft.categoryCode) return 'service'

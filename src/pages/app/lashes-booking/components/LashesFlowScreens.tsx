@@ -154,23 +154,7 @@ export function LashesDetailsCoreScreen({
         />
       </LashSection>
 
-      {style && (
-        <button
-          className="flex w-full items-center justify-between rounded-[16px] border border-[#7344cd] bg-[#fcfcfd] px-4 py-4 text-left"
-          onClick={onOpenStylePreview}
-          type="button"
-        >
-          <div>
-            <p className="text-[16px] font-normal leading-6 text-black">
-              Preview
-            </p>
-            <p className="text-[12px] leading-[17px] text-[#667085]">
-              {style} · Apply the style to your photo
-            </p>
-          </div>
-          <ChevronRight className="size-4 shrink-0 text-[#667085]" />
-        </button>
-      )}
+      {style && <LashesPreviewButton style={style} onClick={onOpenStylePreview} />}
 
       <LashSection title="Eye shape">
         <LashEyeShapePicker
@@ -214,6 +198,30 @@ export function LashesDetailsCoreScreen({
         </LashesPrimaryButton>
       </div>
     </LashesWizardShell>
+  );
+}
+
+function LashesPreviewButton({ style, onClick, disabled = false }: {
+  style: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      aria-label="Preview"
+      className="flex w-full items-center justify-between rounded-[16px] border border-[#7344cd] bg-[#fcfcfd] px-4 py-4 text-left disabled:opacity-50"
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <div>
+        <p className="text-[16px] font-normal leading-6 text-black">Preview</p>
+        <p className="text-[12px] leading-[17px] text-[#667085]">
+          {style} · Apply the style to your photo
+        </p>
+      </div>
+      <ChevronRight className="size-4 shrink-0 text-[#667085]" />
+    </button>
   );
 }
 
@@ -671,6 +679,9 @@ export function LashesPhotoPreviewScreen({
   useEffect(() => {
     if (!variant || !comboAvailable) return;
     const patch = previewSelectionPatch(style, variant);
+    // Opening an existing preview must not replace the volume chosen on the map.
+    // Explicit style/variant selections still apply their corresponding volume.
+    if (details.volume) delete patch.volume;
     const styleMismatch = details.style !== patch.style;
     const variantMismatch = String(details.variant ?? "") !== variant;
     const volumeMismatch =
@@ -808,6 +819,7 @@ export function LashesLashMapScreen({
   onBack,
   onChange,
   onContinue,
+  onOpenPreview,
   canContinue,
   saving = false,
 }: {
@@ -819,6 +831,7 @@ export function LashesLashMapScreen({
       | ((current: Record<string, unknown>) => Record<string, unknown>)
   ) => void;
   onContinue: () => void;
+  onOpenPreview: () => void;
   canContinue: boolean;
   saving?: boolean;
 }) {
@@ -846,6 +859,13 @@ export function LashesLashMapScreen({
           value={String(details.style ?? "")}
         />
       </LashSection>
+      {Boolean(details.style) && (
+        <LashesPreviewButton
+          style={String(details.style)}
+          onClick={onOpenPreview}
+          disabled={saving}
+        />
+      )}
       <LashMapEditor details={details} onChange={onChange} />
       <LashSection title="Eye shape">
         <LashEyeShapePicker

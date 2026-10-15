@@ -95,5 +95,6 @@ export const LASHES_DETAIL_KEYS = [
   'existingQuestionnaireId',
   'appointmentPriceMinor',
   'registrationStep',
+  'previewReturnStep',
   'photoCapturePending',
 ] as const

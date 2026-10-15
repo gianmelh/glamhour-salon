@@ -17,6 +17,7 @@ const LASHES_ONLY_KEYS = new Set([
   'activeLashEye',
   'lashMap',
   'registrationStep',
+  'previewReturnStep',
   'photoCapturePending',
 ])
 
