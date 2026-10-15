@@ -51,6 +51,7 @@ export function LashesRegistrationFlow({
   const step = readLashesRegistrationStep(details)
   const [showPermissionAlert, setShowPermissionAlert] = useState(false)
   const [continueError, setContinueError] = useState('')
+  const [completing, setCompleting] = useState(false)
   const completingRef = useRef(false)
   const { upload, uploading, error: uploadError } = useTreatmentPhotoUpload('lashes')
 
@@ -155,16 +156,20 @@ export function LashesRegistrationFlow({
   const completeService = async (requestedDetails = details) => {
     if (completingRef.current) return
     completingRef.current = true
+    setCompleting(true)
+    setContinueError('')
 
     try {
       const resolvedServiceId = await ensureSelectedService()
-      onNext({
+      await onNext({
         serviceId: resolvedServiceId,
         details: requestedDetails,
       })
     } catch (error) {
       setContinueError(error instanceof Error ? error.message : 'Could not continue to appointment details.')
+    } finally {
       completingRef.current = false
+      setCompleting(false)
     }
   }
 
@@ -292,13 +297,14 @@ export function LashesRegistrationFlow({
           <>
             <LashesLashMapScreen
               canContinue={canContinueLashMap}
+              saving={completing}
               details={details}
               onBack={goBack}
               onChange={setDetails}
               onContinue={continueFromLashMap}
             />
             {continueError && (
-              <p className="mt-4 rounded-[12px] bg-[#fef3f2] px-4 py-3 text-sm text-[#b42318]">
+              <p role="alert" className="mt-4 rounded-[12px] bg-[#fef3f2] px-4 py-3 text-sm text-[#b42318]">
                 {continueError}
               </p>
             )}

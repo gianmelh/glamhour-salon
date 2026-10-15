@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Button, EmptyState, ErrorState, LoadingState } from '../../../components'
+import { Button, EmptyState, ErrorState, LoadingState, MutationError } from '../../../components'
 import { useAppointments, useClients, useProfessionals, useSalon, useServiceCategories, useServices } from '../../../hooks/useGlamhourData'
 import { useMutation } from '../../../hooks/useMutation'
 import { ApiClientError } from '../../../lib/api'
@@ -257,6 +257,7 @@ export function NewAppointmentPage() {
   const [createdAppointmentId, setCreatedAppointmentId] = useState('')
   const [localServices, setLocalServices] = useState<Service[]>([])
   const [confirmError, setConfirmError] = useState<Error | null>(null)
+  const [serviceDetailsError, setServiceDetailsError] = useState<Error | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [nowTimestamp] = useState(() => Date.now())
   const devLashesBootstrapped = useRef(false)
@@ -487,7 +488,7 @@ export function NewAppointmentPage() {
       }))
   const selectedProvider = scheduleProviders.find((provider) => provider.id === draft.providerId)
 
-  const continueFromServiceDetails = (patch: DraftPatch = {}) => {
+  const continueFromServiceDetails = async (patch: DraftPatch = {}) => {
     const patchedDetails = typeof patch.details === 'function'
       ? patch.details(draft.details)
       : mergeDetailsPatchForCategory(draft.categoryCode, draft.details, patch.details ?? {})
@@ -498,32 +499,36 @@ export function NewAppointmentPage() {
     const nextServiceId = patch.serviceId
       ?? resolveCategoryServiceId(patchedDraft, categoryServices)
 
-    setDraft((current) => ({
-      ...current,
-      ...patch,
-      serviceId: nextServiceId,
-      details: nextDetails,
-    }))
-
     if (draft.appointmentId && selectedClient) {
-      void (async () => {
+      // Keep the current step and draft until the save succeeds, so a failed
+      // request can be retried without losing the lash map or other details.
+      setServiceDetailsError(null)
+      try {
         const appointment = await updateMutation.mutate({
-          appointmentId: draft.appointmentId!,
+          appointmentId: draft.appointmentId,
           categoryCode: draft.categoryCode,
           treatmentDetails: buildTreatmentPayload(draft.categoryCode, nextDetails, selectedClient),
           treatmentNotes: draft.notes,
         })
-        const appointmentId = draft.appointmentId!
+        const appointmentId = draft.appointmentId
         setDraft(emptyDraft())
         window.sessionStorage.removeItem(APPOINTMENT_DRAFT_KEY)
         appointments.setData((current) => (current ?? []).map((item) => (
           item.id === appointment.id ? { ...item, ...appointment } : item
         )))
         navigate(`/app/appointments/${appointmentId}`)
-      })()
+      } catch (reason) {
+        setServiceDetailsError(reason instanceof Error ? reason : new Error('Service details could not be saved. Please try again.'))
+      }
       return
     }
 
+    setDraft((current) => ({
+      ...current,
+      ...patch,
+      serviceId: nextServiceId,
+      details: nextDetails,
+    }))
     setStep(shouldReviewAppointmentDetailsAfterService(draft.categoryCode) ? 'appointment-details' : 'provider')
   }
 
@@ -975,6 +980,12 @@ export function NewAppointmentPage() {
             services={categoryServices}
           />
         )
+      )}
+
+      {step === 'service' && serviceDetailsError && (
+        <div className="px-5 pb-5" role="alert">
+          <MutationError error={serviceDetailsError} />
+        </div>
       )}
 
       {step === 'quick-create' && selectedService && (

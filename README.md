@@ -149,6 +149,11 @@ Lash photo fitting checks run with `npm run test:lash-preview` (or
 curve, older seven-point drafts, mouse and touch adjustment, rotation, and saved
 preview restoration using local lash images and a synthetic photo.
 
+Run `PLAYWRIGHT_CHANNEL=chrome npm run test:lashes-completion` to check the final
+lash-map button through the real booking page. The isolated browser checks cover
+new bookings, pending saves, visible save errors, and retries that preserve both
+eyes and their three-point photo adjustments. All API responses are mocked.
+
 Public booking now requires email verification before confirmation. A six-digit
 code expires after ten minutes; successfully verified addresses are remembered
 per salon, so later bookings do not send another code. Deploy migration

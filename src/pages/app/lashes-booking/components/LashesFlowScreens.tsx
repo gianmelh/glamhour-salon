@@ -809,6 +809,7 @@ export function LashesLashMapScreen({
   onChange,
   onContinue,
   canContinue,
+  saving = false,
 }: {
   details: Record<string, unknown>;
   onBack: () => void;
@@ -819,6 +820,7 @@ export function LashesLashMapScreen({
   ) => void;
   onContinue: () => void;
   canContinue: boolean;
+  saving?: boolean;
 }) {
   const activeEye = String(details.activeLashEye ?? "rightEye");
   const lashMap = details.lashMap as
@@ -870,8 +872,8 @@ export function LashesLashMapScreen({
         />
       </LashSection>
       <div className="py-8">
-        <LashesPrimaryButton disabled={!canContinue} onClick={onContinue}>
-          {buttonLabel}
+        <LashesPrimaryButton disabled={saving || !canContinue} loading={saving} onClick={onContinue}>
+          {saving ? "Saving..." : buttonLabel}
         </LashesPrimaryButton>
       </div>
     </LashesWizardShell>
