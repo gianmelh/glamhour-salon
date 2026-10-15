@@ -2241,52 +2241,57 @@ export const dataService = {
       for (const [index, service] of selectedServices.entries()) {
         const durationMinutes = parseOnboardingInteger(service.duration, 'Service durations must be positive whole minutes.')
         const priceMinor = parseOnboardingMoney(service.price)
-        const slug = slugifyServiceName(service.name.trim())
+        const name = service.name.trim()
         const existing = await clientRows<{ id: string }>(
           client,
           `SELECT id FROM services
-           WHERE salon_id = $1 AND category_id = $2 AND (slug = $3 OR lower(name) = lower($4))
-           ORDER BY created_at
+           WHERE salon_id = $1 AND category_id = $2 AND (id = $3::uuid OR lower(name) = lower($4))
+           ORDER BY (id = $3::uuid) DESC NULLS LAST, created_at, id
            LIMIT 1`,
-          [salonId, service.categoryId, slug, service.name.trim()],
+          [salonId, service.categoryId, isUuid(service.id) ? service.id : null, name],
         )
 
-        const rows = existing[0]
-          ? await clientRows<{ id: string }>(
-              client,
-              `UPDATE services
-               SET name = $3,
-                   slug = $4,
-                   duration_minutes = $5,
-                   price_minor = $6,
-                   currency_code = 'USD',
-                   is_active = true,
-                   is_publicly_bookable = true,
-                   sort_order = $7
-               WHERE salon_id = $1 AND id = $2
-               RETURNING id`,
-              [salonId, existing[0].id, service.name.trim(), slug, durationMinutes, priceMinor, index * 10],
-            )
-          : await clientRows<{ id: string }>(
+        let savedServiceId: string | undefined
+        if (existing[0]) {
+          // Keep the persisted identity, including legacy slugs with collision suffixes.
+          const rows = await clientRows<{ id: string }>(
+            client,
+            `UPDATE services
+             SET name = $3,
+                 duration_minutes = $4,
+                 price_minor = $5,
+                 currency_code = 'USD',
+                 is_active = true,
+                 is_publicly_bookable = true,
+                 sort_order = $6
+             WHERE salon_id = $1 AND id = $2
+             RETURNING id`,
+            [salonId, existing[0].id, name, durationMinutes, priceMinor, index * 10],
+          )
+          savedServiceId = rows[0]?.id
+        } else {
+          const baseSlug = slugifyServiceName(name).slice(0, 160).replace(/-+$/, '')
+          // Names can repeat across categories. A slug conflict must never update
+          // an unrelated service, even when two names normalize to the same slug.
+          for (let attempt = 0; attempt < 3 && !savedServiceId; attempt += 1) {
+            const slug = attempt === 0
+              ? baseSlug
+              : `${baseSlug.slice(0, 127).replace(/-+$/, '')}-${crypto.randomUUID().replace(/-/g, '')}`
+            const rows = await clientRows<{ id: string }>(
               client,
               `INSERT INTO services (
                  salon_id, category_id, name, slug, duration_minutes, price_minor,
                  currency_code, is_active, is_publicly_bookable, sort_order
                ) VALUES ($1, $2, $3, $4, $5, $6, 'USD', true, true, $7)
-               ON CONFLICT (salon_id, slug) DO UPDATE SET
-                 name = EXCLUDED.name,
-                 duration_minutes = EXCLUDED.duration_minutes,
-                 price_minor = EXCLUDED.price_minor,
-                 is_active = true,
-                 is_publicly_bookable = true,
-                 sort_order = EXCLUDED.sort_order,
-                 updated_at = now()
-               WHERE services.category_id = EXCLUDED.category_id
+               ON CONFLICT (salon_id, slug) DO NOTHING
                RETURNING id`,
-              [salonId, service.categoryId, service.name.trim(), slug, durationMinutes, priceMinor, index * 10],
+              [salonId, service.categoryId, name, slug, durationMinutes, priceMinor, index * 10],
             )
-        if (!rows[0]) throw new ApiError(400, 'A service with this name already exists in another category. Choose a different service name.')
-        serviceIdByDraftId.set(service.id, rows[0].id)
+            savedServiceId = rows[0]?.id
+          }
+        }
+        if (!savedServiceId) throw new ApiError(409, 'Unable to save this service. Please try again.')
+        serviceIdByDraftId.set(service.id, savedServiceId)
       }
 
       await ensureServiceMaterialsTable()

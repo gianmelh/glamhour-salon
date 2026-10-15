@@ -15,26 +15,41 @@ const services = categories.map((category, i) => ({
   id: `40000000-0000-4000-8000-00000000000${i + 1}`, salon_id: salonId, category_id: category.id,
   category_code: category.code, name: `${category.name} service`, slug: `${category.code}-service`,
   is_active: true, is_publicly_bookable: true, duration_minutes: 60, price_minor: 1000, currency_code: 'USD',
+  sort_order: i * 10,
 }))
-services.push({ ...services[0], id: '40000000-0000-4000-8000-000000000004', name: 'Private service', is_publicly_bookable: false })
-services.push({ ...services[0], id: '40000000-0000-4000-8000-000000000005', name: 'Inactive service', is_active: false })
+services.push({ ...services[0], id: '40000000-0000-4000-8000-000000000004', name: 'Private service', slug: 'private-service', is_publicly_bookable: false })
+services.push({ ...services[0], id: '40000000-0000-4000-8000-000000000005', name: 'Inactive service', slug: 'inactive-service', is_active: false })
 const salon = { id: salonId, name: 'Local salon', slug: 'local-salon', currency_code: 'USD', timezone: 'UTC', booking_enabled: true, allow_public_booking: true, onboarding_status: 'completed' }
 const provider = { id: providerId, salon_id: salonId, full_name: 'Provider', status: 'active', languages: ['English'] }
 const assignments = new Map([[services[0].id, true], [services[1].id, true], [services[2].id, true]])
+const assignmentDurations = new Map<string, number | null>()
 let enabled = new Set([ids[0], ids[1]])
 let transactionOpen = false
 type OnboardingSession = NonNullable<Awaited<ReturnType<typeof dataService.getOnboarding>>>
 let savedOnboarding: OnboardingSession | null = null
-let snapshot: { enabled: Set<string>; salon: typeof salon; onboarding: OnboardingSession | null } | undefined
+let nextServiceId = 10
+let snapshot: { enabled: Set<string>; salon: typeof salon; onboarding: OnboardingSession | null; services: typeof services; assignments: typeof assignments; assignmentDurations: typeof assignmentDurations; nextServiceId: number } | undefined
 let queries: string[] = []
 const effective = (service: typeof services[number]) => service.is_active && enabled.has(service.category_id)
 
 function runQuery(sql: string, values: readonly unknown[] = [], scope: 'pool' | 'client' = 'pool'): { rows: Record<string, unknown>[] } {
   queries.push(sql)
-  if (sql === 'BEGIN') { transactionOpen = true; snapshot = { enabled: new Set(enabled), salon: { ...salon }, onboarding: structuredClone(savedOnboarding) }; return { rows: [] } }
+  if (sql === 'BEGIN') {
+    transactionOpen = true
+    snapshot = { enabled: new Set(enabled), salon: { ...salon }, onboarding: structuredClone(savedOnboarding), services: structuredClone(services), assignments: new Map(assignments), assignmentDurations: new Map(assignmentDurations), nextServiceId }
+    return { rows: [] }
+  }
   if (sql === 'COMMIT') { transactionOpen = false; snapshot = undefined; return { rows: [] } }
   if (sql === 'ROLLBACK') {
-    if (snapshot) { enabled = snapshot.enabled; Object.assign(salon, snapshot.salon); savedOnboarding = snapshot.onboarding }
+    if (snapshot) {
+      enabled = snapshot.enabled; Object.assign(salon, snapshot.salon); savedOnboarding = snapshot.onboarding
+      services.splice(0, services.length, ...snapshot.services)
+      assignments.clear()
+      for (const [id, active] of snapshot.assignments) assignments.set(id, active)
+      assignmentDurations.clear()
+      for (const [id, duration] of snapshot.assignmentDurations) assignmentDurations.set(id, duration)
+      nextServiceId = snapshot.nextServiceId
+    }
     transactionOpen = false; snapshot = undefined
     return { rows: [] }
   }
@@ -119,6 +134,7 @@ function runQuery(sql: string, values: readonly unknown[] = [], scope: 'pool' | 
   }
   if (sql.includes('INSERT INTO professional_services')) {
     assignments.set(String(values[2]), true)
+    assignmentDurations.set(String(values[2]), values[3] as number | null)
     return { rows: [] }
   }
   if (sql.includes('INSERT INTO appointments')) return { rows: [{ id: '50000000-0000-4000-8000-000000000001', salon_id: salonId, status_code: 'scheduled' }] }
@@ -138,18 +154,41 @@ function runQuery(sql: string, values: readonly unknown[] = [], scope: 'pool' | 
     // getNailSettings retains all definitions, including inactive services.
     return { rows: services.filter((service) => service.category_id === values[1]) }
   }
-  if (sql.includes('SELECT id FROM services')) return { rows: services.filter((service) => service.category_id === values[1] && service.slug === values[2]).map(({ id }) => ({ id })) }
+  if (sql.includes('SELECT id FROM services')) {
+    assert.match(sql, /id = \$3::uuid OR lower\(name\) = lower\(\$4\)/)
+    assert.match(sql, /ORDER BY \(id = \$3::uuid\) DESC NULLS LAST/)
+    const categoryServices = services.filter(service => service.salon_id === values[0] && service.category_id === values[1])
+    const match = categoryServices.find(service => service.id === values[2])
+      ?? categoryServices.find(service => service.name.toLowerCase() === String(values[3]).toLowerCase())
+    return { rows: match ? [{ id: match.id }] : [] }
+  }
   if (sql.includes('UPDATE services')) {
-    assert.ok(enabled.has(services.find((service) => service.id === values[1])!.category_id), 'wizard must not rewrite disabled definitions')
-    return { rows: [{ id: values[1] }] }
+    const service = services.find(service => service.salon_id === values[0] && service.id === values[1])
+    assert.ok(service)
+    assert.ok(enabled.has(service.category_id), 'wizard must not rewrite disabled definitions')
+    assert.doesNotMatch(sql, /\bslug\s*=/, 'updating a saved service must preserve its slug')
+    Object.assign(service, {
+      name: String(values[2]), duration_minutes: Number(values[3]), price_minor: Number(values[4]),
+      sort_order: Number(values[5]), currency_code: 'USD', is_active: true, is_publicly_bookable: true,
+    })
+    return { rows: [{ id: service.id }] }
   }
   if (sql.includes('INSERT INTO services')) {
     assert.ok(enabled.has(String(values[1])), 'cannot create services in disabled categories')
-    if (sql.includes('ON CONFLICT')) {
-      assert.match(sql, /WHERE services.category_id = EXCLUDED.category_id/, 'onboarding cannot overwrite another category through a slug conflict')
-      if (services.some((service) => service.slug === values[3] && service.category_id !== values[1])) return { rows: [] }
+    assert.match(sql, /ON CONFLICT \(salon_id, slug\) DO NOTHING/, 'a conflicting slug cannot mutate an existing service')
+    const slug = values[3]
+    assert.ok(typeof slug === 'string' && slug.length > 0 && slug.length <= 160, 'services.slug is nonempty VARCHAR(160)')
+    assert.match(slug, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'generated service slugs contain only valid normalized segments')
+    if (services.some(service => service.salon_id === values[0] && service.slug === slug)) return { rows: [] }
+    const created = {
+      ...(services[0] ?? definitionSnapshot[0]), id: `40000000-0000-4000-8000-${String(nextServiceId++).padStart(12, '0')}`,
+      salon_id: String(values[0]), category_id: String(values[1]),
+      category_code: categories.find(category => category.id === values[1])!.code,
+      name: String(values[2]), slug, duration_minutes: Number(values[4]), price_minor: Number(values[5]),
+      sort_order: Number(values[6]), is_active: true, is_publicly_bookable: true,
     }
-    return { rows: [{ ...services[0], category_id: values[1] }] }
+    services.push(created)
+    return { rows: [{ ...created }] }
   }
   throw new Error(`Unexpected local lifecycle SQL: ${sql}`)
 }
@@ -220,10 +259,95 @@ try {
     services: [{ id: 'new-draft-service', categoryId: ids[0], name: services[2].name, selected: true, price: '10', duration: '60' }],
     providers: [{ ...populatedStaleDraft.providers[0], serviceIds: ['new-draft-service'] }],
   }
-  await assert.rejects(dataService.saveOnboarding(salonId, { step: 'complete', completed: true, draft: collisionDraft }), /already exists in another category/)
-  assert.deepEqual(services, definitionSnapshot, 'slug collisions cannot overwrite disabled-category service definitions')
-  console.log('PASS onboarding rejects slug collisions across categories without changing disabled definitions')
+  const otherCategoryDefinition = structuredClone(services[2])
+  const beforeCollisionCount = services.length
+  await dataService.saveOnboarding(salonId, { step: 'complete', completed: true, draft: collisionDraft })
+  const collisionService = services.find(service => service.category_id === ids[0] && service.name === otherCategoryDefinition.name)
+  assert.ok(collisionService)
+  assert.notEqual(collisionService.id, otherCategoryDefinition.id)
+  assert.notEqual(collisionService.slug, otherCategoryDefinition.slug)
+  assert.equal(services.length, beforeCollisionCount + 1)
+  assert.deepEqual(services.find(service => service.id === otherCategoryDefinition.id), otherCategoryDefinition, 'a same-name service never overwrites the disabled category definition')
+  assert.equal(assignments.get(collisionService.id), true, 'the draft assignment uses the newly created category-specific service')
+  assert.equal(assignments.get(otherCategoryDefinition.id), true, 'dormant assignments remain unchanged')
+  console.log('PASS onboarding accepts a same-name service in another category while preserving the disabled definition')
 
+  await dataService.updateServiceCategories(salonId, [ids[0], ids[1]])
+  const legacyRemoval = { ...services[0], id: '40000000-0000-4000-8000-000000000006', name: 'Removal', slug: 'custom-removal-legacy' }
+  services.push(legacyRemoval)
+  const sameNameDraft = {
+    ...populatedStaleDraft,
+    selectedCategoryIds: [ids[0], ids[1]],
+    services: [
+      { id: 'nails-removal-draft', categoryId: ids[0], name: 'Removal', selected: true, price: '15', duration: '30' },
+      { id: 'lashes-removal-draft', categoryId: ids[1], name: 'Removal', selected: true, price: '20', duration: '45' },
+    ],
+    providers: [{ ...populatedStaleDraft.providers[0], serviceIds: ['nails-removal-draft', 'lashes-removal-draft'], serviceDurations: { 'nails-removal-draft': '35', 'lashes-removal-draft': '50' } }],
+  }
+  const countBeforeSameName = services.length
+  await dataService.saveOnboarding(salonId, { step: 'complete', completed: true, draft: sameNameDraft })
+  const removalServices = services.filter(service => service.name === 'Removal')
+  assert.equal(removalServices.length, 2)
+  assert.equal(services.length, countBeforeSameName + 1, 'the existing same-category name is reused')
+  const nailRemoval = removalServices.find(service => service.category_id === ids[0])!
+  const lashRemoval = removalServices.find(service => service.category_id === ids[1])!
+  assert.equal(nailRemoval.id, legacyRemoval.id)
+  assert.equal(nailRemoval.slug, 'custom-removal-legacy', 'existing service slugs remain stable')
+  assert.notEqual(nailRemoval.id, lashRemoval.id)
+  assert.notEqual(nailRemoval.slug, lashRemoval.slug)
+  assert.equal(nailRemoval.price_minor, 1500)
+  assert.equal(lashRemoval.price_minor, 2000)
+  assert.equal(nailRemoval.duration_minutes, 30)
+  assert.equal(lashRemoval.duration_minutes, 45)
+  assert.equal(assignments.get(nailRemoval.id), true)
+  assert.equal(assignments.get(lashRemoval.id), true)
+  assert.equal(assignmentDurations.get(nailRemoval.id), 35)
+  assert.equal(assignmentDurations.get(lashRemoval.id), 50)
+  const removalSnapshot = structuredClone(removalServices)
+  const countBeforeRetry = services.length
+  await dataService.saveOnboarding(salonId, { step: 'complete', completed: true, draft: sameNameDraft })
+  assert.equal(services.length, countBeforeRetry, 'retry creates no additional services')
+  assert.deepEqual(services.filter(service => service.name === 'Removal'), removalSnapshot)
+  assert.equal(assignments.get(nailRemoval.id), true)
+  assert.equal(assignments.get(lashRemoval.id), true)
+  assert.equal(assignmentDurations.get(nailRemoval.id), 35)
+  assert.equal(assignmentDurations.get(lashRemoval.id), 50)
+  assert.deepEqual(services.find(service => service.id === otherCategoryDefinition.id), otherCategoryDefinition)
+  console.log('PASS active categories share a display name with separate IDs, stable legacy slugs, independent prices and idempotent assignments')
+
+  const renamedDraft = {
+    ...sameNameDraft,
+    services: [{ ...sameNameDraft.services[0], id: nailRemoval.id, name: 'Removal refresh' }],
+    providers: [{ ...populatedStaleDraft.providers[0], serviceIds: [nailRemoval.id] }],
+  }
+  await dataService.saveOnboarding(salonId, { step: 'complete', completed: true, draft: renamedDraft })
+  assert.equal(services.length, countBeforeRetry, 'renaming a persisted draft UUID updates its existing row')
+  assert.equal(services.find(service => service.id === nailRemoval.id)?.name, 'Removal refresh')
+  assert.equal(services.find(service => service.id === nailRemoval.id)?.slug, 'custom-removal-legacy')
+  assert.deepEqual(services.find(service => service.id === lashRemoval.id), removalSnapshot.find(service => service.id === lashRemoval.id))
+  assert.equal(assignments.get(nailRemoval.id), true)
+  console.log('PASS persisted draft service IDs preserve identity and slug through a name change')
+
+  const normalizedNames = ['Lash lift', 'Lash-lift', 'A'.repeat(160), 'Á'.repeat(160)]
+  assert.ok(normalizedNames.every(name => name.length <= 160), 'fixtures satisfy the service name validation limit')
+  const normalizedDraftServices = normalizedNames.map((name, index) => ({ id: `normalized-draft-${index}`, categoryId: ids[0], name, selected: true, price: '10', duration: '30' }))
+  const normalizedDraft = {
+    ...sameNameDraft, services: normalizedDraftServices,
+    providers: [{ ...populatedStaleDraft.providers[0], serviceIds: normalizedDraftServices.map(service => service.id) }],
+  }
+  const beforeNormalizedCount = services.length
+  await dataService.saveOnboarding(salonId, { step: 'complete', completed: true, draft: normalizedDraft })
+  const normalizedServices = services.filter(service => normalizedNames.includes(service.name))
+  assert.equal(normalizedServices.length, 4)
+  assert.equal(services.length, beforeNormalizedCount + 4, 'different display names remain separate even when their normalized slugs collide')
+  assert.equal(new Set(normalizedServices.map(service => service.slug)).size, 4)
+  assert.ok(normalizedServices.every(service => service.slug.length <= 160 && assignments.get(service.id)))
+  const normalizedSnapshot = structuredClone(normalizedServices)
+  await dataService.saveOnboarding(salonId, { step: 'complete', completed: true, draft: normalizedDraft })
+  assert.equal(services.length, beforeNormalizedCount + 4)
+  assert.deepEqual(services.filter(service => normalizedNames.includes(service.name)), normalizedSnapshot)
+  assert.ok(normalizedServices.every(service => assignments.get(service.id)))
+  console.log('PASS same-category normalized-name and long accented-name collisions remain distinct, bounded to 160 characters and retry safely')
 
   await dataService.updateServiceCategories(salonId, [])
   const staleDraft = { selectedCategoryIds: ids, services: [], schedule: {}, providers: [] }
@@ -307,6 +431,35 @@ try {
   assert.equal(headers.get('cache-control'), 'no-store')
   assert.deepEqual(response.data?.draft_data, resumableDraft)
   console.log('PASS real GET handler returns the recoverable session without caching it')
+
+  // A brand-new salon has no persisted memberships or services until completion.
+  salon.onboarding_status = 'in_progress'
+  salon.booking_enabled = false
+  enabled = new Set()
+  savedOnboarding = null
+  services.splice(0)
+  assignments.clear()
+  assignmentDurations.clear()
+  const newSalonResult = await dataService.saveOnboarding(salonId, {
+    step: 'complete', completed: true,
+    draft: { ...sameNameDraft, schedule: { Monday: { enabled: true, open: '09:00', close: '18:00' } } },
+  })
+  assert.equal(newSalonResult.onboarding_status, 'completed')
+  assert.equal(newSalonResult.booking_enabled, true)
+  assert.deepEqual([...enabled], [ids[0], ids[1]])
+  assert.equal(services.length, 2)
+  assert.ok(services.every(service => service.name === 'Removal'))
+  assert.equal(new Set(services.map(service => service.id)).size, 2)
+  assert.equal(new Set(services.map(service => service.slug)).size, 2)
+  assert.deepEqual(new Set(services.map(service => service.category_id)), new Set([ids[0], ids[1]]))
+  assert.ok(services.every(service => assignments.get(service.id)), 'the provider receives both category-specific service IDs')
+  assert.equal(assignmentDurations.get(services.find(service => service.category_id === ids[0])!.id), 35)
+  assert.equal(assignmentDurations.get(services.find(service => service.category_id === ids[1])!.id), 50)
+  const newSalonServices = structuredClone(services)
+  await dataService.saveOnboarding(salonId, { step: 'complete', completed: true, draft: sameNameDraft })
+  assert.deepEqual(services, newSalonServices, 'retry after first completion preserves both services and their identities')
+  assert.ok(services.every(service => assignments.get(service.id)))
+  console.log('PASS new-salon completion activates both categories with same-name services, distinct provider assignments and idempotent retry')
 } finally {
   await pool.end()
 }
