@@ -260,13 +260,9 @@ export function LashMapEditor({
             eye === "leftEye" && "-scale-x-100",
           )}
           style={{
-            backgroundImage: `url("${
-              String(details.style ?? "")
-                .toLowerCase()
-                .includes("cat")
-                ? lashesBookingAssets.lashMap.catEye
-                : lashesBookingAssets.lashMap.clean
-            }")`,
+            // All styles use the same blank map calibrated to these hotspots.
+            // The Cat eye reference image already contains printed lengths.
+            backgroundImage: `url("${lashesBookingAssets.lashMap.clean}")`,
             backgroundPosition: "50% 58%",
             backgroundSize: "148% auto",
           }}
