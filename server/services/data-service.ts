@@ -340,7 +340,7 @@ interface DashboardAppointment {
 }
 
 interface DashboardResult {
-  salon: Pick<Salon, 'id' | 'name' | 'slug' | 'currency_code' | 'timezone' | 'onboarding_status'>
+  salon: Pick<Salon, 'id' | 'name' | 'slug' | 'currency_code' | 'timezone' | 'onboarding_status' | 'booking_enabled' | 'is_active'>
   selectedDate: string
   revenue: {
     amountMinor: number
@@ -2055,6 +2055,8 @@ export const dataService = {
         currency_code: salon.currency_code,
         timezone: salon.timezone,
         onboarding_status: salon.onboarding_status,
+        booking_enabled: salon.booking_enabled,
+        is_active: salon.is_active,
       },
       selectedDate,
       revenue: {

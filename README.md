@@ -154,6 +154,21 @@ lash-map button through the real booking page. The isolated browser checks cover
 new bookings, pending saves, visible save errors, and retries that preserve both
 eyes and their three-point photo adjustments. All API responses are mocked.
 
+Deploy `npm run db:migrate:015` before restarting the API to support treatment
+records for appointments without an assigned professional. The migration is safe
+to repeat and keeps the salon/professional foreign key for assigned treatments.
+For database-level coverage, run `npm run test:treatment-persistence` with local
+PostgreSQL binaries installed (or set `GLAMHOUR_TEST_POSTGRES_BIN`). This separate
+test creates its own temporary cluster, applies the real migrations, reproduces
+the old constraint failure, and checks saves and retries after migration 015. It
+never reads the application's `.env` or connects to an existing database.
+
+Public links must be enabled on the Salon link page before copying or sharing.
+Activation changes only the public-booking flag and preserves the salon's other
+settings. `PLAYWRIGHT_CHANNEL=chrome npm run test:public-booking-activation` checks
+activation, failed activation/retry, reloads, and the dashboard's sharing controls
+with mocked API and clipboard calls.
+
 Public booking now requires email verification before confirmation. A six-digit
 code expires after ten minutes; successfully verified addresses are remembered
 per salon, so later bookings do not send another code. Deploy migration

@@ -82,6 +82,13 @@ async function readSticker(sticker: Locator) {
 async function state(page: Page) {
   return page.evaluate(() => (window as unknown as { lashState: LashPreviewStickersState }).lashState)
 }
+async function wheelOver(locator: Locator) {
+  return locator.evaluate(element => {
+    const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100 })
+    element.dispatchEvent(event)
+    return event.defaultPrevented
+  })
+}
 async function center(locator: Locator) {
   const box = await locator.boundingBox()
   assert.ok(box, 'the interaction target is visible')
@@ -119,6 +126,7 @@ try {
   ]) {
     const context = await browser.newContext({ viewport: { width: scenario.width, height: 852 }, hasTouch: scenario.touch, isMobile: scenario.touch, serviceWorkers: 'block' })
     const errors: string[] = []
+    const passiveWarnings: string[] = []
     const unexpected: string[] = []
     await context.route('**/*', route => {
       const url = new URL(route.request().url())
@@ -128,6 +136,9 @@ try {
     const page = await context.newPage()
     page.setDefaultTimeout(6000)
     page.on('pageerror', error => errors.push(error.message))
+    page.on('console', message => {
+      if (/passive event listener|Unable to preventDefault/i.test(message.text())) passiveWarnings.push(message.text())
+    })
     try {
       await page.goto(`${origin}/__lash_preview__${scenario.legacy ? '?legacy' : ''}`)
       await page.getByRole('img', { name: 'Lash style preview', exact: true }).waitFor()
@@ -135,6 +146,9 @@ try {
       const left = page.getByRole('button', { name: 'left eye lash sticker', exact: true })
       const right = page.getByRole('button', { name: 'right eye lash sticker', exact: true })
       assert.equal(await page.locator('.lash-preview-warp-point').count(), 0, 'controls appear only for the selected eye')
+      const beforeUnselectedWheel = await state(page)
+      assert.equal(await wheelOver(left), false, 'an unselected lash does not block page scrolling')
+      assert.deepEqual(await state(page), beforeUnselectedWheel, 'wheel does not resize an unselected lash')
 
       // Start on an unselected sticker so this is an actual move, not a warp.
       const beforeMove = await readSticker(left)
@@ -168,6 +182,16 @@ try {
           assert.equal((await state(page))[id].warpPoints?.length, 3, 'persisted warp state uses three points')
         }
       }
+
+      const beforeWheel = await state(page)
+      assert.equal(await wheelOver(left), false, 'scrolling over the other eye remains available')
+      assert.deepEqual(await state(page), beforeWheel)
+      assert.equal(await wheelOver(right.locator('.lash-preview-warp-point').nth(1)), true, 'selected lash wheel sizing cancels page scrolling, including over a curve control')
+      await settleCanvas(page)
+      const afterWheel = await state(page)
+      assert.ok(Math.abs(afterWheel.b.scale - beforeWheel.b.scale - 0.08) < 1e-10, 'one wheel event applies one size adjustment')
+      assert.deepEqual(afterWheel.b.warpPoints, beforeWheel.b.warpPoints, 'wheel sizing retains the three curve controls')
+      assert.deepEqual(afterWheel.a, beforeWheel.a, 'wheel sizing leaves the other eye untouched')
 
       const beforeSize = await state(page)
       await page.getByRole('button', { name: 'Increase lash size', exact: true }).click()
@@ -228,8 +252,9 @@ try {
         await page.screenshot({ path: '/private/tmp/glamhour-pdf-review/lash-preview-three-controls.png', fullPage: false })
       }
       assert.deepEqual(errors, [], 'no browser exceptions')
+      assert.deepEqual(passiveWarnings, [], 'wheel and touch interactions emit no passive-listener warnings')
       assert.deepEqual(unexpected, [], 'the test does not access APIs or external data')
-      console.log(`PASS ${scenario.name}: three isolated curve controls, movement, size, rotation, and save/reopen`)
+      console.log(`PASS ${scenario.name}: three isolated curve controls, movement, wheel sizing without passive warnings, size, rotation, and save/reopen`)
     } finally { await context.close() }
   }
 } finally {

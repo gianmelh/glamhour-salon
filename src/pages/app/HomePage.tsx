@@ -7,7 +7,7 @@ import {
   Badge, Button, Card, ErrorState, LoadingState,
   ProfessionalEditorModal, emptyProfessionalDraft, type ProfessionalDraft,
 } from '../../components'
-import { useDashboard, useNailSettings, useProfessionals, useServiceCategories, useServices, useSubscription } from '../../hooks/useGlamhourData'
+import { useDashboard, useNailSettings, useProfessionals, useServiceCategories, useServices, useSettings, useSubscription } from '../../hooks/useGlamhourData'
 import { useMutation } from '../../hooks/useMutation'
 import { writeClipboard } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
@@ -94,6 +94,7 @@ export function HomePage() {
   const categories = useServiceCategories()
   const nailSettings = useNailSettings()
   const subscription = useSubscription()
+  const settings = useSettings()
   const saveProvider = useMutation((input: ProfessionalDraft) => glamhourApi.createProfessional(input))
   const days = useMemo(() => weekDays(selectedDate), [selectedDate])
   const enabledCategoryIds = useMemo(
@@ -125,6 +126,8 @@ export function HomePage() {
   const providerResourcesFallback = professionals.isFallback || services.isFallback || categories.isFallback || !nailSettings.data || !services.data || !categories.data
   const bookingUrl = publicBookingUrl(data.salon.slug)
   const hasPremiumAccess = subscription.data.hasPremiumAccess
+  const canShareBooking = hasPremiumAccess && !settings.loading && !settings.error && !settings.isFallback
+    && settings.data?.allow_public_booking && data.salon.booking_enabled && data.salon.is_active
 
   function openProviderEditor() {
     if (staffLimitReached || providerResourcesLoading || providerResourcesFallback) {
@@ -149,7 +152,7 @@ export function HomePage() {
   }
 
   async function copyBookingLink() {
-    if (!hasPremiumAccess) return
+    if (!canShareBooking) return
     try {
       await writeClipboard(bookingUrl)
       setCopyState('success')
@@ -317,18 +320,18 @@ export function HomePage() {
           <h2 className="text-[15px] font-bold text-[#111827]">Your Booking Link</h2>
         </div>
         <p className="mt-2 text-[10px] leading-4 text-[#68738b]">
-          {hasPremiumAccess ? 'Share this link with clients so they can book appointments directly online.' : 'Online booking links are available with an active Premium membership.'}
+          {canShareBooking ? 'Share this link with clients so they can book appointments directly online.' : hasPremiumAccess ? 'Enable your booking link on the share page before sending it to clients.' : 'Online booking links are available with an active Premium membership.'}
         </p>
         {hasPremiumAccess ? (
           <>
             <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
               <div className="truncate rounded-md bg-white px-3 py-2 text-[10px] font-medium text-[#111827]">{bookingUrl}</div>
-              <Button className="min-h-8 rounded-md px-3 text-[10px]" onClick={() => void copyBookingLink()} size="sm">
+              <Button className="min-h-8 rounded-md px-3 text-[10px]" disabled={!canShareBooking} onClick={() => void copyBookingLink()} size="sm">
                 <Copy className="mr-1 size-3" /> {copyState === 'success' ? 'Copied' : 'Copy'}
               </Button>
             </div>
             {copyState === 'error' && <p className="mt-2 text-[10px] font-semibold text-[#b42318]">Copy failed. Select the link and copy it manually.</p>}
-            <Link className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-[#7a3fe0]" to="/app/share">Go to share page <ArrowRight className="size-3" /></Link>
+            <Link className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-[#7a3fe0]" to="/app/share">{canShareBooking ? 'Go to share page' : 'Set up booking link'} <ArrowRight className="size-3" /></Link>
           </>
         ) : (
           <Link className="mt-3 inline-flex min-h-8 items-center justify-center rounded-md bg-glam-gradient px-4 text-[10px] font-bold text-white shadow-action" to="/app/settings/subscription">

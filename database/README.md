@@ -18,6 +18,7 @@ This directory contains the PostgreSQL database architecture and mockup-derived 
 12. `migrations/012_stripe_subscriptions.sql` - subscription plans and billing
 13. `migrations/013_unique_client_contact.sql` - unique active client email and phone per salon
 14. `migrations/014_public_booking_email_verification.sql` - persistent verified booking emails and expiring verification codes
+15. `migrations/015_optional_treatment_professional.sql` - save clinical treatment details for appointments awaiting a professional assignment
 
 ## Local Application
 
@@ -45,6 +46,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/011_client_appoin
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/012_stripe_subscriptions.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/013_unique_client_contact.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/014_public_booking_email_verification.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/015_optional_treatment_professional.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/seeds/001_mockup_seed_data.sql
 ```
 

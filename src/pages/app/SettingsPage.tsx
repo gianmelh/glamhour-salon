@@ -61,11 +61,15 @@ export function SettingsPage() {
   const clientLimit = subscriptionData.clientUsage.limit ?? 15
   const setupState = { salonId: salon.data.id, salonName: salon.data.name, returnTo: '/app/settings' }
   const savePublicBooking = async () => {
-    const updated = await mutation.mutate({
-      allowPublicBooking: true,
-      settingsJson: mergePublicBookingShareSettings(settingsData.settings_json, shareForm),
-    })
-    settings.setData(updated)
+    try {
+      const updated = await mutation.mutate({
+        allowPublicBooking: true,
+        settingsJson: mergePublicBookingShareSettings(settingsData.settings_json, shareForm),
+      })
+      settings.setData(updated)
+    } catch {
+      // MutationError displays the failure while the salon keeps its edits.
+    }
   }
 
   const logOut = () => {

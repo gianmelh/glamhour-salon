@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -6,7 +7,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type SyntheticEvent as ReactSyntheticEvent,
-  type WheelEvent as ReactWheelEvent,
 } from "react";
 import { cn } from "../../../../lib/cn";
 import {
@@ -587,7 +587,7 @@ export function LashPreviewCanvas({
     onStickersChangeRef.current?.(stickersRef.current);
   };
 
-  const updateSticker = (id: StickerId, patch: Partial<StickerState>, options: { persist?: boolean } = {}) => {
+  const updateSticker = useCallback((id: StickerId, patch: Partial<StickerState>, options: { persist?: boolean } = {}) => {
     const shouldPersist = options.persist ?? true;
     const current = stickersRef.current;
     const merged = { ...current[id], ...patch };
@@ -609,7 +609,26 @@ export function LashPreviewCanvas({
     stickersRef.current = next;
     setStickers(next);
     if (shouldPersist) onStickersChangeRef.current?.(next);
-  };
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!(event.target instanceof Element)) return;
+      const sticker = event.target.closest<HTMLElement>("[data-lash-sticker-id]");
+      const id = sticker?.dataset.lashStickerId;
+      if ((id !== "a" && id !== "b") || selectedIdRef.current !== id) return;
+      if (event.cancelable) event.preventDefault();
+      event.stopPropagation();
+      const delta = event.deltaY > 0 ? -0.08 : 0.08;
+      updateSticker(id, { scale: clampScale(stickersRef.current[id].scale + delta) });
+    };
+    // React's delegated wheel listener is passive. A local non-passive listener
+    // prevents page scrolling only while sizing the selected lash with a wheel.
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, [assets, updateSticker]);
 
   const beginDrag = (
     id: StickerId,
@@ -928,19 +947,6 @@ export function LashPreviewCanvas({
     persistCurrentStickers();
   };
 
-  const onWheel = (
-    id: StickerId,
-    event: ReactWheelEvent<HTMLElement>,
-  ) => {
-    if (selectedId !== id) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const delta = event.deltaY > 0 ? -0.08 : 0.08;
-    updateSticker(id, {
-      scale: clampScale(stickersRef.current[id].scale + delta),
-    });
-  };
-
   const nudgeScale = (id: StickerId, delta: number) => {
     updateSticker(id, {
       scale: clampScale(stickersRef.current[id].scale + delta),
@@ -1122,12 +1128,12 @@ export function LashPreviewCanvas({
                   "outline outline-2 outline-[#7344cd]/70 outline-offset-2",
               )}
               key={id}
+              data-lash-sticker-id={id}
               onKeyDown={(event) => onStickerKeyDown(id, event)}
               onPointerCancel={endPointer}
               onPointerDown={(event) => onPointerDown(id, event)}
               onPointerMove={onPointerMove}
               onPointerUp={endPointer}
-              onWheel={(event) => onWheel(id, event)}
               role="button"
               style={{
                 ...stylePos,

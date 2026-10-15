@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, Copy } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Button, Card, DataSourceNotice, ErrorState, LoadingState } from '../../components'
+import { Button, Card, DataSourceNotice, ErrorState, LoadingState, MutationError } from '../../components'
 import { useSalon, useSettings, useSubscription } from '../../hooks/useGlamhourData'
+import { useMutation } from '../../hooks/useMutation'
+import { glamhourApi } from '../../services/glamhour-api'
 import { writeClipboard } from '../../lib/clipboard'
 import { phoneForUrl, publicBookingShareSettings } from '../../lib/public-booking-settings'
 import { publicBookingShareMessage, publicBookingUrl } from '../../lib/public-booking-url'
@@ -27,6 +29,7 @@ export function SharePage() {
   const salon = useSalon()
   const settings = useSettings()
   const subscription = useSubscription()
+  const activation = useMutation(() => glamhourApi.updateSettings({ allowPublicBooking: true }, salon.data?.id))
   const bookingUrl = useMemo(() => salon.data ? publicBookingUrl(salon.data.slug) : '', [salon.data])
   const shareSettings = publicBookingShareSettings(settings.data?.settings_json)
 
@@ -37,13 +40,25 @@ export function SharePage() {
   }, [copyState])
 
   if (salon.loading || settings.loading || subscription.loading) return <LoadingState label="Loading salon link..." />
-  if (!salon.data || !settings.data || !subscription.data) return <ErrorState description={salon.error?.message ?? settings.error?.message ?? subscription.error?.message ?? 'Salon could not be loaded'} onRetry={() => { salon.retry(); settings.retry(); subscription.retry() }} />
+  if (!salon.data || !settings.data || !subscription.data || salon.error || settings.error || subscription.error || salon.isFallback || settings.isFallback || subscription.isFallback) return <ErrorState description={salon.error?.message ?? settings.error?.message ?? subscription.error?.message ?? 'Salon could not be loaded'} onRetry={() => { salon.retry(); settings.retry(); subscription.retry() }} />
 
   const hasPremiumAccess = subscription.data.hasPremiumAccess
+  const setupComplete = salon.data.booking_enabled && salon.data.is_active
+  const canShare = hasPremiumAccess && setupComplete && settings.data.allow_public_booking
+
+  const enableBookingLink = async () => {
+    if (!hasPremiumAccess || !setupComplete || activation.loading) return
+    try {
+      const updated = await activation.mutate(undefined)
+      settings.setData(updated)
+    } catch {
+      // Keep sharing disabled and expose the failed activation below its button.
+    }
+  }
 
   const copyLink = async () => {
     setConfigurationPrompt(null)
-    if (!hasPremiumAccess) {
+    if (!canShare) {
       setCopyState('idle')
       return
     }
@@ -77,7 +92,7 @@ export function SharePage() {
       label: 'WhatsApp',
       icon: '/Glamhour - Assets/Salon link/Icon-4.svg',
       onClick: () => {
-        if (!hasPremiumAccess) return
+        if (!canShare) return
         if (!requireConfiguration('WhatsApp', whatsappPhone, 'Add your WhatsApp number in Public booking settings to use this option.')) return
         window.open(`https://wa.me/${whatsappPhone}?text=${encodedMessage}`, '_blank', 'noopener,noreferrer')
       },
@@ -86,7 +101,7 @@ export function SharePage() {
       label: 'SMS / Message',
       icon: '/Glamhour - Assets/Salon link/Icon-3.svg',
       onClick: () => {
-        if (!hasPremiumAccess) return
+        if (!canShare) return
         if (!requireConfiguration('SMS / Message', smsPhone, 'Add your SMS / Message number in Public booking settings to use this option.')) return
         window.location.href = `sms:${smsPhone}${isIos() ? '&' : '?'}body=${encodedMessage}`
       },
@@ -95,7 +110,7 @@ export function SharePage() {
       label: 'Facebook',
       icon: '/Glamhour - Assets/Salon link/Icon-2.svg',
       onClick: () => {
-        if (!hasPremiumAccess) return
+        if (!canShare) return
         if (!requireConfiguration('Facebook', facebookUrl, 'Add your Facebook link in Public booking settings to use this option.')) return
         window.open(facebookUrl, '_blank', 'noopener,noreferrer')
       },
@@ -104,7 +119,7 @@ export function SharePage() {
       label: 'Instagram',
       icon: '/Glamhour - Assets/Salon link/Icon-1.svg',
       onClick: async () => {
-        if (!hasPremiumAccess) return
+        if (!canShare) return
         if (!requireConfiguration('Instagram', instagramUrl, 'Add your Instagram link in Public booking settings to use this option.')) return
         await copyLink()
         window.open(instagramUrl, '_blank', 'noopener,noreferrer')
@@ -131,7 +146,7 @@ export function SharePage() {
           <p className="text-[12px] font-extrabold text-[#101827]">Your Booking Link</p>
         </div>
         <p className="mt-2 max-w-[250px] text-[10px] font-medium leading-4 text-[#596275]">
-          {hasPremiumAccess ? 'Share this link with clients so they can book appointments directly online.' : 'Online booking links are available with an active Premium membership.'}
+          {canShare ? 'Share this link with clients so they can book appointments directly online.' : hasPremiumAccess ? 'Activate your booking link before sharing it with clients.' : 'Online booking links are available with an active Premium membership.'}
         </p>
         {!hasPremiumAccess && (
           <div className="mt-3 rounded-md border border-[#ded3ff] bg-white p-3">
@@ -142,9 +157,19 @@ export function SharePage() {
             </Link>
           </div>
         )}
-        <div className={`mt-4 flex min-h-10 items-center gap-2 rounded-md bg-white px-3 py-2 ${hasPremiumAccess ? '' : 'opacity-60'}`}>
+        {hasPremiumAccess && !setupComplete && (
+          <Link className="mt-3 inline-flex min-h-9 items-center rounded-md bg-glam-gradient px-3 text-xs font-bold text-white" to="/onboarding/complete">Complete salon setup</Link>
+        )}
+        {hasPremiumAccess && setupComplete && !settings.data.allow_public_booking && (
+          <div className="mt-3 space-y-3 rounded-md border border-[#ded3ff] bg-white p-3">
+            <p className="text-xs text-[#596275]">Your booking link is disabled. Enable it to let clients book your available services.</p>
+            <Button fullWidth loading={activation.loading} onClick={() => void enableBookingLink()} size="sm">Enable booking link</Button>
+          </div>
+        )}
+        {activation.error && <div className="mt-3" role="alert"><MutationError error={activation.error} /></div>}
+        <div className={`mt-4 flex min-h-10 items-center gap-2 rounded-md bg-white px-3 py-2 ${canShare ? '' : 'opacity-60'}`}>
           <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-[#101827]">{bookingUrl.replace(/^https?:\/\//, '')}</span>
-          <Button className="min-h-7 rounded-[5px] px-3 text-[10px]" disabled={!hasPremiumAccess} onClick={copyLink} size="sm" type="button">
+          <Button className="min-h-7 rounded-[5px] px-3 text-[10px]" disabled={!canShare} onClick={copyLink} size="sm" type="button">
             <Copy className="size-3" /> Copy
           </Button>
         </div>
@@ -155,7 +180,7 @@ export function SharePage() {
       <div className="mt-4 space-y-3">
         {shareOptions.map((option) => (
           <div className="space-y-2" key={option.label}>
-            <button className="flex min-h-[58px] w-full flex-col items-center justify-center rounded-lg bg-white text-center shadow-card disabled:opacity-60" disabled={!hasPremiumAccess} onClick={option.onClick} type="button">
+            <button className="flex min-h-[58px] w-full flex-col items-center justify-center rounded-lg bg-white text-center shadow-card disabled:opacity-60" disabled={!canShare} onClick={option.onClick} type="button">
               <img alt="" className="size-4" src={option.icon} />
               <span className="mt-1 text-[10px] font-extrabold text-[#101827]">{option.label}</span>
             </button>

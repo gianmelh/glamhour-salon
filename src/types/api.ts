@@ -329,7 +329,7 @@ export interface DashboardAppointment {
 }
 
 export interface DashboardSummary {
-  salon: Pick<Salon, 'id' | 'name' | 'slug' | 'currency_code' | 'timezone' | 'onboarding_status'>
+  salon: Pick<Salon, 'id' | 'name' | 'slug' | 'currency_code' | 'timezone' | 'onboarding_status' | 'booking_enabled' | 'is_active'>
   selectedDate: string
   revenue: {
     amountMinor: number
