@@ -41,9 +41,10 @@ export const useClients = (salonId?: string) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
   return useApiResource(useCallback(() => glamhourApi.clients(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackClients))
 }
-export const useServices = (salonId?: string) => {
+export const useServices = (salonId?: string, options?: { includeInactive?: boolean }) => {
   const resolvedSalonId = useResolvedSalonId(salonId)
-  return useApiResource(useCallback(() => glamhourApi.services(resolvedSalonId), [resolvedSalonId]), fallbackForSalon(resolvedSalonId, fallbackServices))
+  const includeInactive = options?.includeInactive
+  return useApiResource(useCallback(() => glamhourApi.services(resolvedSalonId, { includeInactive }), [resolvedSalonId, includeInactive]), fallbackForSalon(resolvedSalonId, fallbackServices))
 }
 export const useServiceCategories = (salonId?: string, options?: { includeAll?: boolean }) => {
   const resolvedSalonId = useResolvedSalonId(salonId)

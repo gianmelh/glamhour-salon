@@ -525,6 +525,16 @@ export interface EnsureServiceInput extends CreateServiceInput {
   slug: string
 }
 
+export interface UpdateServiceInput {
+  name?: string
+  description?: string | null
+  durationMinutes?: number
+  priceMinor?: number
+  currencyCode?: string
+  isPubliclyBookable?: boolean
+  isActive?: boolean
+}
+
 export interface UpdateSettingsInput {
   appointmentIntervalMinutes?: number
   minimumBookingNoticeMinutes?: number
@@ -569,6 +579,7 @@ export interface OnboardingProviderInput {
 export interface SaveOnboardingInput {
   step: 'categories' | 'services' | 'schedule' | 'team' | 'complete'
   completed?: boolean
+  preserveServiceCatalog?: boolean
   draft: {
     selectedCategoryIds: string[]
     services: OnboardingServiceInput[]

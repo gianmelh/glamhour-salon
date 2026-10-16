@@ -13,6 +13,7 @@ import { CalendarPage } from './pages/app/CalendarPage'
 import { ClientsPage } from './pages/app/ClientsPage'
 import { HomePage } from './pages/app/HomePage'
 import { NailSettingsPage } from './pages/app/NailSettingsPage'
+import { CategoryServicesPage } from './pages/app/CategoryServicesPage'
 import { NewAppointmentPage } from './pages/app/NewAppointmentPage'
 import { SalesPage } from './pages/app/SalesPage'
 import { SalesHistoryDetailsPage } from './pages/app/SalesHistoryDetailsPage'
@@ -60,6 +61,7 @@ function App() {
         <Route path="settings/subscription/cancel" element={<SubscriptionPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/services/nails" element={<NailSettingsPage />} />
+        <Route path="settings/categories/:categoryCode/services" element={<CategoryServicesPage />} />
       </Route>
 
       <Route path="book/:salonSlug" element={<PublicBookingPage />} />

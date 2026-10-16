@@ -62,6 +62,7 @@ import {
   updateAppointmentTreatmentDetailsSchema,
   updateSalonSettingsSchema,
   updateServiceCategoriesSchema,
+  updateServiceSchema,
   uploadTreatmentMediaSchema,
   upsertProfessionalSchema,
   uuidSchema,
@@ -84,6 +85,7 @@ const listQuerySchema = paginationSchema.extend({
   endDate: z.string().date().optional(),
   status: z.string().trim().min(1).optional(),
   publicOnly: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+  includeInactive: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
 })
 
 const premiumPlanSchema = z.object({
@@ -379,6 +381,23 @@ router.post('/salons/:salonId/services/ensure', asyncHandler(async (request, res
   const { salonId } = validate(salonParamsSchema, request.params)
   const body = validate(ensureServiceSchema, request.body)
   response.status(200).json({ data: await dataService.ensureService(salonId, body) })
+}))
+
+router.post('/salons/:salonId/settings/services', asyncHandler(async (request, response) => {
+  const { salonId } = validate(salonParamsSchema, request.params)
+  const body = validate(createServiceSchema, request.body)
+  response.status(201).json({ data: await dataService.createServiceInSettings(salonId, body) })
+}))
+
+router.patch('/salons/:salonId/services/:id', asyncHandler(async (request, response) => {
+  const { salonId, id } = validate(salonResourceParamsSchema, request.params)
+  const body = validate(updateServiceSchema, request.body)
+  response.json({ data: await dataService.updateService(salonId, id, body) })
+}))
+
+router.delete('/salons/:salonId/services/:id', asyncHandler(async (request, response) => {
+  const { salonId, id } = validate(salonResourceParamsSchema, request.params)
+  response.json({ data: await dataService.deleteService(salonId, id) })
 }))
 
 router.get('/salons/:salonId/appointments', asyncHandler(async (request, response) => {

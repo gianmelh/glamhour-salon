@@ -69,6 +69,7 @@ export interface Service extends Timestamped {
   currency_code: string
   is_active: boolean
   is_publicly_bookable: boolean
+  deleted_at: string | null
   category_code?: string
   category_name?: string
 }

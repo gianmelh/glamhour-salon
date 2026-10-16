@@ -228,9 +228,9 @@ const serviceWriteBaseSchema = z.object({
   name: z.string().trim().min(1).max(160),
   slug: z.string().trim().min(1).max(160).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
   description: z.string().max(5000).optional(),
-  durationMinutes: z.number().int().positive(),
-  priceMinor: z.number().int().min(0),
-  currencyCode: z.string().trim().length(3).default('USD'),
+  durationMinutes: z.number().int().positive().max(2_147_483_647),
+  priceMinor: z.number().int().min(0).max(2_147_483_647),
+  currencyCode: z.string().trim().regex(/^[a-zA-Z]{3}$/).default('USD'),
   isPubliclyBookable: z.boolean().default(true),
   assignToActiveProviders: z.boolean().default(false),
 })
@@ -243,6 +243,18 @@ export const ensureServiceSchema = serviceWriteBaseSchema.extend({
   slug: z.string().trim().min(1).max(160).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
 }).refine((value) => Boolean(value.categoryId || value.categoryCode), {
   message: 'categoryId or categoryCode is required',
+})
+
+export const updateServiceSchema = z.object({
+  name: z.string().trim().min(1).max(160).optional(),
+  description: z.string().trim().max(5000).nullable().optional(),
+  durationMinutes: z.number().int().positive().max(2_147_483_647).optional(),
+  priceMinor: z.number().int().min(0).max(2_147_483_647).optional(),
+  currencyCode: z.string().trim().regex(/^[a-zA-Z]{3}$/).transform((value) => value.toUpperCase()).optional(),
+  isPubliclyBookable: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, {
+  message: 'At least one service field must be provided',
 })
 
 export const updateSalonSettingsSchema = z.object({
@@ -346,6 +358,7 @@ const onboardingDaySchema = z.object({
 export const saveOnboardingSchema = z.object({
   step: z.enum(['categories', 'services', 'schedule', 'team', 'complete']),
   completed: z.boolean().default(false),
+  preserveServiceCatalog: z.boolean().default(false),
   draft: z.object({
     selectedCategoryIds: z.array(uuidSchema),
     services: z.array(z.object({

@@ -189,6 +189,7 @@ export function SettingsPage() {
               description={`${settingsData.appointment_interval_minutes} minute appointment intervals`}
               icon={<CalendarDays className="size-4" />}
               label="Working hours"
+              state={{ ...setupState, preserveServiceCatalog: true }}
               to="/onboarding/schedule"
             />
           </ScreenSection>
@@ -204,7 +205,7 @@ export function SettingsPage() {
                     key={category.id}
                     label={category.name}
                     state={setupState}
-                    to={category.code === 'nails' && enabled ? '/app/settings/services/nails' : '/onboarding/categories'}
+                    to={`/app/settings/categories/${encodeURIComponent(category.code)}/services`}
                   />
                 )
               })}
@@ -290,6 +291,7 @@ function CategoryRow({ label, description, enabled, state, to }: { label: string
           <Badge tone={enabled ? 'success' : 'warning'}>{enabled ? 'Enabled' : 'Disabled'}</Badge>
         </div>
         <p className="mt-0.5 text-[11px] leading-4 text-muted">{description}</p>
+        <p className="mt-1 text-[11px] font-semibold text-primary">View and manage services</p>
       </div>
       {to ? <ChevronRight className="size-4 text-muted" /> : <span className="text-[11px] text-muted">Soon</span>}
     </>

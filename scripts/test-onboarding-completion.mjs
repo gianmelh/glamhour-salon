@@ -29,10 +29,12 @@ import { SetupPage } from '/src/pages/onboarding/SetupPage.tsx';
 import '/src/index.css';
 function LocationProbe() { const location = useLocation(); return React.createElement('output', { 'data-testid': 'route', hidden: true }, location.pathname); }
 const step = new URLSearchParams(location.search).get('step') || 'categories';
+const preserveServiceCatalog = new URLSearchParams(location.search).get('preserveServiceCatalog') === 'true';
 createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null,
-  React.createElement(MemoryRouter, { initialEntries: ['/onboarding/' + step] },
+  React.createElement(MemoryRouter, { initialEntries: [{ pathname: '/onboarding/' + step, state: { preserveServiceCatalog, ...(preserveServiceCatalog ? { returnTo: '/app/settings' } : {}) } }] },
     React.createElement(LocationProbe), React.createElement(Routes, null,
       React.createElement(Route, { path: '/onboarding/:step', element: React.createElement(SetupPage) }),
+      React.createElement(Route, { path: '/app/settings', element: React.createElement('h1', null, 'Settings fixture') }),
       React.createElement(Route, { path: '/app/home', element: React.createElement('h1', null, 'Home fixture') })))));
 </script></body></html>`
 
@@ -50,7 +52,7 @@ const server = await createServer({
 
 let browser
 let origin
-async function fixture({ localDraft, serverDraft, metadata = false, step = 'complete', enabledIds = [], configured = false, failGet = false, failSave = false } = {}) {
+async function fixture({ localDraft, serverDraft, metadata = false, step = 'complete', enabledIds = [], configured = false, failGet = false, failSave = false, catalogServices = [], professionals = [], preserveServiceCatalog = false } = {}) {
   const state = {
     session: serverDraft ? session(serverDraft) : metadata ? session({ salonName: 'Setup fixture', ownerEmail: 'owner@example.test' }) : null,
     puts: [], getCount: 0, failGet, failSave, enabledIds, configured,
@@ -75,7 +77,8 @@ async function fixture({ localDraft, serverDraft, metadata = false, step = 'comp
     const reject = message => route.fulfill({ status: 400, json: { error: { code: 'API_ERROR', message } } })
     if (path === '/service-categories') return respond(url.searchParams.has('includeAll') ? categories : categories.filter(c => state.enabledIds.includes(c.id)))
     if (path === `/salons/${salonId}`) return respond({ ...salon, onboarding_status: state.configured ? 'completed' : 'in_progress', booking_enabled: state.configured })
-    if (path === `/salons/${salonId}/services` || path === `/salons/${salonId}/professionals`) return respond([])
+    if (path === `/salons/${salonId}/services`) return respond(catalogServices)
+    if (path === `/salons/${salonId}/professionals`) return respond(professionals)
     if (path === `/salons/${salonId}/onboarding`) {
       if (request.method() === 'GET') {
         state.getCount++
@@ -97,7 +100,7 @@ async function fixture({ localDraft, serverDraft, metadata = false, step = 'comp
   const page = await context.newPage()
   page.setDefaultTimeout(15_000)
   page.on('pageerror', error => errors.push(error.message))
-  await page.goto(`${origin}/__onboarding_completion__?step=${step}`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+  await page.goto(`${origin}/__onboarding_completion__?step=${step}&preserveServiceCatalog=${preserveServiceCatalog}`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
   const done = async () => { assert.deepEqual(errors, [], 'No uncaught promise/React errors'); assert.deepEqual(unexpected, [], 'No real external or unexpected API requests'); await context.close() }
   return { page, state, errors, done }
 }
@@ -139,6 +142,7 @@ try {
   await p.getByRole('button', { name: 'Go to calendar', exact: true }).click()
   await p.getByRole('heading', { name: 'Home fixture' }).waitFor()
   assert.deepEqual(normal.state.puts.map(input => [input.step, input.completed]), [['categories', false], ['services', false], ['services', false], ['schedule', false], ['team', false], ['team', false], ['complete', true]])
+  assert.ok(normal.state.puts.every(input => input.preserveServiceCatalog === undefined), 'Initial onboarding still writes its selected catalog')
   const finalDraft = normal.state.puts.at(-1).draft
   assert.equal(finalDraft.schedule.Monday.open, '10:00')
   assert.equal(finalDraft.providers[0].schedule.Monday.open, '10:00')
@@ -208,6 +212,46 @@ try {
     await initial.done()
   }
   console.log('PASS registration metadata and completed salons do not restore an obsolete setup draft')
+
+  const persistedService = {
+    id: '40000000-0000-4000-8000-000000000001', category_id: 'category-lashes',
+    name: 'Lash Lift', price_minor: 1250, duration_minutes: 75,
+    currency_code: 'MXN', is_active: true, is_publicly_bookable: false,
+  }
+  const hours = await fixture({
+    step: 'schedule', configured: true, preserveServiceCatalog: true,
+    enabledIds: ['category-lashes'], catalogServices: [persistedService],
+    professionals: [{
+      id: '20000000-0000-4000-8000-000000000001', full_name: 'Existing Specialist', languages: ['English'],
+      salon_earnings_percent: '40.00', professional_earnings_percent: '60.00',
+      service_assignments: [{ service_id: persistedService.id, is_active: true, duration_override_minutes: null }],
+    }],
+  })
+  await hours.page.getByRole('textbox', { name: 'Monday opening time', exact: true }).fill('10:00 AM')
+  await hours.page.getByRole('textbox', { name: 'Monday opening time', exact: true }).press('Tab')
+  await hours.page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await routeIs(hours.page, '/onboarding/team')
+  await hours.page.getByRole('button', { name: 'Finish', exact: true }).click()
+  await ready(hours.page)
+  await hours.page.getByRole('button', { name: 'Go to calendar', exact: true }).click()
+  await hours.page.getByRole('heading', { name: 'Home fixture' }).waitFor()
+  assert.deepEqual(hours.state.puts.map(input => [input.step, input.completed]), [['schedule', false], ['team', false], ['complete', true]])
+  assert.ok(hours.state.puts.every(input => input.preserveServiceCatalog === true), 'Settings preservation survives every schedule/team route transition')
+  assert.ok(hours.state.puts.every(input => input.draft.services.find(item => item.id === persistedService.id).price === '12.5'), 'Existing service cents are retained in the setup draft')
+  assert.equal(hours.state.puts.at(-1).draft.schedule.Monday.open, '10:00')
+  await hours.done()
+  console.log('PASS configured salon hours preserve catalog intent and decimal prices through final save')
+
+  const hoursBack = await fixture({ step: 'schedule', configured: true, preserveServiceCatalog: true })
+  await hoursBack.page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await routeIs(hoursBack.page, '/onboarding/team')
+  await hoursBack.page.getByRole('button', { name: 'Go back', exact: true }).click()
+  await routeIs(hoursBack.page, '/onboarding/schedule')
+  await hoursBack.page.getByRole('button', { name: 'Go back', exact: true }).click()
+  await hoursBack.page.getByRole('heading', { name: 'Settings fixture' }).waitFor()
+  assert.equal(hoursBack.state.puts.length, 1, 'Returning to Settings does not finalize or edit the catalog')
+  await hoursBack.done()
+  console.log('PASS configured team Back returns to hours and hours Back returns to Settings')
 
   const getFailure = await fixture({ serverDraft: completeDraft, failGet: true })
   await getFailure.page.getByText('Salon setup data could not be loaded.', { exact: true }).waitFor()

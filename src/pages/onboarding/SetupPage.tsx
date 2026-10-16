@@ -13,14 +13,9 @@ import { ApiClientError } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { glamhourApi } from '../../services/glamhour-api'
 import { syncStoredOnboardingCategories } from '../../lib/service-category-settings'
+import { getServiceSetupSection } from '../../lib/service-presets'
 import type { Professional, Service, ServiceCategory } from '../../types/api'
-import { cosmetologyServiceTypes } from '../app/appointment-booking/categories/cosmetology/cosmetologyDetailsSpec'
-import { micropigmentationProcedureGroups } from '../app/appointment-booking/categories/micropigmentation/micropigmentationDetailsSpec'
-import { lashStyleOptions, lashVariantOptions } from '../app/lashes-booking/lashesDetailsSpec'
-import {
-  nailMaterialSetupItems,
-  nailServiceSetupItems,
-} from './onboardingNailsSpec'
+import { nailServiceSetupItems } from './onboardingNailsSpec'
 
 const steps = ['categories', 'services', 'durations', 'schedule', 'team', 'complete'] as const
 type Step = typeof steps[number]
@@ -32,6 +27,7 @@ type OnboardingState = {
   salonName?: string
   email?: string
   returnTo?: '/app/settings'
+  preserveServiceCatalog?: boolean
 }
 
 type DraftService = {
@@ -75,16 +71,6 @@ type OnboardingDraft = {
   activeProviderId?: string
 }
 
-type ServiceSetupSection = {
-  title: string
-  subtitle: string
-  servicesLabel: string
-  materialsLabel: string
-  materialItemLabel: string
-  serviceItems: readonly string[]
-  materialItems: readonly string[]
-}
-
 const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const defaultSchedule = weekDays.reduce<Record<string, DraftDay>>((days, day, index) => {
   days[day] = { enabled: index < 6, open: '09:00', close: '18:00' }
@@ -96,57 +82,6 @@ const categoryDescriptions: Record<string, string> = {
   lashes: 'Eyelash extensions, lifts, and tinting services.',
   cosmetology: 'Facials, skincare treatments, and beauty enhancements.',
   micropigmentation: 'Microblading, lip liner, eyeliner, and more pigmentation services.',
-}
-
-const serviceSetupSections: Record<string, ServiceSetupSection> = {
-  nails: {
-    title: 'Nail Services',
-    subtitle: 'Main treatments and services',
-    servicesLabel: 'Services',
-    materialsLabel: 'Materials',
-    materialItemLabel: 'material',
-    serviceItems: nailServiceSetupItems,
-    materialItems: nailMaterialSetupItems.map((material) => material.name),
-  },
-  lashes: {
-    title: 'Lash Services',
-    subtitle: 'Extensions, lifts, tinting, and lash styling',
-    servicesLabel: 'Services',
-    materialsLabel: 'Style',
-    materialItemLabel: 'style',
-    serviceItems: [
-      ...lashVariantOptions.map((option) => option.title),
-      'Lash Lift',
-      'Lash Tint',
-      'Removal',
-      'Refill',
-      'Other',
-    ],
-    materialItems: [
-      ...lashStyleOptions.map((option) => option.label),
-      'Lash Adhesive',
-      'Lash Cleanser',
-      'Other',
-    ],
-  },
-  cosmetology: {
-    title: 'Cosmetology Services',
-    subtitle: 'Facials, skincare treatments, and beauty enhancements',
-    servicesLabel: 'Services',
-    materialsLabel: 'Materials',
-    materialItemLabel: 'material',
-    serviceItems: [...cosmetologyServiceTypes, 'Hydrating Facial', 'Radiofrequency', 'Other'],
-    materialItems: ['Serums', 'Peels', 'Masks', 'LED Therapy', 'Ozone Steam', 'Other'],
-  },
-  micropigmentation: {
-    title: 'Micropigmentation Services',
-    subtitle: 'Brows, lips, eyes, removal, and enhancement procedures',
-    servicesLabel: 'Services',
-    materialsLabel: 'Materials',
-    materialItemLabel: 'material',
-    serviceItems: [...Object.values(micropigmentationProcedureGroups).flat(), 'Other'],
-    materialItems: ['Pigments', 'Needles', 'Anesthetics', 'Aftercare', 'Other'],
-  },
 }
 
 const stepHeaderSubtitles: Partial<Record<Step, string>> = {
@@ -249,10 +184,6 @@ function normalizeStoredService(service: DraftService) {
   }
 
   return service
-}
-
-function getServiceSetupSection(category: ServiceCategory) {
-  return serviceSetupSections[category.code]
 }
 
 function withRequiredDraftServices(draft: OnboardingDraft, categories: ServiceCategory[]) {
@@ -398,7 +329,7 @@ function createDraft(categories: ServiceCategory[], enabledCategories: ServiceCa
         categoryId: service.category_id,
         name: service.name,
         selected: service.is_active,
-        price: String(Math.round(service.price_minor / 100)),
+        price: String(service.price_minor / 100),
         duration: String(service.duration_minutes),
         section: 'service' as const,
       }))
@@ -598,6 +529,7 @@ export function SetupPage() {
         await glamhourApi.saveOnboarding({
           step: persistedOnboardingStep(nextStep),
           completed,
+          ...(editingConfiguredSalon && onboardingState.preserveServiceCatalog ? { preserveServiceCatalog: true } : {}),
           draft: savedDraft,
         }, salonId)
       }
@@ -674,7 +606,7 @@ export function SetupPage() {
   }
 
   function goBack() {
-    if (isManagingCategories) {
+    if (isManagingCategories || (currentStep === 'schedule' && onboardingState.preserveServiceCatalog && onboardingState.returnTo === '/app/settings')) {
       navigate('/app/settings')
       return
     }

@@ -28,6 +28,7 @@ interface ListOptions {
   limit: number
   offset: number
   publicOnly?: boolean
+  includeInactive?: boolean
 }
 
 interface AppointmentFilters extends ListOptions {
@@ -157,6 +158,16 @@ interface EnsureServiceInput extends CreateServiceInput {
   slug: string
 }
 
+interface UpdateServiceInput {
+  name?: string
+  description?: string | null
+  durationMinutes?: number
+  priceMinor?: number
+  currencyCode?: string
+  isPubliclyBookable?: boolean
+  isActive?: boolean
+}
+
 interface UpdateSettingsInput {
   appointmentIntervalMinutes?: number
   minimumBookingNoticeMinutes?: number
@@ -201,6 +212,7 @@ interface OnboardingProviderInput {
 interface SaveOnboardingInput {
   step: 'categories' | 'services' | 'schedule' | 'team' | 'complete'
   completed: boolean
+  preserveServiceCatalog?: boolean
   draft: {
     selectedCategoryIds: string[]
     services: OnboardingServiceInput[]
@@ -2147,6 +2159,7 @@ export const dataService = {
       const salon = salons[0]
       if (!salon) throw new ApiError(404, 'Salon not found')
       const editingConfiguredSalon = salon.onboarding_status === 'completed' || salon.booking_enabled
+      const preserveServiceCatalog = editingConfiguredSalon && input.preserveServiceCatalog === true
 
       const completedSteps = stepsCompletedThrough(input.step)
       await client.query(
@@ -2247,11 +2260,22 @@ export const dataService = {
         const existing = await clientRows<{ id: string }>(
           client,
           `SELECT id FROM services
-           WHERE salon_id = $1 AND category_id = $2 AND (id = $3::uuid OR lower(name) = lower($4))
+           WHERE salon_id = $1 AND category_id = $2 AND deleted_at IS NULL AND (id = $3::uuid OR lower(name) = lower($4))
+             AND ($3::uuid IS NULL OR id = $3)
+             AND (NOT $5::boolean OR is_active)
            ORDER BY (id = $3::uuid) DESC NULLS LAST, created_at, id
            LIMIT 1`,
-          [salonId, service.categoryId, isUuid(service.id) ? service.id : null, name],
+          [salonId, service.categoryId, isUuid(service.id) ? service.id : null, name, preserveServiceCatalog],
         )
+        if (preserveServiceCatalog) {
+          // Schedule/team drafts can outlive catalog edits in another tab. Drop
+          // obsolete assignments without recreating or rewriting those services.
+          if (existing[0]) serviceIdByDraftId.set(service.id, existing[0].id)
+          continue
+        }
+        if (isUuid(service.id) && !existing[0]) {
+          throw new ApiError(409, 'A selected service was removed. Refresh your setup before saving.')
+        }
 
         let savedServiceId: string | undefined
         if (existing[0]) {
@@ -2262,11 +2286,8 @@ export const dataService = {
              SET name = $3,
                  duration_minutes = $4,
                  price_minor = $5,
-                 currency_code = 'USD',
-                 is_active = true,
-                 is_publicly_bookable = true,
                  sort_order = $6
-             WHERE salon_id = $1 AND id = $2
+             WHERE salon_id = $1 AND id = $2 AND deleted_at IS NULL
              RETURNING id`,
             [salonId, existing[0].id, name, durationMinutes, priceMinor, index * 10],
           )
@@ -2298,7 +2319,7 @@ export const dataService = {
 
       await ensureServiceMaterialsTable()
       const selectedMaterials = input.draft.services.filter((service) => (
-        service.selected
+        !preserveServiceCatalog && service.selected
         && service.section === 'material'
         && selectedCategoryIds.includes(service.categoryId)
         && service.name.trim() !== ''
@@ -2473,7 +2494,7 @@ export const dataService = {
         `SELECT s.*, sc.code AS category_code, sc.name AS category_name
          FROM services s
          JOIN service_categories sc ON sc.id = s.category_id
-         WHERE s.salon_id = $1 AND s.category_id = $2
+         WHERE s.salon_id = $1 AND s.category_id = $2 AND s.deleted_at IS NULL
          ORDER BY s.sort_order, s.name`,
         [salonId, category.id],
       ),
@@ -2607,13 +2628,15 @@ export const dataService = {
         if (seenNames.has(normalized)) throw new ApiError(400, 'Service names must be unique within Nails.')
         seenNames.add(normalized)
         if (service.id) {
-          await client.query(
+          const updated = await clientRows<{ id: string }>(client,
             `UPDATE services
              SET name = $4, description = $5, price_minor = $6, duration_minutes = $7,
-                 is_active = $8, is_publicly_bookable = $8, sort_order = $9
-             WHERE salon_id = $1 AND category_id = $2 AND id = $3`,
+                 is_active = $8, sort_order = $9
+             WHERE salon_id = $1 AND category_id = $2 AND id = $3 AND deleted_at IS NULL
+             RETURNING id`,
             [salonId, categoryId, service.id, service.name.trim(), service.description ?? null, service.priceMinor, service.durationMinutes, service.isActive, service.sortOrder],
           )
+          if (!updated[0]) throw new ApiError(409, 'A selected service was removed. Refresh Nail settings before saving.')
         } else {
           await client.query(
             `INSERT INTO services (
@@ -2632,7 +2655,7 @@ export const dataService = {
         if (material.serviceId) {
           const serviceRows = await clientRows<QueryResultRow>(
             client,
-            'SELECT 1 FROM services WHERE salon_id = $1 AND category_id = $2 AND id = $3 LIMIT 1',
+            'SELECT 1 FROM services WHERE salon_id = $1 AND category_id = $2 AND id = $3 AND deleted_at IS NULL LIMIT 1',
             [salonId, categoryId, material.serviceId],
           )
           if (!serviceRows[0]) throw new ApiError(400, 'Material service assignment is invalid.')
@@ -3455,7 +3478,8 @@ export const dataService = {
        FROM services s
        JOIN service_categories sc ON sc.id = s.category_id
        WHERE s.salon_id = $1
-         AND s.is_active
+         AND s.deleted_at IS NULL
+         AND (s.is_active OR ($6::boolean AND NOT $5::boolean))
          AND ($2::text IS NULL OR sc.code = $2)
          AND (NOT $5::boolean OR (
            s.is_publicly_bookable AND sc.is_active AND EXISTS (
@@ -3465,7 +3489,7 @@ export const dataService = {
          ))
        ORDER BY sc.sort_order, s.sort_order, s.name, s.id
        LIMIT $3 OFFSET $4`,
-      [salonId, categoryCode ?? null, options.limit, options.offset, options.publicOnly === true],
+      [salonId, categoryCode ?? null, options.limit, options.offset, options.publicOnly === true, options.includeInactive === true],
     )
   },
 
@@ -3474,10 +3498,121 @@ export const dataService = {
       `SELECT s.*, sc.code AS category_code, sc.name AS category_name
        FROM services s
        JOIN service_categories sc ON sc.id = s.category_id
-       WHERE s.salon_id = $1 AND s.id = $2`,
+       WHERE s.salon_id = $1 AND s.id = $2 AND s.deleted_at IS NULL`,
       [salonId, id],
       'Service not found',
     )
+  },
+
+  async createServiceInSettings(salonId: string, input: CreateServiceInput): Promise<Service> {
+    return withTransaction(async (client) => {
+      const salons = await clientRows<{ id: string }>(client,
+        'SELECT id FROM salons WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [salonId])
+      if (!salons[0]) throw new ApiError(404, 'Salon not found')
+
+      // Catalog management is independent of salon category availability. This
+      // does not create or enable a salon_service_categories membership.
+      const categories = await clientRows<{ id: string; code: string; name: string }>(client,
+        `SELECT id, code, name FROM service_categories
+         WHERE is_active
+           AND ($1::uuid IS NULL OR id = $1)
+           AND ($2::text IS NULL OR code = $2)
+         FOR SHARE`, [input.categoryId ?? null, input.categoryCode ?? null])
+      const category = categories[0]
+      if (!category || (!input.categoryId && !input.categoryCode)) throw new ApiError(400, 'Service category is unavailable.')
+      const duplicates = await clientRows<{ id: string }>(client,
+        `SELECT id FROM services WHERE salon_id = $1 AND category_id = $2
+         AND deleted_at IS NULL AND lower(btrim(name)) = lower(btrim($3))`, [salonId, category.id, input.name])
+      if (duplicates[0]) throw new ApiError(409, 'A service with this name already exists in this category.')
+
+      const baseSlug = (input.slug ?? slugifyServiceName(input.name)).slice(0, 160).replace(/-+$/, '')
+      let service: Service | undefined
+      // A name can occur in multiple categories or after an archival. Preserve
+      // those records and allocate a new identity without changing old slugs.
+      for (let attempt = 0; attempt < 3 && !service; attempt += 1) {
+        const slug = attempt === 0 ? baseSlug : `${baseSlug.slice(0, 127).replace(/-+$/, '')}-${crypto.randomUUID().replace(/-/g, '')}`
+        const rows = await clientRows<Service>(client,
+          `INSERT INTO services (
+             salon_id, category_id, name, slug, description, duration_minutes,
+             price_minor, currency_code, is_publicly_bookable
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, upper($8::text), $9)
+           ON CONFLICT (salon_id, slug) DO NOTHING
+           RETURNING *`,
+          [salonId, category.id, input.name.trim(), slug, input.description?.trim() || null,
+            input.durationMinutes, input.priceMinor, input.currencyCode, input.isPubliclyBookable])
+        service = rows[0]
+      }
+      if (!service) throw new ApiError(409, 'Unable to save this service. Please try again.')
+
+      if (input.assignToActiveProviders) {
+        await client.query(
+          `INSERT INTO professional_services (
+             salon_id, professional_id, service_id, is_active, duration_override_minutes
+           )
+           SELECT $1, p.id, $2, true, NULL
+           FROM professionals p
+           WHERE p.salon_id = $1 AND p.status = 'active' AND p.deleted_at IS NULL
+           ON CONFLICT (professional_id, service_id) DO NOTHING`,
+          [salonId, service.id])
+      }
+      return { ...service, category_code: category.code, category_name: category.name }
+    })
+  },
+
+  async updateService(salonId: string, id: string, input: UpdateServiceInput): Promise<Service> {
+    return withTransaction(async (client) => {
+      const salons = await clientRows<{ id: string }>(client,
+        'SELECT id FROM salons WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [salonId])
+      if (!salons[0]) throw new ApiError(404, 'Service not found')
+      const existing = await clientRows<Service>(client,
+        `SELECT * FROM services
+         WHERE salon_id = $1 AND id = $2 AND deleted_at IS NULL
+         FOR UPDATE`, [salonId, id])
+      const current = existing[0]
+      if (!current) throw new ApiError(404, 'Service not found')
+      if (input.name !== undefined) {
+        const duplicates = await clientRows<{ id: string }>(client,
+          `SELECT id FROM services WHERE salon_id = $1 AND category_id = $2
+           AND deleted_at IS NULL AND lower(btrim(name)) = lower(btrim($3)) AND id <> $4`,
+          [salonId, current.category_id, input.name, id])
+        if (duplicates[0]) throw new ApiError(409, 'A service with this name already exists in this category.')
+      }
+
+      const updated = await clientRows<Service>(client,
+        `UPDATE services
+         SET name = $3, description = $4, duration_minutes = $5, price_minor = $6,
+             currency_code = upper($7::text), is_publicly_bookable = $8,
+             is_active = $9, updated_at = now()
+         WHERE salon_id = $1 AND id = $2 AND deleted_at IS NULL
+         RETURNING *`,
+        [salonId, id, input.name ?? current.name,
+          input.description === undefined ? current.description : input.description,
+          input.durationMinutes ?? current.duration_minutes, input.priceMinor ?? current.price_minor,
+          input.currencyCode ?? current.currency_code, input.isPubliclyBookable ?? current.is_publicly_bookable,
+          input.isActive ?? current.is_active])
+      if (!updated[0]) throw new ApiError(404, 'Service not found')
+      return updated[0]
+    })
+  },
+
+  async deleteService(salonId: string, id: string): Promise<{ deleted: true }> {
+    return withTransaction(async (client) => {
+      const archived = await clientRows<{ id: string }>(client,
+        `UPDATE services
+         SET is_active = false, is_publicly_bookable = false,
+             deleted_at = now(), updated_at = now()
+         WHERE salon_id = $1 AND id = $2 AND deleted_at IS NULL
+         RETURNING id`, [salonId, id])
+      if (!archived[0]) throw new ApiError(404, 'Service not found')
+      await client.query(
+        `UPDATE professional_services SET is_active = false, updated_at = now()
+         WHERE salon_id = $1 AND service_id = $2`, [salonId, id])
+      await client.query(
+        `UPDATE service_materials SET service_id = NULL, updated_at = now()
+         WHERE salon_id = $1 AND service_id = $2`, [salonId, id])
+      // Appointments, treatment records and their snapshots retain this ID.
+      return { deleted: true }
+    })
   },
 
   async createService(salonId: string, input: CreateServiceInput): Promise<Service> {
@@ -3580,7 +3715,7 @@ export const dataService = {
          duration_minutes = EXCLUDED.duration_minutes,
          price_minor = EXCLUDED.price_minor,
          updated_at = now()
-       WHERE services.is_active AND services.category_id = EXCLUDED.category_id
+       WHERE services.is_active AND services.category_id = EXCLUDED.category_id AND services.deleted_at IS NULL
        RETURNING *`,
       [
         salonId,

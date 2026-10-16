@@ -36,6 +36,13 @@ Apply the migrations and seed data using [database/README.md](../database/README
 npm run dev:api
 ```
 
+Existing databases must apply migration 016 before deploying the service catalog
+settings endpoints. It adds the nullable archival timestamp without deleting data:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/016_service_archival.sql
+```
+
 Run frontend and backend together:
 
 ```bash
@@ -84,9 +91,12 @@ All salon routes expect the UUID from `salons.id`.
 | GET | `/api/salons/:salonId/clients/:id` | Client and health profile |
 | POST | `/api/salons/:salonId/clients` | Create a client |
 | GET | `/api/service-categories?salonId=` | Global or salon-enabled categories |
-| GET | `/api/salons/:salonId/services?category=` | List services |
+| GET | `/api/salons/:salonId/services?category=&includeInactive=true` | List undeleted services; includeInactive is optional and ignored for publicOnly=true |
 | GET | `/api/salons/:salonId/services/:id` | Service details |
 | POST | `/api/salons/:salonId/services` | Create a service |
+| POST | `/api/salons/:salonId/settings/services` | Create a service in an available category, including a disabled salon category |
+| PATCH | `/api/salons/:salonId/services/:id` | Edit name, description, duration, price, currency, active status or public booking availability |
+| DELETE | `/api/salons/:salonId/services/:id` | Archive a service and its provider assignments while retaining appointment history |
 | GET | `/api/salons/:salonId/appointments` | Filter appointments |
 | POST | `/api/salons/:salonId/appointments` | Create appointment transactionally |
 | GET | `/api/salons/:salonId/appointments/:id` | Appointment with service lines |

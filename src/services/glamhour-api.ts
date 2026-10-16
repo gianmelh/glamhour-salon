@@ -6,7 +6,7 @@ import type {
   RegisterFacebookSalonInput, RegisterGoogleSalonInput, RegisterSalonInput, RegisterSalonResult,
   RequestPasswordResetInput, RequestPasswordResetResult, RescheduleAppointmentInput, Salon, SalonSettings,
   SalesHistoryItem, SalesHistoryResponse, SaveOnboardingInput, Service, ServiceCategory, SubscriptionPlanCode, SubscriptionSummary, UpdateSettingsInput, VerifyPasswordResetCodeInput,
-  VerifyPasswordResetCodeResult,
+  VerifyPasswordResetCodeResult, UpdateServiceInput,
   PublicBookingPayload, PublicBookingEmailStatus, PublicBookingEmailCodeResponse,
 } from '../types/api'
 
@@ -69,13 +69,13 @@ export const glamhourApi = {
   appointments: (salonId?: string) => apiRequest<Appointment[]>(`/salons/${resolveSalonId(salonId)}/appointments?limit=100`),
   appointment: (id: string, salonId?: string) => apiRequest<Appointment>(`/salons/${resolveSalonId(salonId)}/appointments/${id}`),
   clients: (salonId?: string) => apiRequest<Client[]>(`/salons/${resolveSalonId(salonId)}/clients?limit=100`),
-  services: async (salonId?: string, options?: { publicOnly?: boolean }): Promise<Service[]> => {
+  services: async (salonId?: string, options?: { publicOnly?: boolean; includeInactive?: boolean }): Promise<Service[]> => {
     const resolvedSalonId = resolveSalonId(salonId)
     const pageSize = 100
     const services: Service[] = []
     const seenIds = new Set<string>()
     for (let offset = 0; ; offset += pageSize) {
-      const page = await apiRequest<Service[]>(`/salons/${resolvedSalonId}/services${queryString({ limit: pageSize, offset, publicOnly: options?.publicOnly ? 'true' : undefined })}`)
+      const page = await apiRequest<Service[]>(`/salons/${resolvedSalonId}/services${queryString({ limit: pageSize, offset, publicOnly: options?.publicOnly ? 'true' : undefined, includeInactive: options?.includeInactive ? 'true' : undefined })}`)
       for (const service of page) {
         if (seenIds.has(service.id)) throw new Error('The service catalog changed while loading. Please try again.')
         seenIds.add(service.id)
@@ -164,6 +164,9 @@ export const glamhourApi = {
   findOrCreateClient: (input: CreateClientInput & { mergeNotes?: string }, salonId?: string) =>
     apiRequest<Client>(`/salons/${resolveSalonId(salonId)}/clients/find-or-create`, { method: 'POST', body: JSON.stringify(input) }),
   createService: (input: CreateServiceInput, salonId?: string) => apiRequest<Service>(`/salons/${resolveSalonId(salonId)}/services`, { method: 'POST', body: JSON.stringify({ currencyCode: 'USD', isPubliclyBookable: true, ...input }) }),
+  createServiceInSettings: (input: CreateServiceInput, salonId?: string) => apiRequest<Service>(`/salons/${resolveSalonId(salonId)}/settings/services`, { method: 'POST', body: JSON.stringify(input) }),
+  updateService: (id: string, input: UpdateServiceInput, salonId?: string) => apiRequest<Service>(`/salons/${resolveSalonId(salonId)}/services/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  deleteService: (id: string, salonId?: string) => apiRequest<{ deleted: boolean }>(`/salons/${resolveSalonId(salonId)}/services/${id}`, { method: 'DELETE' }),
   ensureService: (input: import('../types/api').EnsureServiceInput, salonId?: string) =>
     apiRequest<Service>(`/salons/${resolveSalonId(salonId)}/services/ensure`, {
       method: 'POST',

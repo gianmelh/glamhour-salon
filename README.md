@@ -144,6 +144,21 @@ provider assignments from partial catalogs. Existing treatment records remain
 editable after their category is disabled. Browser requests and database queries
 are mocked; these checks do not modify a live salon.
 
+Salon Configuration now opens a service manager for every category, including
+disabled categories. It shares onboarding suggestions and supports custom services,
+viewing, editing prices/durations/descriptions, availability, and deletion while
+preserving existing appointment history. Nail materials and provider settings
+remain available through their existing screen.
+
+Apply `npm run db:migrate:016` before restarting the updated API and deploying the
+frontend. The migration only adds `services.deleted_at` and is safe to repeat.
+Run `PLAYWRIGHT_CHANNEL=chrome npm run test:service-settings` for isolated service
+catalog and browser regressions, including disabled categories, failed saves,
+deletion, and small-screen dialogs. The checks do not change a live salon.
+With local PostgreSQL binaries installed, `npm run test:service-settings-persistence`
+also verifies the real migration, service history, materials, and concurrent
+catalog writes in its own temporary database, without reading the app's `.env`.
+
 Lash photo fitting checks run with `npm run test:lash-preview` (or
 `PLAYWRIGHT_CHANNEL=chrome npm run test:lash-preview`). They cover the three-point
 curve, older seven-point drafts, mouse and touch adjustment, rotation, and saved
