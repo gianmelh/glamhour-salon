@@ -8,6 +8,7 @@ import type {
   SalesHistoryItem, SalesHistoryResponse, SaveOnboardingInput, Service, ServiceCategory, SubscriptionPlanCode, SubscriptionSummary, UpdateSettingsInput, VerifyPasswordResetCodeInput,
   VerifyPasswordResetCodeResult, UpdateServiceInput,
   PublicBookingPayload, PublicBookingEmailStatus, PublicBookingEmailCodeResponse,
+  ClientClinicalForm, SaveClientClinicalFormInput,
 } from '../types/api'
 
 export const SALON_ID = import.meta.env.VITE_SALON_ID ?? '10000000-0000-0000-0000-000000000001'
@@ -88,6 +89,8 @@ export const glamhourApi = {
   updateServiceCategories: (input: { categoryIds: string[] }, salonId?: string) => apiRequest<ServiceCategory[]>(`/salons/${resolveSalonId(salonId)}/service-categories`, { method: 'PUT', body: JSON.stringify(input) }),
   appointmentCategories: (salonId?: string) => apiRequest<AppointmentCategory[]>(`/salons/${resolveSalonId(salonId)}/appointment-categories`),
   healthProfile: (clientId: string, category: string, salonId?: string) => apiRequest<HealthProfileVersion | null>(`/salons/${resolveSalonId(salonId)}/clients/${clientId}/health-profiles/${category}`),
+  clientClinicalForms: (clientId: string, salonId?: string) => apiRequest<ClientClinicalForm[]>(`/salons/${resolveSalonId(salonId)}/clients/${clientId}/clinical-forms`, { cache: 'no-store' }),
+  saveClientClinicalForm: (clientId: string, category: string, input: SaveClientClinicalFormInput, salonId?: string) => apiRequest<ClientClinicalForm>(`/salons/${resolveSalonId(salonId)}/clients/${clientId}/clinical-forms/${encodeURIComponent(category)}`, { method: 'PUT', body: JSON.stringify(input) }),
   professionals: (salonId?: string) => apiRequest<Professional[]>(`/salons/${resolveSalonId(salonId)}/professionals?limit=100`),
   eligibleProviders: (params: { serviceId: string; categoryId?: string; date?: string; durationMinutes?: number; optionalStartTime?: string }, salonId?: string) => apiRequest<EligibleProvider[]>(`/salons/${resolveSalonId(salonId)}/providers/eligible${queryString(params)}`, { cache: 'no-store' }),
   appointmentAvailability: (params: { providerId: string; serviceId: string; date: string; timezone?: string }, salonId?: string) => apiRequest<AppointmentAvailability>(`/salons/${resolveSalonId(salonId)}/availability${queryString(params)}`, { cache: 'no-store' }),

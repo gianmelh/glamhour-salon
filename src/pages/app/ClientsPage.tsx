@@ -1,10 +1,11 @@
-import { Eye, Plus, Search } from 'lucide-react'
+import { ClipboardList, Eye, Plus, Search } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Avatar, Button, Card, CreateClientModal, DataSourceNotice, EmptyState, ErrorState, Input, LoadingState, Modal, PageTitle } from '../../components'
 import { useClients, useSubscription } from '../../hooks/useGlamhourData'
 import { applyClientAccess } from '../../lib/client-access'
 import type { Client } from '../../types/api'
+import { ClientClinicalFormsDialog } from './client-clinical-forms/ClientClinicalFormsDialog'
 
 export function ClientsPage() {
   const clients = useClients()
@@ -12,6 +13,7 @@ export function ClientsPage() {
   const [open, setOpen] = useState(false)
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [viewingClient, setViewingClient] = useState<Client | null>(null)
+  const [clinicalClient, setClinicalClient] = useState<Client | null>(null)
   const [search, setSearch] = useState('')
   if (clients.loading || subscription.loading) return <LoadingState label="Loading clients..." />
   if (!clients.data && clients.error) return <ErrorState description={clients.error.message} onRetry={clients.retry} />
@@ -53,6 +55,9 @@ export function ClientsPage() {
                 <p className="mt-1 truncate text-[11px] text-muted">
                   {client.subscription_locked ? 'Upgrade to Premium to use this client again.' : client.notes ?? 'No client notes'}
                 </p>
+                <button aria-label={`Clinical forms for ${client.full_name}`} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary" onClick={() => setClinicalClient(client)} type="button">
+                  <ClipboardList className="size-3.5" /> Clinical forms
+                </button>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <button aria-label={`View ${client.full_name}`} className="grid size-8 place-items-center rounded-full bg-[#f2f4f7] text-[#475467]" onClick={() => setViewingClient(client)} type="button">
@@ -68,7 +73,8 @@ export function ClientsPage() {
           ))}
         </div>
       ) : <EmptyState description={search ? 'No clients match your search.' : 'Add your first client to start scheduling services.'} title={search ? 'No clients found' : 'No clients yet'} />}
-      <ClientDetailsModal client={viewingClient} onClose={() => setViewingClient(null)} />
+      <ClientDetailsModal client={viewingClient} onClose={() => setViewingClient(null)} onClinicalForms={() => { setClinicalClient(viewingClient); setViewingClient(null) }} />
+      {clinicalClient && <ClientClinicalFormsDialog client={clinicalClient} key={clinicalClient.id} onClose={() => setClinicalClient(null)} />}
       <CreateClientModal
         initialClient={editingClient}
         onClose={() => { setOpen(false); setEditingClient(null) }}
@@ -79,7 +85,7 @@ export function ClientsPage() {
   )
 }
 
-function ClientDetailsModal({ client, onClose }: { client: Client | null; onClose: () => void }) {
+function ClientDetailsModal({ client, onClose, onClinicalForms }: { client: Client | null; onClose: () => void; onClinicalForms: () => void }) {
   return (
     <Modal onClose={onClose} open={Boolean(client)} title="Client details" variant="modal">
       {client && (
@@ -103,6 +109,7 @@ function ClientDetailsModal({ client, onClose }: { client: Client | null; onClos
             <DetailRow label="Date of birth" value={client.date_of_birth} />
             <DetailRow label="Notes" value={client.notes} />
           </div>
+          <Button fullWidth onClick={onClinicalForms} variant="outline"><ClipboardList className="size-4" /> Clinical forms</Button>
         </div>
       )}
     </Modal>

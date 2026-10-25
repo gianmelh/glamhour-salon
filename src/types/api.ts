@@ -501,6 +501,21 @@ export interface HealthProfileVersion {
   answers?: Record<string, unknown>
 }
 
+export interface ClientClinicalForm extends Omit<HealthProfileVersion, 'id'> {
+  id: string | null
+  revision: string
+  form_details: Record<string, unknown>
+  notes: string
+  appointment_id: string | null
+}
+
+export interface SaveClientClinicalFormInput {
+  details: Record<string, unknown>
+  notes: string
+  expectedProfileId: string | null
+  expectedRevision: string | null
+}
+
 export interface CreateClientInput {
   fullName: string
   email?: string

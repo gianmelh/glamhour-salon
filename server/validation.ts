@@ -142,6 +142,53 @@ export const healthQuestionnaireSchema = z.object({
   answers: z.array(questionnaireAnswerSchema).default([]),
 })
 
+const clinicalStringListSchema = z.array(z.string().max(500)).max(250)
+const clinicalHandSchema = z.record(z.string(), z.record(z.string(), z.string().max(100)))
+const clinicalLashEyeSchema = z.array(z.object({ position: z.number(), length: z.number() })).max(100)
+
+export const clientClinicalFormSchema = z.object({
+  details: z.object({
+    healthAnswers: z.record(z.string().min(1).max(160), z.unknown()).optional(),
+    consentItems: z.record(z.string().min(1).max(160), z.boolean()).optional(),
+    professionalSignature: z.string().max(100000).optional(),
+    clientSignature: z.string().max(100000).optional(),
+    phototype: z.string().max(20).optional(),
+    healthFullName: z.string().max(200).optional(),
+    healthPhone: z.string().max(80).optional(),
+    healthEmail: z.string().max(320).optional(),
+    consentDate: z.union([z.string().date(), z.literal('')]).optional(),
+    consentTime: z.union([z.string().regex(/^\d{2}:\d{2}$/), z.literal('')]).optional(),
+    healthHistory: clinicalStringListSchema.optional(),
+    allergies: clinicalStringListSchema.optional(),
+    procedures: clinicalStringListSchema.optional(),
+    equipment: clinicalStringListSchema.optional(),
+    alterations: clinicalStringListSchema.optional(),
+    materials: clinicalStringListSchema.optional(),
+    materialIds: clinicalStringListSchema.optional(),
+    materialLabels: clinicalStringListSchema.optional(),
+    ozoneSteamModes: clinicalStringListSchema.optional(),
+    ultrasonicPeelingModes: clinicalStringListSchema.optional(),
+    highFrequencyModes: clinicalStringListSchema.optional(),
+    radiofrequencyModes: clinicalStringListSchema.optional(),
+    ultrasoundSkinTypes: clinicalStringListSchema.optional(),
+    ledMaskColors: clinicalStringListSchema.optional(),
+    finalMask: clinicalStringListSchema.optional(),
+    immediateReaction: clinicalStringListSchema.optional(),
+    faceAnnotations: z.array(z.record(z.string(), z.unknown())).max(1000).optional(),
+    mediaItems: z.array(z.record(z.string(), z.unknown())).max(100).optional(),
+    consents: z.array(z.record(z.string(), z.unknown())).max(100).optional(),
+    signatures: z.array(z.record(z.string(), z.unknown())).max(100).optional(),
+    rightHand: clinicalHandSchema.optional(),
+    leftHand: clinicalHandSchema.optional(),
+    lashMap: z.object({ rightEye: clinicalLashEyeSchema.optional(), leftEye: clinicalLashEyeSchema.optional() }).optional(),
+    nailServiceType: z.string().max(200).optional(),
+    nailType: z.string().max(200).optional(),
+  }).catchall(z.unknown()),
+  notes: z.string().max(5000),
+  expectedProfileId: uuidSchema.nullable(),
+  expectedRevision: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+})
+
 export const consentRecordSchema = z.object({
   clientId: uuidSchema,
   appointmentId: uuidSchema,

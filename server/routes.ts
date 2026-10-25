@@ -28,6 +28,7 @@ import {
   appointmentQuerySchema,
   categoryParamSchema,
   clientParamsSchema,
+  clientClinicalFormSchema,
   consentRecordSchema,
   createAppointmentSchema,
   createClientSchema,
@@ -336,6 +337,19 @@ router.patch('/salons/:salonId/clients/:id', asyncHandler(async (request, respon
 router.get('/salons/:salonId/clients/:clientId/health-profiles', asyncHandler(async (request, response) => {
   const { salonId, clientId } = validate(clientParamsSchema, request.params)
   response.json({ data: await dataService.listHealthProfiles(salonId, clientId) })
+}))
+
+router.get('/salons/:salonId/clients/:clientId/clinical-forms', asyncHandler(async (request, response) => {
+  const { salonId, clientId } = validate(clientParamsSchema, request.params)
+  response.set('Cache-Control', 'no-store')
+  response.json({ data: await dataService.listClientClinicalForms(salonId, clientId) })
+}))
+
+router.put('/salons/:salonId/clients/:clientId/clinical-forms/:category', asyncHandler(async (request, response) => {
+  const { salonId, clientId, category } = validate(categoryParamSchema, request.params)
+  const body = validate(clientClinicalFormSchema, request.body)
+  response.set('Cache-Control', 'no-store')
+  response.json({ data: await dataService.saveClientClinicalForm(salonId, clientId, category, body) })
 }))
 
 router.get('/salons/:salonId/clients/:clientId/health-profiles/:category', asyncHandler(async (request, response) => {

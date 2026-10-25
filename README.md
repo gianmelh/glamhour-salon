@@ -70,6 +70,7 @@ Implemented mutations:
 - Create appointment
 - Update appointment status
 - Create client
+- Add and edit clinical forms by client and service category from Clients → Clinical forms
 - Create service
 - Enable or disable public booking in salon settings
 
@@ -107,6 +108,18 @@ Registration allows manual address entry if Maps fails, retaining the typed
 address and uploaded document. Local development uses manual entry by default.
 
 ## Local browser regression checks
+
+Client clinical forms reuse the current appointment forms for nails, lashes,
+cosmetology, and micropigmentation, and also support older health questionnaires.
+Existing appointment data is available from the client record. Saving creates a
+new profile version without changing the original appointment. Migration 017
+adds the independent form snapshot and notes; the local API also initializes
+these columns when this feature is first used.
+
+Run `PLAYWRIGHT_CHANNEL=chrome npm run test:client-clinical-forms` for browser
+coverage, and `npm run test:client-clinical-forms-persistence` with local PostgreSQL
+binaries for persistence coverage. Both use isolated fixtures; the database test
+creates and removes its own temporary cluster without reading `.env`.
 
 ```bash
 npx playwright install chromium

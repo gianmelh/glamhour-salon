@@ -80,6 +80,8 @@ All salon routes expect the UUID from `salons.id`.
 | GET | `/health` | API and database health |
 | GET | `/api/salons` | List salons |
 | GET | `/api/salons/:salonId` | Salon details |
+| GET | `/api/salons/:salonId/clients/:clientId/clinical-forms` | Current clinical forms by category, including existing appointment data |
+| PUT | `/api/salons/:salonId/clients/:clientId/clinical-forms/:category` | Save a client form as a new version; requires `details`, `notes`, `expectedProfileId`, and `expectedRevision` |
 | GET | `/api/salons/by-slug/:slug` | Salon by public slug |
 | POST | `/api/public-booking/:slug/email-verification/status` | Check whether an email was verified for this salon |
 | POST | `/api/public-booking/:slug/email-verification/request` | Send a six-digit code if verification is needed |

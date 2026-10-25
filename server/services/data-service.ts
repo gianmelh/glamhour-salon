@@ -8,6 +8,7 @@ import { config } from '../config.js'
 import { sendPasswordResetCode } from './email-service.js'
 import { assertPublicBookingEmailVerified } from './public-booking-email-service.js'
 import { saveSalonMedia } from './media-storage.js'
+import { listClientClinicalForms, saveClientClinicalForm, type SaveClientClinicalFormInput } from './client-clinical-forms.js'
 import { enforceCanCreateClient, getClientAccessPolicy, getSyncedSubscriptionSummary } from './stripe-billing-service.js'
 import type {
   Appointment,
@@ -958,6 +959,16 @@ async function ensureClinicalTables(client?: PoolClient) {
   await run('CREATE INDEX IF NOT EXISTS treatment_annotations_appointment_idx ON treatment_visual_annotations (salon_id, appointment_id, category)')
   await run('CREATE INDEX IF NOT EXISTS health_profile_versions_client_category_idx ON health_profile_versions (salon_id, client_id, category, status, valid_until DESC)')
   clinicalTablesReady = true
+}
+
+let clientClinicalFormColumnsReady = false
+async function ensureClientClinicalFormColumns() {
+  await ensureClinicalTables()
+  if (clientClinicalFormColumnsReady) return
+  await query(`ALTER TABLE health_questionnaires
+    ADD COLUMN IF NOT EXISTS form_details_json jsonb,
+    ADD COLUMN IF NOT EXISTS notes text`)
+  clientClinicalFormColumnsReady = true
 }
 
 async function persistTreatmentVisualAnnotations(
@@ -3198,6 +3209,16 @@ export const dataService = {
       [salonId],
     )
     return rows
+  },
+
+  async listClientClinicalForms(salonId: string, clientId: string) {
+    await ensureClientClinicalFormColumns()
+    return listClientClinicalForms(salonId, clientId)
+  },
+
+  async saveClientClinicalForm(salonId: string, clientId: string, category: string, input: SaveClientClinicalFormInput) {
+    await ensureClientClinicalFormColumns()
+    return saveClientClinicalForm(salonId, clientId, category, input)
   },
 
   async listHealthProfiles(salonId: string, clientId: string) {

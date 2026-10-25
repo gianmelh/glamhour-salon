@@ -14,6 +14,8 @@
     "db:migrate:015": "node --import tsx scripts/migrate-optional-treatment-professional.mts",
     "db:migrate:016": "node --import tsx scripts/migrate-service-archival.mts",
     "test:treatment-persistence": "node --import tsx scripts/test-treatment-persistence.mts",
+    "test:client-clinical-forms": "node --import tsx scripts/test-client-clinical-forms.mts",
+    "test:client-clinical-forms-persistence": "node --import tsx scripts/test-client-clinical-forms-persistence.mts",
     "test:public-booking-activation": "node --import tsx scripts/test-public-booking-activation.mts",
     "test:onboarding": "node scripts/test-onboarding-completion.mjs && node --import tsx scripts/test-category-lifecycle.mts",
     "test:service-settings": "node --import tsx scripts/test-service-settings.mts && node scripts/test-service-settings.mjs",

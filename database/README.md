@@ -20,6 +20,7 @@ This directory contains the PostgreSQL database architecture and mockup-derived 
 14. `migrations/014_public_booking_email_verification.sql` - persistent verified booking emails and expiring verification codes
 15. `migrations/015_optional_treatment_professional.sql` - save clinical treatment details for appointments awaiting a professional assignment
 16. `migrations/016_service_archival.sql` - archive services separately from their active status without removing appointment history
+17. `migrations/017_client_clinical_forms.sql` - independent snapshots for clinical forms managed from each client
 
 ## Local Application
 
@@ -49,6 +50,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/013_unique_client
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/014_public_booking_email_verification.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/015_optional_treatment_professional.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/016_service_archival.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/017_client_clinical_forms.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/seeds/001_mockup_seed_data.sql
 ```
 
