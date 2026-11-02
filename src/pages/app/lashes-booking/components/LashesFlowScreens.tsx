@@ -1,5 +1,6 @@
 import { Camera, ChevronRight, TriangleAlert, Upload } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { resolveTreatmentPhotoUrl } from "../../../../lib/treatmentMedia";
 import { cn } from "../../../../lib/cn";
 import { useServiceCategories } from "../../../../hooks/useGlamhourData";
 import { lashesBookingAssets } from "../assets";
@@ -601,7 +602,7 @@ export function LashesPhotoConfirmScreen({
   onReplace: () => void;
 }) {
   const previewUrl = String(
-    details.photoLocalPreviewUrl ?? details.photoPreviewUrl ?? lashesBookingAssets.photoPlaceholder
+    details.photoLocalPreviewUrl || resolveTreatmentPhotoUrl(details) || lashesBookingAssets.photoPlaceholder
   );
   const canUse = Boolean(details.photoPreviewUrl && details.photoStorageKey);
 
@@ -649,7 +650,7 @@ export function LashesPhotoPreviewScreen({
   onRetake: () => void;
 }) {
   const previewUrl = String(
-    details.photoLocalPreviewUrl ?? details.photoPreviewUrl ?? lashesBookingAssets.photoPlaceholder
+    details.photoLocalPreviewUrl || resolveTreatmentPhotoUrl(details) || lashesBookingAssets.photoPlaceholder
   );
   const resolved = resolvePreviewSelectionFromDetails(details);
   const style = resolved.previewStyle;

@@ -68,6 +68,9 @@ function TextField({
   type = 'text',
   value,
   error,
+  required,
+  min,
+  step,
 }: {
   label: string
   onChange: (value: string) => void
@@ -76,18 +79,26 @@ function TextField({
   type?: string
   value: string
   error?: string
+  required?: boolean
+  min?: number
+  step?: string
 }) {
   return (
     <label className="flex min-w-0 flex-col gap-1">
-      <span className="text-[16px] leading-[1.4] text-black">{label}</span>
+      <span className="text-[16px] leading-[1.4] text-black">{label}{required && <span aria-hidden="true"> *</span>}</span>
       <span className={cn(
         'flex min-h-12 items-center gap-2 rounded-[16px] border bg-white px-3',
         error ? 'border-[#f04438]' : 'border-[#d0d5dd]',
       )}>
         <input
+          aria-invalid={Boolean(error)}
+          aria-required={required}
           className="min-w-0 flex-1 bg-transparent text-[16px] leading-[1.4] text-[#101828] outline-none placeholder:text-[#667085]"
+          min={min}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
+          required={required}
+          step={step}
           type={type}
           value={value}
         />
@@ -595,16 +606,23 @@ export function MicropigmentationDetailsStep({
         <FormCard title="Procedure details">
           <FormSubtitle>Anesthesia</FormSubtitle>
           <TextField
+            error={showErrors ? fieldErrors.anesthesiaBrand : undefined}
             label="Brand"
             onChange={(value) => set('anesthesiaBrand', value)}
             placeholder="e.g., EMLA, BLT"
+            required
             value={String(details.anesthesiaBrand ?? '')}
           />
           <TextField
+            error={showErrors ? fieldErrors.anesthesiaExposureTime : undefined}
             label="Exposure time"
+            min={0}
             onChange={(value) => set('anesthesiaExposureTime', value)}
             placeholder="e.g. 45"
+            required
+            step="any"
             suffix="min"
+            type="number"
             value={String(details.anesthesiaExposureTime ?? '')}
           />
 

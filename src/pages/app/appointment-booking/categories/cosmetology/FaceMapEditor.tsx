@@ -14,6 +14,32 @@ const annotationColors: Record<string, string> = {
   "Contraindicated area": "#ef4444",
 };
 
+/** Display saved marks in the same percentage space and artwork as the editor. */
+export function FaceMapSummary({ value }: { value: unknown }) {
+  const annotations = (Array.isArray(value) ? value : []).filter(
+    (item): item is { x: number; y: number; type: string } =>
+      Boolean(item && typeof item === "object" && Number.isFinite(item.x)
+        && Number.isFinite(item.y) && typeof item.type === "string"),
+  );
+  const types = [...new Set(annotations.map((item) => item.type))];
+  return (
+    <figure className="space-y-3">
+      <div aria-label="Saved face map" className="relative mx-auto aspect-[1842/2343] w-full max-w-[361px] overflow-hidden bg-white" role="img">
+        <img alt="" className="absolute inset-0 size-full object-cover" src={cosmetologyBookingAssets.faceDiagram} />
+        {annotations.map((annotation, index) => <span aria-label={annotation.type}
+          className="absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow"
+          key={index} style={{ backgroundColor: annotationColors[annotation.type] ?? "#7344cd", left: `${annotation.x}%`, top: `${annotation.y}%` }} />)}
+      </div>
+      <figcaption>
+        {types.length ? <ul className="space-y-2">{types.map((type) => <li className="flex items-center gap-2 text-sm" key={type}>
+          <span aria-hidden className="size-3 shrink-0 rounded-full" style={{ backgroundColor: annotationColors[type] ?? "#7344cd" }} />
+          {type} ({annotations.filter((item) => item.type === type).length})
+        </li>)}</ul> : <p className="text-sm text-muted">No marked areas recorded.</p>}
+      </figcaption>
+    </figure>
+  );
+}
+
 /** Figma 662:8803 — Mark what is detected (face map + notes). */
 export function FaceMapEditor({
   details,

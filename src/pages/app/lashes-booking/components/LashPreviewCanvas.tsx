@@ -46,7 +46,7 @@ type StickerState = {
   warpPoints?: LashWarpPoint[];
 };
 
-type StickersState = Record<StickerId, StickerState>;
+type StickersState = Record<StickerId, StickerState> & { photoAspectRatio?: number };
 
 type DragSession = {
   mode: "drag";
@@ -186,7 +186,7 @@ function initialStickerState(value: unknown): StickersState {
     ...state,
     warpPoints: state.warpPoints ? normalizeWarpPoints(state.warpPoints) : undefined,
   });
-  return { a: normalize(value.a), b: normalize(value.b) };
+  return { ...value, a: normalize(value.a), b: normalize(value.b) };
 }
 
 type MeshPoint = {
@@ -302,37 +302,53 @@ function drawWarpedImage(
   const height = image.naturalHeight;
   if (width <= 0 || height <= 0) return;
 
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
+  // Keep the sticker's original layout box, but let warped hairs extend beyond
+  // it. Drawing into the tight source bounds used to cut off lifted lash tips.
+  const mapColumn = createLashWarpMapping(anchors, controlPoints);
+  const sourcePoints = normalizeWarpPoints(anchors);
+  const targetPoints = normalizeWarpPoints(controlPoints, sourcePoints);
+  const leftPct = Math.min(0, targetPoints[0].xPct - sourcePoints[0].xPct);
+  const rightPct = Math.max(100, 100 + targetPoints[2].xPct - sourcePoints[2].xPct);
+  // Render at the displayed size (including retina pixels), rather than
+  // multiplying the full-size source by DPR on every pointer movement.
+  const displayWidth = canvas.parentElement ? parseFloat(getComputedStyle(canvas.parentElement).width) || width : width;
+  const pixelRatio = Math.max(64, Math.ceil(displayWidth * (window.devicePixelRatio || 1))) / width;
+  const left = Math.floor((leftPct / 100) * width * pixelRatio);
+  const right = Math.ceil((rightPct / 100) * width * pixelRatio);
+  const columns = Array.from({ length: right - left }, (_, index) => mapColumn(((index + left) / pixelRatio / width) * 100));
+  const minOffset = Math.min(0, ...columns.map(column => column.offsetYPct));
+  const maxOffset = Math.max(0, ...columns.map(column => column.offsetYPct));
+  const top = Math.floor((minOffset / 100) * height * pixelRatio);
+  const bottom = Math.ceil((1 + maxOffset / 100) * height * pixelRatio);
+  canvas.width = right - left;
+  canvas.height = bottom - top;
+  canvas.style.left = `${left / pixelRatio / width * 100}%`;
+  canvas.style.top = `${top / pixelRatio / height * 100}%`;
+  canvas.style.width = `${canvas.width / pixelRatio / width * 100}%`;
+  canvas.style.height = `${canvas.height / pixelRatio / height * 100}%`;
   const context = canvas.getContext("2d");
   if (!context) return;
 
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = width;
   sourceCanvas.height = height;
-  const sourceContext = sourceCanvas.getContext("2d", {
-    willReadFrequently: true,
-  });
+  const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true });
   if (!sourceContext) return;
   sourceContext.drawImage(image, 0, 0);
-
   const source = sourceContext.getImageData(0, 0, width, height);
   const output = context.createImageData(canvas.width, canvas.height);
   const maxSourceX = width - 1;
   const maxSourceY = height - 1;
 
-  // Every column follows one smooth curve through the three controls. Unlike
-  // additive point influences, each untouched control remains exactly anchored.
-  const mapColumn = createLashWarpMapping(anchors, controlPoints);
+  // Each column follows the fitted curve. Transparent padding preserves every
+  // source hair when the middle or either corner moves outside its old bounds.
   for (let destX = 0; destX < canvas.width; destX += 1) {
-    const column = mapColumn(((destX / dpr) / width) * 100);
+    const column = columns[destX];
     const sourceX = (column.sourceXPct / 100) * width;
     if (sourceX < 0 || sourceX > maxSourceX) continue;
     const offsetY = (column.offsetYPct / 100) * height;
     for (let destY = 0; destY < canvas.height; destY += 1) {
-      const sourceY = destY / dpr - offsetY;
-      // Outside the source remains transparent instead of smearing edge pixels.
+      const sourceY = (destY + top) / pixelRatio - offsetY;
       if (sourceY < 0 || sourceY > maxSourceY) continue;
       const x0 = Math.floor(sourceX);
       const y0 = Math.floor(sourceY);
@@ -347,9 +363,9 @@ function drawWarpedImage(
         const topRight = source.data[(y0 * width + x1) * 4 + channel];
         const bottomLeft = source.data[(y1 * width + x0) * 4 + channel];
         const bottomRight = source.data[(y1 * width + x1) * 4 + channel];
-        const top = topLeft + (topRight - topLeft) * tx;
-        const bottom = bottomLeft + (bottomRight - bottomLeft) * tx;
-        output.data[destIndex + channel] = top + (bottom - top) * ty;
+        const upper = topLeft + (topRight - topLeft) * tx;
+        const lower = bottomLeft + (bottomRight - bottomLeft) * tx;
+        output.data[destIndex + channel] = upper + (lower - upper) * ty;
       }
     }
   }
@@ -424,6 +440,8 @@ export function LashPreviewCanvas({
   deselectNonce = 0,
   initialStickers,
   onStickersChange,
+  readOnly = false,
+  onPhotoError,
 }: {
   photoUrl: string;
   style: string;
@@ -433,6 +451,8 @@ export function LashPreviewCanvas({
   deselectNonce?: number;
   initialStickers?: StickersState | null;
   onStickersChange?: (next: StickersState) => void;
+  readOnly?: boolean;
+  onPhotoError?: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -459,6 +479,15 @@ export function LashPreviewCanvas({
   const stickerAnchorsRef = useRef(stickerAnchors);
 
   const assets = getLashPreviewStickerSet(style, variant);
+  const savedAspectRatio = initialStickers?.photoAspectRatio;
+  const frameAspectRatio = typeof savedAspectRatio === "number" && Number.isFinite(savedAspectRatio) && savedAspectRatio > 0
+    ? savedAspectRatio : readOnly ? 361 / 431 : undefined;
+  const withPhotoFrame = useCallback((next: StickersState): StickersState => {
+    const bounds = containerRef.current?.getBoundingClientRect();
+    return bounds && bounds.width > 0 && bounds.height > 0
+      ? { ...next, photoAspectRatio: bounds.width / bounds.height }
+      : next;
+  }, []);
 
   const clearSelection = () => {
     gestureRef.current = null;
@@ -474,11 +503,12 @@ export function LashPreviewCanvas({
     setSelectedId(id);
   };
 
-  const commitStickers = (next: StickersState) => {
+  const commitStickers = useCallback((value: StickersState) => {
+    const next = withPhotoFrame(value);
     stickersRef.current = next;
     setStickers(next);
     onStickersChangeRef.current?.(next);
-  };
+  }, [withPhotoFrame]);
 
   useEffect(() => {
     onStickersChangeRef.current = onStickersChange;
@@ -500,14 +530,16 @@ export function LashPreviewCanvas({
     const combo = `${style}::${variant}`;
     if (combo === lastCombo.current) return;
     lastCombo.current = combo;
-    const next = createDefaultStickers();
-    setStickerAnchors({
-      a: createDefaultWarpPoints(),
-      b: createDefaultWarpPoints(),
+    if (readOnly) return;
+    const current = stickersRef.current;
+    // Styles replace the artwork, not the fit on the client's eyes. Freeze the
+    // previous anchors too when the user has only moved/resized the sticker.
+    commitStickers({
+      a: { ...current.a, warpPoints: normalizeWarpPoints(current.a.warpPoints, stickerAnchorsRef.current.a) },
+      b: { ...current.b, warpPoints: normalizeWarpPoints(current.b.warpPoints, stickerAnchorsRef.current.b) },
     });
-    commitStickers(next);
     clearSelection();
-  }, [style, variant]);
+  }, [style, variant, readOnly, commitStickers]);
 
   useEffect(() => {
     if (deselectNonce === lastDeselectNonce.current) return;
@@ -516,7 +548,7 @@ export function LashPreviewCanvas({
   }, [deselectNonce]);
 
   useEffect(() => {
-    if (swapNonce === lastSwapNonce.current) return;
+    if (readOnly || swapNonce === lastSwapNonce.current) return;
     lastSwapNonce.current = swapNonce;
     clearSelection();
     const current = stickersRef.current;
@@ -527,6 +559,7 @@ export function LashPreviewCanvas({
     const posA = clampCenter(100 - current.a.xPct, current.a.yPct, current.b.scale);
     const posB = clampCenter(100 - current.b.xPct, current.b.yPct, current.a.scale);
     const next: StickersState = {
+      ...current,
       a: {
         assetSide: flip(current.a.assetSide),
         xPct: posA.xPct,
@@ -551,7 +584,7 @@ export function LashPreviewCanvas({
     stickersRef.current = next;
     setStickers(next);
     onStickersChangeRef.current?.(next);
-  }, [swapNonce]);
+  }, [swapNonce, readOnly]);
 
   // Tap/click outside the preview editor (photo + size controls) clears selection.
   useEffect(() => {
@@ -584,7 +617,10 @@ export function LashPreviewCanvas({
   };
 
   const persistCurrentStickers = () => {
-    onStickersChangeRef.current?.(stickersRef.current);
+    const next = withPhotoFrame(stickersRef.current);
+    stickersRef.current = next;
+    setStickers(next);
+    onStickersChangeRef.current?.(next);
   };
 
   const updateSticker = useCallback((id: StickerId, patch: Partial<StickerState>, options: { persist?: boolean } = {}) => {
@@ -596,8 +632,10 @@ export function LashPreviewCanvas({
     const normalizedWarpPoints = merged.warpPoints
       ? normalizeWarpPoints(merged.warpPoints, stickerAnchorsRef.current[id])
       : undefined;
+    const bounds = containerRef.current?.getBoundingClientRect();
     const next: StickersState = {
       ...current,
+      ...(bounds && bounds.height > 0 ? { photoAspectRatio: bounds.width / bounds.height } : {}),
       [id]: {
         ...merged,
         ...clampedPos,
@@ -613,7 +651,7 @@ export function LashPreviewCanvas({
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    if (readOnly || !container) return;
     const onWheel = (event: WheelEvent) => {
       if (!(event.target instanceof Element)) return;
       const sticker = event.target.closest<HTMLElement>("[data-lash-sticker-id]");
@@ -628,7 +666,7 @@ export function LashPreviewCanvas({
     // prevents page scrolling only while sizing the selected lash with a wheel.
     container.addEventListener("wheel", onWheel, { passive: false });
     return () => container.removeEventListener("wheel", onWheel);
-  }, [assets, updateSticker]);
+  }, [assets, updateSticker, readOnly]);
 
   const beginDrag = (
     id: StickerId,
@@ -665,25 +703,12 @@ export function LashPreviewCanvas({
       gesture.id === id &&
       gesture.pointerId !== event.pointerId
     ) {
-      const first = {
-        x: event.clientX,
-        y: event.clientY,
-      };
-      // Recover first pointer from last known drag point approximately.
+      const first = canvasPointersRef.current.get(gesture.pointerId);
+      if (!first) return;
       const pointers = new Map<number, { x: number; y: number }>([
         [gesture.pointerId, first],
         [event.pointerId, { x: event.clientX, y: event.clientY }],
       ]);
-      // Use current event as second; first pointer position estimated from sticker center.
-      const el = containerRef.current;
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        const sticker = stickersRef.current[id];
-        pointers.set(gesture.pointerId, {
-          x: rect.left + (sticker.xPct / 100) * rect.width,
-          y: rect.top + (sticker.yPct / 100) * rect.height,
-        });
-      }
       const pts = [...pointers.values()];
       gestureRef.current = {
         mode: "pinch",
@@ -920,8 +945,8 @@ export function LashPreviewCanvas({
       }
       if (gesture.pointers.size >= 2) return;
       if (gesture.pointers.size === 1) {
-        const [remainingId] = gesture.pointers.keys();
-        const point = clientToPct(event.clientX, event.clientY);
+        const [remainingId, remaining] = [...gesture.pointers.entries()][0];
+        const point = clientToPct(remaining.x, remaining.y);
         const sticker = stickersRef.current[gesture.id];
         gestureRef.current = {
           mode: "drag",
@@ -1040,6 +1065,7 @@ export function LashPreviewCanvas({
     if (canvasPointersRef.current.size >= 2) {
       event.preventDefault();
       beginCanvasPinch();
+      if (canvasPinchRef.current) event.currentTarget.setPointerCapture(event.pointerId);
     }
   };
 
@@ -1057,8 +1083,9 @@ export function LashPreviewCanvas({
 
   const onCanvasPointerEndCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
     canvasPointersRef.current.delete(event.pointerId);
-    if (canvasPointersRef.current.size < 2) {
+    if (canvasPinchRef.current && canvasPointersRef.current.size < 2) {
       canvasPinchRef.current = null;
+      gestureRef.current = null;
       setActiveId(null);
       persistCurrentStickers();
     }
@@ -1066,12 +1093,13 @@ export function LashPreviewCanvas({
 
   if (!assets) {
     return (
-      <div className="relative flex h-[431px] w-full items-center justify-center overflow-hidden rounded-[16px] bg-[#f2f5ff]">
+      <div className={cn("relative flex w-full items-center justify-center overflow-hidden rounded-[16px] bg-[#f2f5ff]", frameAspectRatio ? "" : "h-[431px]")} style={{ aspectRatio: frameAspectRatio }}>
         <img
           alt="Lash style preview"
           className="pointer-events-none absolute inset-0 size-full object-cover opacity-40"
           draggable={false}
           src={photoUrl}
+          onError={onPhotoError}
         />
         <p className="relative z-10 rounded-full bg-white/90 px-4 py-2 text-[13px] font-medium text-[#475467]">
           This combination is not available
@@ -1083,18 +1111,19 @@ export function LashPreviewCanvas({
   return (
     <div className="flex w-full min-w-0 flex-col gap-2" ref={rootRef}>
       <div
-        className="relative h-[431px] w-full touch-none overflow-hidden rounded-[16px]"
-        onPointerCancelCapture={onCanvasPointerEndCapture}
-        onPointerDown={(event) => {
+        className={cn("relative w-full overflow-hidden rounded-[16px]", frameAspectRatio ? "" : "h-[431px]", !readOnly && "touch-none")}
+        style={{ aspectRatio: frameAspectRatio }}
+        onPointerCancelCapture={readOnly ? undefined : onCanvasPointerEndCapture}
+        onPointerDown={readOnly ? undefined : (event) => {
           // Empty photo area only — sticker handlers stopPropagation.
           if (event.defaultPrevented || canvasPointersRef.current.size >= 2) return;
           if (event.target !== event.currentTarget) return;
           event.preventDefault();
           clearSelection();
         }}
-        onPointerDownCapture={onCanvasPointerDownCapture}
-        onPointerMoveCapture={onCanvasPointerMoveCapture}
-        onPointerUpCapture={onCanvasPointerEndCapture}
+        onPointerDownCapture={readOnly ? undefined : onCanvasPointerDownCapture}
+        onPointerMoveCapture={readOnly ? undefined : onCanvasPointerMoveCapture}
+        onPointerUpCapture={readOnly ? undefined : onCanvasPointerEndCapture}
         ref={containerRef}
       >
         <img
@@ -1102,13 +1131,14 @@ export function LashPreviewCanvas({
           className="pointer-events-none absolute inset-0 size-full object-cover"
           draggable={false}
           src={photoUrl}
+          onError={onPhotoError}
         />
         {(["a", "b"] as const).map((id) => {
-          const state = stickers[id];
+          const state = (readOnly ? initialStickerState(initialStickers) : stickers)[id];
           const anchorPoints = stickerAnchors[id] ?? DEFAULT_WARP_POINTS;
           const warpPoints = normalizeWarpPoints(state.warpPoints, anchorPoints);
           const widthPct = BASE_WIDTH_PCT * state.scale;
-          const isSelected = selectedId === id;
+          const isSelected = !readOnly && selectedId === id;
           const stylePos: CSSProperties = {
             left: `${state.xPct}%`,
             top: `${state.yPct}%`,
@@ -1118,23 +1148,23 @@ export function LashPreviewCanvas({
           };
           return (
             <div
-              aria-label={`${state.assetSide} eye lash sticker`}
+              aria-label={`${state.assetSide} eye lash ${readOnly ? "preview" : "sticker"}`}
               className={cn(
                 // Reset UA button face + avoid Tailwind ring-offset (defaults to white fill).
                 "lash-preview-sticker absolute appearance-none border-0 bg-transparent p-0 shadow-none outline-none",
-                "cursor-grab touch-none [-webkit-tap-highlight-color:transparent] active:cursor-grabbing",
+                !readOnly && "cursor-grab touch-none [-webkit-tap-highlight-color:transparent] active:cursor-grabbing",
                 "focus:outline-none focus-visible:outline-none",
                 isSelected &&
                   "outline outline-2 outline-[#7344cd]/70 outline-offset-2",
               )}
               key={id}
               data-lash-sticker-id={id}
-              onKeyDown={(event) => onStickerKeyDown(id, event)}
-              onPointerCancel={endPointer}
-              onPointerDown={(event) => onPointerDown(id, event)}
-              onPointerMove={onPointerMove}
-              onPointerUp={endPointer}
-              role="button"
+              onKeyDown={readOnly ? undefined : (event) => onStickerKeyDown(id, event)}
+              onPointerCancel={readOnly ? undefined : endPointer}
+              onPointerDown={readOnly ? undefined : (event) => onPointerDown(id, event)}
+              onPointerMove={readOnly ? undefined : onPointerMove}
+              onPointerUp={readOnly ? undefined : endPointer}
+              role={readOnly ? "img" : "button"}
               style={{
                 ...stylePos,
                 background: "transparent",
@@ -1143,7 +1173,7 @@ export function LashPreviewCanvas({
                 WebkitAppearance: "none",
                 appearance: "none",
               }}
-              tabIndex={0}
+              tabIndex={readOnly ? undefined : 0}
             >
               <LashStickerMesh
                 anchors={anchorPoints}
@@ -1205,8 +1235,8 @@ export function LashPreviewCanvas({
         })}
       </div>
 
-      {selectedId && <p className="text-[12px] leading-5 text-[#475467]">Drag the start, middle, and end points to fit the lash curve.</p>}
-      {selectedId && (
+      {!readOnly && selectedId && <p className="text-[12px] leading-5 text-[#475467]">Drag the start, middle, and end points to fit the lash curve.</p>}
+      {!readOnly && selectedId && (
         <div className="flex items-center justify-between gap-3 rounded-[12px] bg-[#f2f5ff] px-3 py-2">
           <p className="text-[12px] font-normal tracking-[0.24px] text-[#475467]">
             {stickers[selectedId].assetSide === "left" ? "Left" : "Right"} lash

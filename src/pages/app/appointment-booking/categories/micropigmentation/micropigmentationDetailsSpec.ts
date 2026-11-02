@@ -291,7 +291,13 @@ export function getMicropigmentationFieldErrors(details: Record<string, unknown>
   if (!details.procedure && !selectedProcedures.length) errors.procedure = 'Select a service type'
   if (!details.phototype) errors.phototype = 'Select a skin phototype'
   if (!details.herpesSimplex) errors.herpesSimplex = 'Select Yes or No'
-  if (!String(details.pigment_brand ?? '').trim()) errors.pigment_brand = 'Pigment brand is required'
+  if (!String(details.anesthesiaBrand ?? '').trim()) errors.anesthesiaBrand = 'Anesthesia brand is required'
+  const exposureTime = String(details.anesthesiaExposureTime ?? '').trim()
+  if (!exposureTime) errors.anesthesiaExposureTime = 'Anesthesia exposure time is required'
+  else if (!Number.isFinite(Number(exposureTime)) || Number(exposureTime) <= 0) {
+    errors.anesthesiaExposureTime = 'Enter an anesthesia exposure time greater than 0 minutes'
+  }
+  if (!String(details.pigment_brand ?? details.pigmentBrand ?? '').trim()) errors.pigment_brand = 'Pigment brand is required'
   if (!String(details.needle ?? details.needleType ?? '').trim()) errors.needleType = 'Needle type is required'
   if (!String(details.professionalSignature ?? '').trim()) errors.professionalSignature = 'Professional signature is required'
   if (!String(details.consentDate ?? '').trim()) errors.consentDate = 'Date is required'

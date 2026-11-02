@@ -1,3 +1,4 @@
+import { resolveTreatmentPhotoUrl } from '../../../../lib/treatmentMedia'
 import { Camera } from 'lucide-react'
 import { Button } from '../../../../components'
 import { useTreatmentPhotoUpload } from '../../appointment-booking/hooks/useTreatmentPhotoUpload'
@@ -9,7 +10,7 @@ export function LashesPhotoFlow({ details, onChange }: {
   onChange: (next: Record<string, unknown>) => void
 }) {
   const { upload, uploading, error } = useTreatmentPhotoUpload('lashes')
-  const previewUrl = String(details.photoPreviewUrl ?? '')
+  const previewUrl = String(details.photoLocalPreviewUrl || resolveTreatmentPhotoUrl(details))
   const mediaItems = (details.mediaItems as TreatmentMediaItem[] | undefined) ?? []
 
   const handleFile = async (file: File) => {
@@ -20,7 +21,7 @@ export function LashesPhotoFlow({ details, onChange }: {
       photoPreviewUrl: saved.url,
       photoStorageKey: saved.storageKey,
       photoConsent: details.photoConsent ?? false,
-      mediaItems: [...mediaItems.filter((item) => item.mediaType !== 'reference'), saved],
+      mediaItems: [...mediaItems.filter((item) => item.mediaType !== 'reference' && (item as { media_type?: string }).media_type !== 'reference'), saved],
     })
   }
 
@@ -54,7 +55,7 @@ export function LashesPhotoFlow({ details, onChange }: {
       {previewUrl && (
         <Button
           className="mt-2"
-          onClick={() => onChange({ ...details, photoLocalPreviewUrl: '', photoPreviewUrl: '', photoStorageKey: '', mediaItems: mediaItems.filter((item) => item.mediaType !== 'reference') })}
+          onClick={() => onChange({ ...details, photoLocalPreviewUrl: '', photoPreviewUrl: '', photoPreview: '', photoStorageKey: '', mediaItems: mediaItems.filter((item) => item.mediaType !== 'reference' && (item as { media_type?: string }).media_type !== 'reference') })}
           type="button"
           variant="outline"
         >

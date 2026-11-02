@@ -96,6 +96,39 @@ type LashMapState = Partial<
   Record<LashEyeName, Array<{ position: number; length: number }>>
 >;
 
+/** Saved clinical maps use the same artwork and zone locations as the editor. */
+export function LashMapSummary({ value }: { value: unknown }) {
+  const map = value && typeof value === "object" && !Array.isArray(value)
+    ? value as LashMapState
+    : {};
+  return (
+    <div className="space-y-4">
+      {(["rightEye", "leftEye"] as const).map((eye) => {
+        const entries = Array.isArray(map[eye]) ? map[eye]!.filter((entry) =>
+          entry && Number.isFinite(entry.position) && Number.isFinite(entry.length),
+        ) : [];
+        const label = eye === "rightEye" ? "Right eye" : "Left eye";
+        return (
+          <figure className="min-w-0" key={eye}>
+            <figcaption className="text-sm font-semibold">{label} · Length (mm)</figcaption>
+            <div aria-label={`${label} lash map`} className="relative aspect-[361/179] w-full overflow-hidden" role="img">
+              <div aria-hidden className={cn("absolute inset-0 bg-no-repeat", eye === "leftEye" && "-scale-x-100")}
+                style={{ backgroundImage: `url("${lashesBookingAssets.lashMap.clean}")`, backgroundPosition: "50% 58%", backgroundSize: "148% auto" }} />
+              {hotspotsForEye(eye).map(({ position, left, top }) => {
+                const assigned = entries.find((entry) => entry.position === position);
+                return <span aria-label={`Zone ${position}: ${assigned ? `${assigned.length} mm` : "not recorded"}`}
+                  className="absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center text-[15px] font-semibold text-[#7444cf]"
+                  key={position} style={{ left, top }}>{assigned ? assigned.length : "—"}</span>;
+              })}
+            </div>
+            {!entries.length && <p className="text-xs text-muted">No lengths recorded for this eye.</p>}
+          </figure>
+        );
+      })}
+    </div>
+  );
+}
+
 function readLashMapEditorState(details: Record<string, unknown>) {
   const eye = (details.activeLashEye as LashEyeName | undefined) ?? "rightEye";
   const map = { ...((details.lashMap as LashMapState | undefined) ?? {}) };

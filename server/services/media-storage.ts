@@ -26,7 +26,7 @@ function safeFilename(value: string) {
 }
 
 export function mediaPublicUrl(storageKey: string) {
-  return `${config.MEDIA_PUBLIC_BASE}/media/${storageKey}`
+  return `${config.MEDIA_PUBLIC_BASE.replace(/\/+$/, '')}/media/${storageKey}`
 }
 
 export async function saveSalonMedia(input: {

@@ -1,5 +1,6 @@
 import type { Appointment, ClinicalAnnotation, ClinicalConsent, ClinicalMedia, ClinicalSignature } from '../../../types/api'
 import { appointmentService } from '../../../lib/format'
+import { resolveTreatmentMediaUrl } from '../../../lib/treatmentMedia'
 import { buildLashesTreatmentReviewRows } from '../lashes-booking/buildLashesReviewSections'
 import { healthQuestionnaires } from './health-questionnaires'
 import type { BookingCategoryCode, FingerName } from './types'
@@ -26,8 +27,6 @@ const consentLabels: Record<string, string> = {
   cosmetology_photography_consent: 'Consent for photographs',
   micropigmentation_photography_consent: 'Consent for photographs',
 }
-
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:3001/api'
 
 function formatAnswerValue(value: unknown): string {
   if (value === true || value === 'yes') return 'Yes'
@@ -237,21 +236,8 @@ type ClinicalMediaLike = ClinicalMedia & {
   mimeType?: string
 }
 
-function readClinicalMediaStorageKey(media: ClinicalMediaLike) {
-  return media.storage_key || media.storageKey || ''
-}
-
 export function resolveClinicalMediaUrl(media: ClinicalMediaLike): string {
-  if (media.url) {
-    if (media.url.startsWith('http://') || media.url.startsWith('https://')) return media.url
-    if (media.url.startsWith('/api/')) return `${API_BASE.replace(/\/api$/, '')}${media.url}`
-    if (media.url.startsWith('/media/')) return `${API_BASE.replace(/\/api$/, '')}/api${media.url}`
-    if (media.url.startsWith('/')) return `${API_BASE.replace(/\/api$/, '')}${media.url}`
-    return media.url
-  }
-  const storageKey = readClinicalMediaStorageKey(media)
-  if (storageKey) return `${API_BASE}/media/${storageKey}`
-  return ''
+  return resolveTreatmentMediaUrl(media)
 }
 
 export function signaturePathData(data: string) {

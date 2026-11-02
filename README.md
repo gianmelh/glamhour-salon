@@ -121,6 +121,26 @@ coverage, and `npm run test:client-clinical-forms-persistence` with local Postgr
 binaries for persistence coverage. Both use isolated fixtures; the database test
 creates and removes its own temporary cluster without reading `.env`.
 
+Clinical form summaries display lash lengths on both eye diagrams, fitted lash
+photos, and facial marks with their legend. Internal preview coordinates and
+side totals are hidden. Stored upload URLs resolve against the current API,
+including older localhost URLs; missing files show an explicit unavailable-photo
+message. New uploads default to portable `/api/media/...` URLs. A custom
+`MEDIA_PUBLIC_BASE` can still be configured for a separate media host.
+
+Micropigmentation requires the anesthesia brand and a positive exposure time
+before submitting or saving the form, including edits to older records. Existing
+records remain viewable. This validation also runs on the clinical-form API.
+
+Run `PLAYWRIGHT_CHANNEL=chrome npm run test:video-reports` for the October 28
+video regressions: graphical clinical summaries, anesthesia validation,
+photo URL recovery, lash curve rendering, touch adjustment, style changes,
+and booking completion. These browser checks use synthetic fixtures and block
+external requests. `npm run test:client-clinical-forms-persistence` additionally
+checks the required anesthesia fields with isolated PostgreSQL. Deploy these
+changes by rebuilding the frontend and restarting the API; no new migration is
+needed.
+
 ```bash
 npx playwright install chromium
 npm run test:regression

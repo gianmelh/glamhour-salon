@@ -28,7 +28,7 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
   CORS_ORIGIN: z.string().default('http://localhost:5173,http://127.0.0.1:5173'),
   UPLOAD_DIR: z.string().default('uploads'),
-  MEDIA_PUBLIC_BASE: z.string().default('http://127.0.0.1:3001/api'),
+  MEDIA_PUBLIC_BASE: z.string().default('/api'),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(2 * 1024 * 1024),
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),

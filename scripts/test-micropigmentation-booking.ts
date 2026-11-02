@@ -81,6 +81,8 @@ function runUnitTests() {
     herpesSimplex: 'No',
     pigment_brand: 'Perma Blend',
     needleType: '18U',
+    anesthesiaBrand: 'Recorded anesthetic',
+    anesthesiaExposureTime: '30',
     professionalSignature: 'Pro',
     consentDate: '2026-08-06',
     clientDesignSignature: SIG,

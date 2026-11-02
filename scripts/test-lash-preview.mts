@@ -17,8 +17,10 @@ import { createRoot } from 'react-dom/client';
 import { LashPreviewCanvas } from '/src/pages/app/lashes-booking/components/LashPreviewCanvas.tsx';
 import '/src/index.css';
 const legacy = new URLSearchParams(location.search).has('legacy');
+const readOnly = new URLSearchParams(location.search).has('readonly');
 const points = ${JSON.stringify(legacyPoints)};
 const initial = {
+  ...(readOnly ? { photoAspectRatio: 1.25 } : {}),
   a: { assetSide: 'left', xPct: 30, yPct: 32, scale: 1, rotationDeg: 0, ...(legacy ? { warpPoints: points } : {}) },
   b: { assetSide: 'right', xPct: 66, yPct: 32, scale: 1, rotationDeg: 0, ...(legacy ? { warpPoints: points } : {}) },
 };
@@ -28,11 +30,15 @@ function Harness() {
   const [open, setOpen] = useState(true);
   const [saved, setSaved] = useState(initial);
   const [swapNonce, setSwapNonce] = useState(0);
+  const [style, setStyle] = useState('Anime');
+  const [variant, setVariant] = useState('Classic');
   return React.createElement('main', { style: { padding: 16, maxWidth: 720, margin: 'auto' } },
     React.createElement('h1', null, 'Lash photo preview'),
     open ? React.createElement(React.Fragment, null,
-      React.createElement(LashPreviewCanvas, { photoUrl: '/__lash_fixture_photo__.svg', style: 'Anime', variant: 'Classic', initialStickers: saved, swapNonce,
+      React.createElement(LashPreviewCanvas, { photoUrl: '/__lash_fixture_photo__.svg', style, variant, initialStickers: saved, swapNonce, readOnly,
         onStickersChange: next => { window.lashState = next; window.lashChanges += 1; } }),
+      React.createElement('button', { onClick: () => setStyle(value => value === 'Anime' ? 'Cat eye' : 'Anime') }, 'Change style'),
+      React.createElement('button', { onClick: () => setVariant(value => value === 'Classic' ? 'Volume' : 'Classic') }, 'Change variant'),
       React.createElement('button', { onClick: () => setSwapNonce(value => value + 1) }, 'Swap lashes'),
       React.createElement('button', { onClick: () => { sessionStorage.setItem('lash-preview-regression', JSON.stringify(window.lashState)); setOpen(false); } }, 'Save preview')
     ) : React.createElement('button', { onClick: () => { setSaved(JSON.parse(sessionStorage.getItem('lash-preview-regression'))); setOpen(true); } }, 'Reopen preview')
@@ -79,6 +85,14 @@ async function readSticker(sticker: Locator) {
     pixels: element.querySelector('canvas')!.toDataURL(),
   }))
 }
+async function alphaCoverage(sticker: Locator) {
+  return sticker.locator('canvas').evaluate(canvas => {
+    const pixels = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+    let sum = 0
+    for (let offset = 3; offset < pixels.length; offset += 4) sum += pixels[offset]
+    return sum
+  })
+}
 async function state(page: Page) {
   return page.evaluate(() => (window as unknown as { lashState: LashPreviewStickersState }).lashState)
 }
@@ -94,7 +108,8 @@ async function center(locator: Locator) {
   assert.ok(box, 'the interaction target is visible')
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
 }
-async function pointerDrag(page: Page, context: BrowserContext, touch: boolean, start: { x: number; y: number }, delta: { x: number; y: number }) {
+async function pointerDrag(page: Page, context: BrowserContext, touch: boolean, start: { x: number; y: number }, delta: { x: number; y: number }, stableSticker?: Locator) {
+  let beforeRelease: Awaited<ReturnType<typeof readSticker>> | undefined
   if (touch) {
     const cdp = await context.newCDPSession(page)
     try {
@@ -102,15 +117,20 @@ async function pointerDrag(page: Page, context: BrowserContext, touch: boolean, 
       for (let step = 1; step <= 5; step += 1) await cdp.send('Input.dispatchTouchEvent', {
         type: 'touchMove', touchPoints: [{ x: start.x + delta.x * step / 5, y: start.y + delta.y * step / 5, id: 1 }],
       })
+      await settleCanvas(page)
+      if (stableSticker) beforeRelease = await readSticker(stableSticker)
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
     } finally { await cdp.detach() }
   } else {
     await page.mouse.move(start.x, start.y)
     await page.mouse.down()
     await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 5 })
+    await settleCanvas(page)
+    if (stableSticker) beforeRelease = await readSticker(stableSticker)
     await page.mouse.up()
   }
   await settleCanvas(page)
+  if (stableSticker) assert.deepEqual(await readSticker(stableSticker), beforeRelease, 'releasing the pointer preserves the visible transform and curve')
 }
 
 try {
@@ -167,6 +187,15 @@ try {
         for (const point of ['Start', 'Middle', 'End']) assert.equal(await sticker.getByRole('button', { name: `${point} lash curve point`, exact: true }).count(), 1)
         assert.equal(await other.locator('.lash-preview-warp-point').count(), 0)
         if (scenario.legacy) assert.deepEqual(await readPoints(sticker), [legacyPoints[0], legacyPoints[3], legacyPoints[6]], 'legacy seven-point drafts retain start, middle, and end')
+        if (!scenario.legacy) {
+          const middle = sticker.getByRole('button', { name: 'Middle lash curve point', exact: true })
+          const beforeRaise = await alphaCoverage(sticker)
+          await pointerDrag(page, context, scenario.touch, await center(middle), { x: 0, y: -24 }, sticker)
+          const afterRaise = await alphaCoverage(sticker)
+          assert.ok(afterRaise >= beforeRaise * 0.96, `${id}: raising the middle retains hair pixels (${afterRaise}/${beforeRaise})`)
+          assert.ok(await sticker.locator('canvas').evaluate(canvas => parseFloat(canvas.style.top) < 0), 'lifted lash hairs can extend above their original image bounds')
+          await pointerDrag(page, context, scenario.touch, await center(middle), { x: 0, y: 10 }, sticker)
+        }
         for (let pointIndex = 0; pointIndex < 3; pointIndex += 1) {
           const before = await readPoints(sticker)
           const shapeBefore = await readSticker(sticker)
@@ -213,6 +242,49 @@ try {
       assert.deepEqual(rotatedAfter[2], rotatedPoints[2])
       assert.equal((await state(page)).b.rotationDeg, afterRotate.b.rotationDeg, 'warping a rotated sticker does not change rotation')
 
+      // The video resizes with the handle, then loses the fit when switching
+      // Anime ↔ Cat eye. Exercise those same real controls for mouse and touch.
+      const beforeResize = await state(page)
+      await pointerDrag(page, context, scenario.touch,
+        await center(right.getByRole('button', { name: 'Resize right eye lash sticker', exact: true })),
+        { x: 8, y: 5 }, right)
+      assert.ok((await state(page)).b.scale > beforeResize.b.scale)
+      const fitted = await state(page)
+      assert.ok(fitted.photoAspectRatio && fitted.photoAspectRatio > 0, 'save the fitted photo crop ratio')
+      for (const action of ['Change style', 'Change variant', 'Change style', 'Change variant']) {
+        const imageBefore = await right.locator('img').getAttribute('src')
+        await page.getByRole('button', { name: action, exact: true }).click()
+        await waitForLashAssets(page)
+        assert.notEqual(await right.locator('img').getAttribute('src'), imageBefore, 'selection changes the actual lash artwork')
+        assert.deepEqual(await state(page), fitted, 'style and variant changes preserve both eyes, their curve, rotation, scale, and photo crop')
+        assert.equal(await page.locator('.lash-preview-warp-point').count(), 0, 'a new selection hides editing handles')
+      }
+
+      if (scenario.touch) {
+        await right.press('Enter')
+        const beforePinch = await state(page)
+        const target = await center(right)
+        const first = { x: target.x - 12, y: target.y + 6, id: 1 }
+        const second = { x: target.x + 25, y: target.y + 8, id: 2 }
+        const cdp = await context.newCDPSession(page)
+        try {
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [first] })
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [first, second] })
+          const expanded = [{ ...first, x: first.x - 4 }, { ...second, x: second.x + 4 }]
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: expanded })
+          await settleCanvas(page)
+          const beforeRelease = await readSticker(right)
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [expanded[0]] })
+          await settleCanvas(page)
+          assert.deepEqual(await readSticker(right), beforeRelease, 'lifting one pinch finger preserves the fit')
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...expanded[0], x: expanded[0].x + 1 }] })
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+          await settleCanvas(page)
+          assert.deepEqual(await readSticker(right), beforeRelease, 'the remaining finger does not make the resized sticker jump')
+          assert.ok((await state(page)).b.scale > beforePinch.b.scale, 'two-finger sizing remains available')
+        } finally { await cdp.detach() }
+      }
+
       const beforeSwap = await state(page)
       for (let swap = 0; swap < 2; swap += 1) {
         const changes = await page.evaluate(() => (window as unknown as { lashChanges: number }).lashChanges)
@@ -254,9 +326,28 @@ try {
       assert.deepEqual(errors, [], 'no browser exceptions')
       assert.deepEqual(passiveWarnings, [], 'wheel and touch interactions emit no passive-listener warnings')
       assert.deepEqual(unexpected, [], 'the test does not access APIs or external data')
-      console.log(`PASS ${scenario.name}: three isolated curve controls, movement, wheel sizing without passive warnings, size, rotation, and save/reopen`)
+      console.log(`PASS ${scenario.name}: hair preservation, stable release, style/variant fit, three isolated curve controls, movement, wheel, size, rotation, and save/reopen`)
     } finally { await context.close() }
   }
+  const readonlyContext = await browser.newContext({ viewport: { width: 393, height: 852 }, serviceWorkers: 'block' })
+  try {
+    const page = await readonlyContext.newPage()
+    await page.goto(`${origin}/__lash_preview__?readonly&legacy`)
+    await waitForLashAssets(page)
+    assert.equal(await page.locator('[data-lash-sticker-id][tabindex]').count(), 0, 'saved previews are not keyboard controls')
+    assert.equal(await page.locator('.lash-preview-warp-point, .lash-preview-transform-handle').count(), 0)
+    const preview = page.getByRole('img', { name: 'left eye lash preview', exact: true })
+    const photoElement = page.getByRole('img', { name: 'Lash style preview', exact: true })
+    for (const width of [393, 720]) {
+      await page.setViewportSize({ width, height: 852 })
+      const bounds = await photoElement.boundingBox()
+      assert.ok(bounds && Math.abs(bounds.width / bounds.height - 1.25) < 0.001, 'saved photo crop stays consistent across screen widths')
+    }
+    await preview.click()
+    assert.equal(await page.locator('.lash-preview-warp-point').count(), 0)
+    assert.equal(await page.evaluate(() => (window as unknown as { lashChanges: number }).lashChanges), 0, 'read-only previews never persist changes')
+    console.log('PASS read-only preview: same saved mesh, no controls or writes')
+  } finally { await readonlyContext.close() }
 } finally {
   await browser?.close()
   await server.close()

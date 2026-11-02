@@ -204,7 +204,7 @@ export function LashesRegistrationFlow({
       photoPreviewUrl: saved.url,
       photoStorageKey: saved.storageKey,
       photoCapturePending: false,
-      mediaItems: [...mediaItems.filter((item) => item.mediaType !== 'reference'), saved],
+      mediaItems: [...mediaItems.filter((item) => item.mediaType !== 'reference' && (item as { media_type?: string }).media_type !== 'reference'), saved],
     }))
     setStep('photo-confirm')
   }
@@ -218,9 +218,9 @@ export function LashesRegistrationFlow({
     setDetails((current) => ({
       ...current,
       photoLocalPreviewUrl: '',
-      photoPreviewUrl: '',
+      photoPreviewUrl: '', photoPreview: '',
       photoStorageKey: '',
-      mediaItems: mediaItems.filter((item) => item.mediaType !== 'reference'),
+      mediaItems: mediaItems.filter((item) => item.mediaType !== 'reference' && (item as { media_type?: string }).media_type !== 'reference'),
     }))
     setStep('photo-method')
   }

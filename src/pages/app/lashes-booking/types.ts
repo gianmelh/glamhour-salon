@@ -20,6 +20,8 @@ export type LashPreviewStickerTransform = {
 
 /** Persisted Preview try-on transforms (shared Lashes details state). */
 export type LashPreviewStickersState = {
+  /** Photo frame used for fitting, so saved overlays keep their crop at other widths. */
+  photoAspectRatio?: number
   a: LashPreviewStickerTransform
   b: LashPreviewStickerTransform
 }

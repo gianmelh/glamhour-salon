@@ -1,5 +1,6 @@
 import { Camera } from 'lucide-react'
 import { Button } from '../../../../components'
+import { resolveTreatmentPhotoUrl } from '../../../../lib/treatmentMedia'
 import { lashesBookingAssets } from '../assets'
 import { useTreatmentPhotoUpload } from '../hooks/useTreatmentPhotoUpload'
 import type { TreatmentMediaItem } from '../types'
@@ -32,7 +33,7 @@ export function TreatmentPhotoFlow({ category, title, details, onChange }: {
   const { upload, uploading, error } = useTreatmentPhotoUpload(category)
   const copy = photoCopy[category] ?? photoCopy.lashes
   const resolvedTitle = title ?? copy.title
-  const previewUrl = String(details.photoPreviewUrl ?? details.photoPreview ?? '')
+  const previewUrl = resolveTreatmentPhotoUrl(details)
   const mediaItems = (details.mediaItems as TreatmentMediaItem[] | undefined) ?? []
 
   const handleFile = async (file: File) => {
@@ -73,7 +74,7 @@ export function TreatmentPhotoFlow({ category, title, details, onChange }: {
         />
       </label>
       {previewUrl && (
-        <Button className="mt-2" onClick={() => onChange({ ...details, photoPreviewUrl: '', photoStorageKey: '', mediaItems: mediaItems.filter((item) => item.mediaType !== 'reference') })} type="button" variant="outline">
+        <Button className="mt-2" onClick={() => onChange({ ...details, photoPreview: '', photoPreviewUrl: '', photoStorageKey: '', mediaItems: mediaItems.filter((item) => item.mediaType !== 'reference' && (item as { media_type?: string }).media_type !== 'reference') })} type="button" variant="outline">
           Remove photo
         </Button>
       )}

@@ -1,12 +1,16 @@
 import { Card } from '../../../components'
 import type { Client, ClientClinicalForm } from '../../../types/api'
 import { signaturePathData } from '../appointment-booking/appointmentClinicalView'
+import { FaceMapSummary } from '../appointment-booking/categories/cosmetology/FaceMapEditor'
+import { LashMapSummary } from '../lashes-booking/components/LashMapEditor'
+import { ClientClinicalPhoto } from './ClientClinicalVisuals'
 
 const hiddenFields = new Set([
   'category', 'registrationStep', 'previewReturnStep', 'photoCapturePending', 'photoLocalPreviewUrl',
   'usedExistingHealthProfile', 'existingQuestionnaireId', 'micropigmentationServiceIds',
   'signatures', 'consents', 'mediaItems', 'photoStorageKey', 'faceMapSavedAt', 'materialIds',
   'activeHand', 'activeFinger', 'activeLashEye',
+  'photoPreviewUrl', 'photoPreview', 'lashPreviewStickers', 'lashMapLength', 'leftSide', 'rightSide',
 ])
 const labels: Record<string, string> = {
   generalFullName: 'Full name', generalPhone: 'Phone number', generalEmail: 'Email', generalDateOfBirth: 'Date of birth',
@@ -29,6 +33,10 @@ function hasValue(value: unknown): boolean {
 
 export function ClientCategoryFormSummary({ client, record }: { client: Client; record: ClientClinicalForm }) {
   const entries = Object.entries(record.form_details).filter(([key, value]) => !hiddenFields.has(key) && hasValue(value))
+  const hasPhoto = Boolean(record.form_details.photoPreviewUrl || record.form_details.photoPreview || record.form_details.photoStorageKey
+    || (Array.isArray(record.form_details.mediaItems) && record.form_details.mediaItems.some((item) =>
+      item && typeof item === 'object' && (item.mediaType === 'reference' || item.media_type === 'reference'),
+    )))
   return (
     <div className="space-y-3">
       <Card className="space-y-1">
@@ -41,6 +49,10 @@ export function ClientCategoryFormSummary({ client, record }: { client: Client; 
           <ClinicalValue field={key} value={value} />
         </Card>
       ))}
+      {hasPhoto && <Card>
+        <h3 className="mb-2 text-sm font-bold">Reference photo</h3>
+        <ClientClinicalPhoto category={record.category} details={record.form_details} />
+      </Card>}
       <Card>
         <h3 className="mb-2 text-sm font-bold">Additional clinical notes</h3>
         <p className="whitespace-pre-wrap break-words text-sm">{record.notes || 'Not recorded'}</p>
@@ -50,7 +62,8 @@ export function ClientCategoryFormSummary({ client, record }: { client: Client; 
 }
 
 function ClinicalValue({ field, value }: { field: string; value: unknown }) {
-  if (field === 'photoPreviewUrl' && typeof value === 'string') return <img alt="Clinical reference" className="max-h-64 w-full rounded-lg object-contain" loading="lazy" src={value} />
+  if (field === 'lashMap') return <LashMapSummary value={value} />
+  if (field === 'faceAnnotations') return <FaceMapSummary value={value} />
   if (/signature$/i.test(field) && typeof value === 'string' && /^\d+,\d+(\s+\d+,\d+)*$/.test(value)) return (
     <svg aria-label={labelFor(field)} className="h-32 w-full rounded-lg border border-border bg-white" role="img" viewBox="0 0 320 128">
       <path d={signaturePathData(value)} fill="none" stroke="#111827" strokeLinecap="round" strokeWidth="3" />

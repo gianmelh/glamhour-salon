@@ -326,6 +326,7 @@ async function isolatedRegression() {
       },
       micropigmentation: {
         ...general, procedure: 'Microblading', procedures: ['Microblading'], herpesSimplex: 'No',
+        anesthesiaBrand: 'Recorded anesthetic', anesthesiaExposureTime: '30',
         pigment_brand: 'Perma Blend', needleType: '18U', clientDesignSignature: '10,10 20,20 30,15', negativeExperience: 'No',
       },
     }
@@ -374,6 +375,13 @@ async function isolatedRegression() {
       currentSaved.find(item => item.category === 'cosmetology')!.id), status(400))
     await assert.rejects(save(currentFlowClient, 'micropigmentation', { ...actualForms.micropigmentation, clientDesignSignature: '' },
       currentSaved.find(item => item.category === 'micropigmentation')!.id), status(400))
+    for (const invalid of [
+      { anesthesiaBrand: '' }, { anesthesiaExposureTime: '' }, { anesthesiaExposureTime: '0' },
+      { anesthesiaExposureTime: '-5' }, { anesthesiaExposureTime: 'not a number' },
+    ]) {
+      await assert.rejects(save(currentFlowClient, 'micropigmentation', { ...actualForms.micropigmentation, ...invalid },
+        currentSaved.find(item => item.category === 'micropigmentation')!.id), status(400))
+    }
     await assert.rejects(save(currentFlowClient, 'lashes', { ...actualForms.lashes, lashMap: {} },
       currentSaved.find(item => item.category === 'lashes')!.id), status(400))
     console.log('PASS all four current specialized forms load and save without legacy healthAnswers, retain appointment snapshots and enforce original validation')

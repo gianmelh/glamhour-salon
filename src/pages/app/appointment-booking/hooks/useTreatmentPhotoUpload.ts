@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { glamhourApi } from '../../../../services/glamhour-api'
+import { resolveTreatmentMediaUrl } from '../../../../lib/treatmentMedia'
 import type { TreatmentMediaItem } from '../types'
 
 const MAX_BYTES = 2 * 1024 * 1024
@@ -35,7 +36,7 @@ export function useTreatmentPhotoUpload(category: string) {
       })
       return {
         storageKey: saved.storageKey,
-        url: saved.url,
+        url: resolveTreatmentMediaUrl(saved),
         mimeType: saved.mimeType,
         mediaType: 'reference',
         originalFilename: file.name,
