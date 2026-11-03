@@ -634,12 +634,15 @@ export function MicropigmentationDetailsStep({
               onChange({ details: { ...details, needleType: value, needle: value } })
             }}
             placeholder="e.g., nano Blade, round shader"
+            required
             value={String(details.needleType ?? details.needle ?? '')}
           />
           <TextField
+            error={showErrors ? fieldErrors.needleSize : undefined}
             label="Size/number"
             onChange={(value) => set('needleSize', value)}
             placeholder="e.g., 0.18mm, 7-pin"
+            required
             value={String(details.needleSize ?? '')}
           />
 
@@ -651,14 +654,17 @@ export function MicropigmentationDetailsStep({
               onChange({ details: { ...details, pigment_brand: value, pigmentBrand: value } })
             }}
             placeholder="e.g., Perma Blend, Tina Davies"
+            required
             value={String(details.pigment_brand ?? details.pigmentBrand ?? '')}
           />
           <TextField
+            error={showErrors ? fieldErrors.color_mix : undefined}
             label="Color/mix"
             onChange={(value) => {
               onChange({ details: { ...details, color_mix: value, colorMix: value } })
             }}
             placeholder="e.g., cool ash Brown, 80% espresso + 2..."
+            required
             value={String(details.color_mix ?? details.colorMix ?? '')}
           />
         </FormCard>

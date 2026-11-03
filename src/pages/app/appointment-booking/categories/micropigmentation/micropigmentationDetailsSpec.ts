@@ -299,6 +299,8 @@ export function getMicropigmentationFieldErrors(details: Record<string, unknown>
   }
   if (!String(details.pigment_brand ?? details.pigmentBrand ?? '').trim()) errors.pigment_brand = 'Pigment brand is required'
   if (!String(details.needle ?? details.needleType ?? '').trim()) errors.needleType = 'Needle type is required'
+  if (!String(details.needleSize ?? '').trim()) errors.needleSize = 'Needle size/number is required'
+  if (!String(details.color_mix ?? details.colorMix ?? '').trim()) errors.color_mix = 'Pigment color/mix is required'
   if (!String(details.professionalSignature ?? '').trim()) errors.professionalSignature = 'Professional signature is required'
   if (!String(details.consentDate ?? '').trim()) errors.consentDate = 'Date is required'
   if (!String(details.clientDesignSignature ?? '').trim()) {

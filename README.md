@@ -128,16 +128,18 @@ including older localhost URLs; missing files show an explicit unavailable-photo
 message. New uploads default to portable `/api/media/...` URLs. A custom
 `MEDIA_PUBLIC_BASE` can still be configured for a separate media host.
 
-Micropigmentation requires the anesthesia brand and a positive exposure time
-before submitting or saving the form, including edits to older records. Existing
-records remain viewable. This validation also runs on the clinical-form API.
+Micropigmentation requires every Procedure details field: anesthesia brand and
+a positive exposure time, needle type and size/number, pigment brand and color/mix.
+These fields must be completed before submitting or saving the form, including
+edits to older records. Existing records remain viewable. This validation also
+runs on the clinical-form API.
 
 Run `PLAYWRIGHT_CHANNEL=chrome npm run test:video-reports` for the October 28
 video regressions: graphical clinical summaries, anesthesia validation,
 photo URL recovery, lash curve rendering, touch adjustment, style changes,
 and booking completion. These browser checks use synthetic fixtures and block
 external requests. `npm run test:client-clinical-forms-persistence` additionally
-checks the required anesthesia fields with isolated PostgreSQL. Deploy these
+checks all required procedure fields with isolated PostgreSQL. Deploy these
 changes by rebuilding the frontend and restarting the API; no new migration is
 needed.
 

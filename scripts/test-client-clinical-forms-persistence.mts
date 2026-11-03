@@ -327,6 +327,7 @@ async function isolatedRegression() {
       micropigmentation: {
         ...general, procedure: 'Microblading', procedures: ['Microblading'], herpesSimplex: 'No',
         anesthesiaBrand: 'Recorded anesthetic', anesthesiaExposureTime: '30',
+        needleSize: '0.18mm, 7-pin', color_mix: 'Cool ash brown',
         pigment_brand: 'Perma Blend', needleType: '18U', clientDesignSignature: '10,10 20,20 30,15', negativeExperience: 'No',
       },
     }
@@ -378,12 +379,23 @@ async function isolatedRegression() {
     for (const invalid of [
       { anesthesiaBrand: '' }, { anesthesiaExposureTime: '' }, { anesthesiaExposureTime: '0' },
       { anesthesiaExposureTime: '-5' }, { anesthesiaExposureTime: 'not a number' },
+      { needleSize: undefined }, { needleSize: '' }, { needleSize: '   ' },
+      { color_mix: undefined }, { color_mix: '' }, { color_mix: '   ' },
+      { color_mix: undefined, colorMix: '   ' },
     ]) {
       await assert.rejects(save(currentFlowClient, 'micropigmentation', { ...actualForms.micropigmentation, ...invalid },
         currentSaved.find(item => item.category === 'micropigmentation')!.id), status(400))
     }
     await assert.rejects(save(currentFlowClient, 'lashes', { ...actualForms.lashes, lashMap: {} },
       currentSaved.find(item => item.category === 'lashes')!.id), status(400))
+    const legacyColor = await save(currentFlowClient, 'micropigmentation', {
+      ...actualForms.micropigmentation, color_mix: undefined, colorMix: 'Legacy warm brown',
+    }, currentSaved.find(item => item.category === 'micropigmentation')!.id)
+    assert.equal(legacyColor.form_details.colorMix, 'Legacy warm brown', 'older colorMix-only records remain editable')
+    assert.equal(legacyColor.form_details.needleSize, '0.18mm, 7-pin')
+    const legacyColorReloaded = (await list(currentFlowClient)).find(item => item.category === 'micropigmentation')!
+    assert.equal(legacyColorReloaded.id, legacyColor.id)
+    assert.equal(legacyColorReloaded.form_details.colorMix, 'Legacy warm brown')
     console.log('PASS all four current specialized forms load and save without legacy healthAnswers, retain appointment snapshots and enforce original validation')
 
     for (let i = 0; i < 16; i++) await client(`Free client ${i}`, salonId, '2021-01-01T00:00:00Z')

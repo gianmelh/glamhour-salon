@@ -251,7 +251,30 @@ try {
         await exposure.fill('-5')
         assert.equal(await save.isDisabled(), true, 'negative exposure does not satisfy required time')
         await exposure.fill('30')
+        assert.equal(await save.isDisabled(), true, 'all procedure details are required, including size and color')
+        const size = dialog.getByLabel('Size/number', { exact: false })
+        const color = dialog.getByLabel('Color/mix', { exact: false })
+        for (const field of [size, color]) {
+          assert.equal(await field.getAttribute('aria-required'), 'true')
+          assert.equal(await field.getAttribute('aria-invalid'), 'true')
+        }
+        await size.fill('0.18mm, 7-pin')
+        assert.equal(await save.isDisabled(), true, 'color/mix is independently required')
+        await submit.click()
+        assert.deepEqual(await writes(page), [], 'category submit cannot bypass missing color/mix')
+        await color.fill('Cool ash brown')
         assert.equal(await save.isEnabled(), true)
+        for (const [field, value] of [[size, '0.18mm, 7-pin'], [color, 'Cool ash brown']] as const) {
+          for (const blank of ['', '   ']) {
+            await field.fill(blank)
+            assert.equal(await save.isDisabled(), true, 'empty or whitespace-only procedure details block Save form')
+            await submit.click()
+            assert.equal(await field.getAttribute('aria-invalid'), 'true')
+            assert.deepEqual(await writes(page), [], 'empty or whitespace-only procedure details block Confirm and Submit')
+          }
+          await field.fill(value)
+        }
+        assert.equal(await save.isEnabled(), true, 'both submission paths become available after completing every procedure field')
         assert.equal(await dialog.getByLabel('Current medications', { exact: false }).inputValue(), 'Original micro medication')
         await dialog.getByLabel('Current medications', { exact: false }).fill('Updated micro medication')
         await dialog.getByLabel('Additional clinical notes').fill('Updated micropigmentation note')
@@ -262,6 +285,9 @@ try {
         assert.equal(saved.input.details.currentMedications, 'Updated micro medication')
         assert.equal(saved.input.details.anesthesiaBrand, 'Recorded anesthetic')
         assert.equal(saved.input.details.anesthesiaExposureTime, '30')
+        assert.equal(saved.input.details.needleSize, '0.18mm, 7-pin')
+        assert.equal(saved.input.details.color_mix, 'Cool ash brown')
+        assert.equal(saved.input.details.colorMix, 'Cool ash brown')
         assert.equal(saved.input.details.generalFullName, 'Alice Clinical')
         assert.equal(saved.input.details.clientDesignSignature, '5,5 15,15 25,5')
         assert.deepEqual(saved.input.details.procedures, ['Microblading', 'Eyeliner'])
@@ -269,6 +295,8 @@ try {
         await dialog.getByRole('button', { name: 'Edit form', exact: true }).click()
         assert.equal(await dialog.getByPlaceholder('e.g., EMLA, BLT', { exact: true }).inputValue(), 'Recorded anesthetic')
         assert.equal(await dialog.getByLabel('Exposure time', { exact: false }).inputValue(), '30')
+        assert.equal(await dialog.getByLabel('Size/number', { exact: false }).inputValue(), '0.18mm, 7-pin')
+        assert.equal(await dialog.getByLabel('Color/mix', { exact: false }).inputValue(), 'Cool ash brown')
       } else if (scenario === 'current-lashes') {
         await openEditor(dialog, 'Lashes')
         assert.equal(await dialog.getByRole('button', { name: 'Anime', exact: true }).getAttribute('aria-pressed'), 'true')
