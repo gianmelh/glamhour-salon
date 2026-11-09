@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "demo:legal": "node --import tsx scripts/start-legal-demo.mts",
+    "demo:legal:check": "node --import tsx scripts/start-legal-demo.mts --check",
     "dev": "vite",
     "dev:api": "tsx watch server/index.ts",
     "dev:all": "npm run dev:api & npm run dev",
