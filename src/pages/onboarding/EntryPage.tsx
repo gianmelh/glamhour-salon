@@ -1,4 +1,4 @@
-import { CalendarHeart, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button, Card } from '../../components'
 
@@ -6,7 +6,7 @@ export function EntryPage() {
   return (
     <div className="flex min-h-dvh flex-col justify-end bg-auth-gradient p-4 pb-7">
       <div className="mb-auto pt-20 text-center">
-        <span className="mx-auto grid size-20 place-items-center rounded-2xl bg-primary text-white shadow-action"><CalendarHeart className="size-10" /></span>
+        <img className="mx-auto size-20 object-contain" src="/brand/glamhour-logo.jpg" width="80" height="80" alt="" />
         <h1 className="mt-5 text-3xl font-bold tracking-[-0.04em]">Glamhour</h1>
         <p className="mt-2 text-sm text-muted">Your salon's best hour, every hour.</p>
       </div>

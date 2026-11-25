@@ -160,7 +160,7 @@ try {
   assert.equal(delivered.at(-1)!.mail.to, email)
   assert.ok(delivered.at(-1)!.mail.html.includes('&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; Salon'))
   assert.ok(!delivered.at(-1)!.mail.html.includes('<img src=x onerror="alert(1)">'), 'salon input cannot inject an image or event handler')
-  assert.match(delivered.at(-1)!.mail.html, /<img\b[^>]*\bsrc="cid:glamhour-mark@glamhourapp\.com"/, 'the legitimate embedded brand image remains available')
+  assert.match(delivered.at(-1)!.mail.html, /<img\b[^>]*\bsrc="cid:glamhour-logo@glamhourapp\.com"/, 'the legitimate embedded brand image remains available')
   assert.deepEqual(await getPublicBookingEmailStatus(salonA, email), { verified: false }, 'sending does not verify the address')
   assert.ok(!queryLog.some(({ values }) => values.some((value) => value === code)), 'plaintext OTP is never a SQL parameter')
   await rejects(request(email), 429)

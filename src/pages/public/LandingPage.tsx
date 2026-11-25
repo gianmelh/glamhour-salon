@@ -25,7 +25,12 @@ const questions = [
 ]
 
 function Brand() {
-  return <Link className="landing-brand" to="/" aria-label="Glamhour home"><span aria-hidden="true"><Sparkles size={21} strokeWidth={1.7} /></span>glamhour<span className="landing-brand-dot">.</span></Link>
+  return (
+    <Link className="landing-brand" to="/" aria-label="Glamhour home">
+      <img className="landing-brand-logo" src="/brand/glamhour-logo.jpg" width="40" height="40" alt="" />
+      glamhour<span className="landing-brand-dot">.</span>
+    </Link>
+  )
 }
 
 export function LandingPage() {

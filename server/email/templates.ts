@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 
-const LOGO_CID = 'glamhour-mark@glamhourapp.com'
+const LOGO_CID = 'glamhour-logo@glamhourapp.com'
 let logo: Buffer | undefined
 
 export interface BrandedEmail {
@@ -33,8 +33,8 @@ function frame(input: { subject: string; preheader: string; text: string; conten
     // Local PNG embedded in the message: no external image host or SVG support
     // required. All essential information also remains readable without images.
     attachments: [{
-      filename: 'glamhour-mark.png',
-      content: logo ??= readFileSync(new URL('../assets/glamhour-mark.png', import.meta.url)),
+      filename: 'glamhour-logo.png',
+      content: logo ??= readFileSync(new URL('../assets/glamhour-logo.png', import.meta.url)),
       contentType: 'image/png',
       contentDisposition: 'inline',
       cid: LOGO_CID,
@@ -65,7 +65,7 @@ ${input.testMode ? `<tr><td style="padding:0 8px 16px;text-align:center;font-siz
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;">
 <tr><td class="email-pad" style="padding:30px 40px 26px;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td width="48" style="width:48px;vertical-align:middle;"><img src="cid:${LOGO_CID}" width="48" height="46" alt="" style="display:block;width:48px;height:46px;border:0;"></td>
+    <td width="48" style="width:48px;vertical-align:middle;"><img src="cid:${LOGO_CID}" width="48" height="48" alt="" style="display:block;width:48px;height:48px;border:0;"></td>
     <td style="padding-left:12px;vertical-align:middle;font-size:27px;line-height:32px;font-weight:700;letter-spacing:-1px;color:#35224f;">Glamhour</td>
   </tr></table>
 </td></tr>

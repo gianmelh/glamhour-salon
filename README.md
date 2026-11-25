@@ -37,6 +37,15 @@ Key routes:
 
 ## Public landing page
 
+The official G-dot logo supplied by the owner is preserved unchanged at
+`public/brand/glamhour-logo.jpg`. The landing header/footer and account entry
+screen use this artwork. Favicon and Apple touch icon PNGs are exported from it;
+`public/favicon.svg` retains the previous URL with the same new artwork.
+Email templates embed `server/assets/glamhour-logo.png` at 48×48 pixels.
+Regenerate the derived assets locally with
+`PLAYWRIGHT_CHANNEL=chrome node scripts/render-brand-assets.mjs` (no network,
+email or database access).
+
 The homepage is a responsive public landing; it makes no API calls. It uses the
 existing brand assets and the Free / US$14.99 monthly / US$119.99 annual plans
 from `SubscriptionPage.tsx` and migration `012_stripe_subscriptions.sql`.
