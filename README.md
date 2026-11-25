@@ -27,12 +27,36 @@ screens may show clearly labeled development fallback data from
 
 Key routes:
 
-- `/`, `/intro`, `/entry` - welcome and product introduction
+- `/` - public product landing with features, subscription plans and legal links
+- `/intro`, `/entry` - product introduction and account entry
 - `/login`, `/signup`, `/forgot-password`, `/register` - authentication and registration
 - `/onboarding/categories` - start of the salon setup flow
 - `/app/home`, `/app/calendar`, `/app/appointments` - daily salon operations
 - `/app/clients`, `/app/services`, `/app/staff` - salon management
 - `/app/sales`, `/app/share`, `/app/settings` - reporting and account tools
+
+## Public landing page
+
+The homepage is a responsive public landing; it makes no API calls. It uses the
+existing brand assets and the Free / US$14.99 monthly / US$119.99 annual plans
+from `SubscriptionPage.tsx` and migration `012_stripe_subscriptions.sql`.
+The illustration's schedule is explicitly labeled as an example.
+
+`src/pages/public/businessDetails.ts` holds the public business identity supplied
+by the owner on November 25, 2026: GlamHour LLC, admin@glamhourapp.com,
+12100 SW Community Blvd, Port Saint Lucie, FL 34987, United States.
+The footer displays all three and includes a direct email contact link.
+
+Footer links open the existing policies in a public reading view using
+`?from=home`, with home/back and policy navigation and no acceptance action.
+The original registration acceptance flow is preserved. Policy wording is
+unchanged and still needs the separate legal review already noted in the design
+roadmap. No banking or payment-provider approval is implied by this page.
+
+Run `PLAYWRIGHT_CHANNEL=chrome npm run test:landing` for local browser checks at
+five viewport widths, mobile navigation, pricing, FAQ expansion, legal reading,
+and account links. The test does not load `.env`, blocks external/API requests,
+and does not start a backend or write to a database.
 
 ## Full Local Setup
 

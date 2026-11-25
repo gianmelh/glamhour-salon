@@ -25,13 +25,13 @@ import { SubscriptionPage } from './pages/app/SubscriptionPage'
 import { EntryPage } from './pages/onboarding/EntryPage'
 import { IntroPage } from './pages/onboarding/IntroPage'
 import { SetupPage } from './pages/onboarding/SetupPage'
-import { WelcomePage } from './pages/onboarding/WelcomePage'
+import { LandingPage } from './pages/public/LandingPage'
 
 function App() {
   return (
     <Routes>
+      <Route index element={<LandingPage />} />
       <Route element={<AuthLayout />}>
-        <Route index element={<WelcomePage />} />
         <Route path="intro" element={<IntroPage />} />
         <Route path="entry" element={<EntryPage />} />
         <Route path="login" element={<LoginPage />} />

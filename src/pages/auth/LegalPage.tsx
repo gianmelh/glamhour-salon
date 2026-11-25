@@ -1,5 +1,6 @@
 import { ChevronLeft, FileText, ShieldCheck } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { acceptSignUpTerms } from './signUpDraft'
 
 type LegalKind = 'terms' | 'privacy'
@@ -94,8 +95,14 @@ const legalContent: Record<
 
 export function LegalPage({ kind }: { kind: LegalKind }) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const isPublicReading = searchParams.get('from') === 'home'
   const content = legalContent[kind]
   const Icon = content.icon
+
+  useEffect(() => {
+    if (isPublicReading) window.scrollTo(0, 0)
+  }, [isPublicReading, kind])
 
   function handleAccept() {
     acceptSignUpTerms()
@@ -103,7 +110,7 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
   }
 
   return (
-    <main className="min-h-dvh bg-white text-[#172033]">
+    <main className={`min-h-dvh bg-white text-[#172033]${isPublicReading ? ' [&_article_h2]:text-lg [&_article_p]:text-base [&_article_p]:leading-relaxed' : ''}`}>
       <header className="border-b border-[#eef0f6] bg-white px-5 pb-6 pt-7">
         <div className="flex items-start gap-3">
           <span className="grid size-9 place-items-center rounded-md bg-[#efe7ff] text-[#7a3fe0]">
@@ -117,9 +124,9 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
       </header>
 
       <section className="px-5 pb-8 pt-6">
-        <Link className="inline-flex items-center gap-1.5 text-[12px] text-[#172033]" to="/signup">
+        <Link className="inline-flex min-h-11 items-center gap-1.5 text-sm text-[#172033]" to={isPublicReading ? '/' : '/signup'}>
           <ChevronLeft className="size-4" />
-          Back to sign up
+          {isPublicReading ? 'Back to Glamhour' : 'Back to sign up'}
         </Link>
 
         <div className="mt-6 space-y-6">
@@ -131,13 +138,20 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
           ))}
         </div>
 
-        <button
-          className="mt-7 min-h-12 w-full rounded-lg bg-[linear-gradient(180deg,#8f4df2_0%,#4f1d92_100%)] text-[13px] font-medium text-white shadow-[0_10px_18px_rgb(70_31_139_/_0.42)] transition hover:brightness-105"
-          onClick={handleAccept}
-          type="button"
-        >
-          {content.cta}
-        </button>
+        {isPublicReading ? (
+          <nav aria-label="Legal documents" className="mt-8 flex flex-wrap gap-6 border-t border-[#eef0f6] pt-6 text-sm text-primary">
+            <Link to="/privacy?from=home">Privacy Policy</Link>
+            <Link to="/terms?from=home">Terms & Conditions</Link>
+          </nav>
+        ) : (
+          <button
+            className="mt-7 min-h-12 w-full rounded-lg bg-[linear-gradient(180deg,#8f4df2_0%,#4f1d92_100%)] text-[13px] font-medium text-white shadow-[0_10px_18px_rgb(70_31_139_/_0.42)] transition hover:brightness-105"
+            onClick={handleAccept}
+            type="button"
+          >
+            {content.cta}
+          </button>
+        )}
       </section>
     </main>
   )
