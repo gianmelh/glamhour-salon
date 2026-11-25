@@ -8,7 +8,7 @@
 .landing-header { border-bottom: 1px solid #eee8f4; background: #fff; }
 .landing-header-inner { display: flex; align-items: center; justify-content: space-between; min-height: 96px; gap: 32px; }
 .landing-brand { display: inline-flex; align-items: center; gap: 9px; color: var(--landing-ink); font-family: var(--font-display); font-size: 2rem; font-weight: 800; letter-spacing: -1.2px; line-height: 1; }
-.landing-brand > span:first-child { display: grid; place-items: center; width: 35px; height: 35px; background: var(--landing-purple); color: white; border-radius: 11px; }
+.landing-brand-logo { display: block; width: 40px; height: 40px; flex-shrink: 0; object-fit: contain; }
 .landing-brand .landing-brand-dot { color: var(--landing-purple); margin-left: -9px; }
 .landing-navigation { display: flex; align-items: center; gap: 30px; font-size: .875rem; font-weight: 700; }
 .landing-navigation a:hover, .landing-text-link:hover { color: var(--landing-purple); }
