@@ -134,7 +134,7 @@ export async function createBookingTicketPdf(input: BookingTicketPdfInput) {
   doc.setTextColor(139, 92, 246)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
-  doc.text('Powered by Glamhour', pageWidth / 2, 738, { align: 'center' })
+  doc.text('Powered by GLAMHOUR', pageWidth / 2, 738, { align: 'center' })
 
   return doc
 }

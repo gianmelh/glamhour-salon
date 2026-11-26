@@ -29,7 +29,7 @@ function frame(input: { subject: string; preheader: string; text: string; conten
   const notice = 'TEST EMAIL — No appointment has been created and this code is not valid.'
   return {
     subject: `${input.testMode ? '[TEST] ' : ''}${input.subject}`,
-    text: `${input.testMode ? `${notice}\n\n` : ''}${input.text}\n\nGlamhour`,
+    text: `${input.testMode ? `${notice}\n\n` : ''}${input.text}\n\nGLAMHOUR`,
     // Local PNG embedded in the message: no external image host or SVG support
     // required. All essential information also remains readable without images.
     attachments: [{
@@ -66,13 +66,13 @@ ${input.testMode ? `<tr><td style="padding:0 8px 16px;text-align:center;font-siz
 <tr><td class="email-pad" style="padding:30px 40px 26px;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
     <td width="48" style="width:48px;vertical-align:middle;"><img src="cid:${LOGO_CID}" width="48" height="48" alt="" style="display:block;width:48px;height:48px;border:0;"></td>
-    <td style="padding-left:12px;vertical-align:middle;font-size:27px;line-height:32px;font-weight:700;letter-spacing:-1px;color:#35224f;">Glamhour</td>
+    <td style="padding-left:12px;vertical-align:middle;font-size:27px;line-height:32px;font-weight:700;letter-spacing:-1px;color:#35224f;">GLAMHOUR</td>
   </tr></table>
 </td></tr>
 ${input.content}
 </table>
 </td></tr>
-<tr><td style="padding:24px 20px 8px;text-align:center;font-size:12px;line-height:20px;color:#82758f;">Sent with care by <strong style="color:#675278;">Glamhour</strong></td></tr>
+<tr><td style="padding:24px 20px 8px;text-align:center;font-size:12px;line-height:20px;color:#82758f;">Sent with care by <strong style="color:#675278;">GLAMHOUR</strong></td></tr>
 </table>
 <!--[if mso]></td></tr></table><![endif]-->
 </td></tr></table>
@@ -139,7 +139,7 @@ export function renderAppointmentConfirmationEmail(input: AppointmentEmailInput)
 
 export function renderBookingVerificationEmail(input: { salonName: string; code: string; testMode?: boolean }): BrandedEmail {
   return frame({
-    subject: 'Your Glamhour booking verification code',
+    subject: 'Your GLAMHOUR booking verification code',
     preheader: `Verify your email to continue booking with ${input.salonName}. Your code expires in 10 minutes.`,
     testMode: input.testMode,
     text: `Your verification code for ${input.salonName} is ${input.code}.\n\nThis code expires in 10 minutes. If you did not request this, ignore this email.`,
