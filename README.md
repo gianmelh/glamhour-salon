@@ -55,6 +55,10 @@ The illustration's schedule is explicitly labeled as an example.
 by the owner on November 25, 2026: GlamHour LLC, admin@glamhourapp.com,
 12100 SW Community Blvd, Port Saint Lucie, FL 34987, United States.
 The footer displays all three and includes a direct email contact link.
+All customer-facing brand mentions use `GLAMHOUR™`, including the company and
+copyright display `GLAMHOUR™ LLC`. The originally supplied legal name remains
+recorded separately in `businessDetails.legalName`. Email addresses, domains,
+asset paths and internal identifiers retain their original spelling.
 
 Footer links open the existing policies in a public reading view using
 `?from=home`, with home/back and policy navigation and no acceptance action.

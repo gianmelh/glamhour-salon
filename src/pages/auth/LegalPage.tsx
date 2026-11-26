@@ -23,7 +23,7 @@ const legalContent: Record<
     sections: [
       {
         title: '1. Acceptance of Terms',
-        body: 'By accessing or using the GLAMHOUR app management platform, you agree to be bound by these Terms and Conditions. If you do not agree with any part of these terms, you may not use the service.',
+        body: 'By accessing or using the GLAMHOUR™ app management platform, you agree to be bound by these Terms and Conditions. If you do not agree with any part of these terms, you may not use the service.',
       },
       {
         title: '2. Account Responsibilities',
@@ -126,7 +126,7 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
       <section className="px-5 pb-8 pt-6">
         <Link className="inline-flex min-h-11 items-center gap-1.5 text-sm text-[#172033]" to={isPublicReading ? '/' : '/signup'}>
           <ChevronLeft className="size-4" />
-          {isPublicReading ? 'Back to GLAMHOUR' : 'Back to sign up'}
+          {isPublicReading ? 'Back to GLAMHOUR™' : 'Back to sign up'}
         </Link>
 
         <div className="mt-6 space-y-6">

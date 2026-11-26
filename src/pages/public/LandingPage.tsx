@@ -18,15 +18,15 @@ const plans = [
 ]
 
 const questions = [
-  { question: 'Who is GLAMHOUR for?', answer: 'GLAMHOUR is salon management software for beauty professionals and teams offering nails, lashes, cosmetology and micropigmentation services. Customize your services, providers and schedules around the way your salon works.' },
-  { question: 'What am I paying for?', answer: 'You are subscribing to GLAMHOUR’s salon management software. The Free plan supports up to 15 registered clients. Premium adds unlimited clients and the Premium features listed above. These subscription prices are separate from the beauty services your salon offers its clients.' },
+  { question: 'Who is GLAMHOUR™ for?', answer: 'GLAMHOUR™ is salon management software for beauty professionals and teams offering nails, lashes, cosmetology and micropigmentation services. Customize your services, providers and schedules around the way your salon works.' },
+  { question: 'What am I paying for?', answer: 'You are subscribing to GLAMHOUR™’s salon management software. The Free plan supports up to 15 registered clients. Premium adds unlimited clients and the Premium features listed above. These subscription prices are separate from the beauty services your salon offers its clients.' },
   { question: 'How does Premium billing work?', answer: 'Premium is a recurring subscription, billed monthly at US$14.99 or annually at US$119.99. Create an account first, then choose a Premium plan in your subscription settings. Review the payment details before confirming your purchase.' },
   { question: 'Can I cancel my subscription?', answer: 'You can cancel Premium from your subscription settings. Premium access continues until the end of the current billing period, then your account returns to the Free plan. See the Terms & Conditions for the existing payment and refund policy.' },
 ]
 
 function Brand() {
   return (
-    <Link className="landing-brand" to="/" aria-label="GLAMHOUR home">
+    <Link className="landing-brand" to="/" aria-label="GLAMHOUR™ home">
       <img className="landing-brand-logo" src="/brand/glamhour-logo.jpg" width="40" height="40" alt="" />
       <span>GLAMHOUR<sup className="landing-brand-trademark">™</sup></span>
     </Link>
@@ -49,7 +49,7 @@ export function LandingPage() {
           <Brand />
           <button aria-controls="landing-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? 'Close menu' : 'Open menu'} className="landing-menu-toggle" onClick={() => setMenuOpen(!menuOpen)} type="button">{menuOpen ? <X /> : <Menu />}</button>
           <nav aria-label="Main navigation" className={`landing-navigation${menuOpen ? ' is-open' : ''}`} id="landing-navigation" onClick={() => setMenuOpen(false)}>
-            <a href="#features">Why GLAMHOUR</a><a href="#pricing">Pricing</a><a href="#questions">FAQs</a>
+            <a href="#features">Why GLAMHOUR™</a><a href="#pricing">Pricing</a><a href="#questions">FAQs</a>
             <Link className="landing-login" to="/login">Log in</Link><Link className="landing-button landing-button-small" to="/signup">Get started</Link>
           </nav>
         </div>
@@ -60,7 +60,7 @@ export function LandingPage() {
           <div className="landing-hero-copy">
             <p className="landing-eyebrow"><Sparkles size={16} aria-hidden="true" /> A little less admin. A lot more beauty.</p>
             <h1 id="hero-title">Your salon.<br />Your rhythm.<br /><em>All in one place.</em></h1>
-            <p className="landing-lead">Meet GLAMHOUR, the salon management app that brings your appointments, clients and team together. More time for the work you love.</p>
+            <p className="landing-lead">Meet GLAMHOUR™, the salon management app that brings your appointments, clients and team together. More time for the work you love.</p>
             <div className="landing-actions"><Link className="landing-button" to="/signup">Start your salon’s next chapter</Link><a className="landing-text-link" href="#pricing">Explore the plans</a></div>
             <p className="landing-hero-note"><Check size={16} aria-hidden="true" /> Free plan available · Built for beauty professionals</p>
           </div>
@@ -92,10 +92,10 @@ export function LandingPage() {
 
         <section className="landing-section landing-container landing-faq" id="questions" aria-labelledby="questions-title"><div className="landing-section-heading"><p className="landing-eyebrow">Good to know</p><h2 id="questions-title">A few details,<br />before you begin.</h2><p>Get to know your new salon workspace.</p></div><div className="landing-faq-list">{questions.map(({ question, answer }) => <details key={question}><summary>{question}<ChevronDown size={19} aria-hidden="true" /></summary><p>{answer}</p></details>)}</div></section>
 
-        <section className="landing-closing landing-container" aria-labelledby="closing-title"><Sparkles size={30} aria-hidden="true" /><h2 id="closing-title">Make room for<br />your best work.</h2><p>Your next beautifully organized day starts here.</p><Link className="landing-button" to="/signup">Get started with GLAMHOUR</Link><span><Clock3 size={15} aria-hidden="true" /> Your salon. On your terms.</span></section>
+        <section className="landing-closing landing-container" aria-labelledby="closing-title"><Sparkles size={30} aria-hidden="true" /><h2 id="closing-title">Make room for<br />your best work.</h2><p>Your next beautifully organized day starts here.</p><Link className="landing-button" to="/signup">Get started with GLAMHOUR™</Link><span><Clock3 size={15} aria-hidden="true" /> Your salon. On your terms.</span></section>
       </main>
 
-      <footer className="landing-footer"><div className="landing-container"><div className="landing-footer-top"><div><Brand /><p>Salon management,<br />beautifully organized.</p></div><div className="landing-company"><h2>Company & contact</h2><p>{businessDetails.legalName}</p><address>{businessDetails.usBusinessAddress}</address><a href={`mailto:${businessDetails.contactEmail}`}>{businessDetails.contactEmail}</a></div><nav aria-label="Legal information"><h2>Legal</h2><Link to="/privacy?from=home">Privacy Policy</Link><Link to="/terms?from=home">Terms & Conditions</Link></nav></div><div className="landing-footer-bottom"><p>© {new Date().getFullYear()} {businessDetails.legalName}. All rights reserved.</p><span>Made for the business of beauty.</span></div></div></footer>
+      <footer className="landing-footer"><div className="landing-container"><div className="landing-footer-top"><div><Brand /><p>Salon management,<br />beautifully organized.</p></div><div className="landing-company"><h2>Company & contact</h2><p>{businessDetails.displayName}</p><address>{businessDetails.usBusinessAddress}</address><a href={`mailto:${businessDetails.contactEmail}`}>{businessDetails.contactEmail}</a></div><nav aria-label="Legal information"><h2>Legal</h2><Link to="/privacy?from=home">Privacy Policy</Link><Link to="/terms?from=home">Terms & Conditions</Link></nav></div><div className="landing-footer-bottom"><p>© {new Date().getFullYear()} {businessDetails.displayName}. All rights reserved.</p><span>Made for the business of beauty.</span></div></div></footer>
     </div>
   )
 }
