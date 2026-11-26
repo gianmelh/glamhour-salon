@@ -69,7 +69,7 @@ try {
   await page.getByRole('navigation', { name: 'Legal documents' }).getByRole('link', { name: 'Terms & Conditions' }).click()
   await page.getByRole('heading', { name: 'Terms & Conditions', exact: true }).waitFor()
   assert.equal(await page.getByRole('button', { name: /I accept/ }).count(), 0)
-  await page.getByRole('link', { name: 'Back to Glamhour' }).click()
+  await page.getByRole('link', { name: 'Back to GLAMHOUR' }).click()
   await page.getByRole('heading', { level: 1 }).waitFor()
   await page.waitForFunction(() => window.scrollY === 0)
   await page.getByRole('link', { name: 'Start your salon’s next chapter' }).click()

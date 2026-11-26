@@ -293,7 +293,7 @@ export function SubscriptionPage() {
 
       <div className="mt-5 flex items-start justify-center gap-2 rounded-md bg-white px-4 py-3 text-center text-[11px] leading-4 text-[#667085] shadow-card">
         <img alt="" className="mt-0.5 size-3.5 shrink-0" src="/Glamhour - Assets/Settings/account/my subscription/Icon.svg" />
-        <p>Payments and renewals are securely processed by Stripe. Glamhour does not store your card information.</p>
+        <p>Payments and renewals are securely processed by Stripe. GLAMHOUR does not store your card information.</p>
       </div>
 
       {cancelOpen && (
