@@ -224,11 +224,11 @@ export async function sendPasswordResetCode({
   const info = await createTransporter().sendMail({
     from: config.SMTP_FROM,
     to: email,
-    subject: 'Your Glamhour password reset code',
-    text: `Hi ${name},\n\nYour Glamhour password reset code is ${code}.\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.`,
+    subject: 'Your GLAMHOUR™ password reset code',
+    text: `Hi ${name},\n\nYour GLAMHOUR™ password reset code is ${code}.\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.`,
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#172033">
-        <h1 style="font-size:20px">Reset your Glamhour password</h1>
+        <h1 style="font-size:20px">Reset your GLAMHOUR™ password</h1>
         <p>Hi ${safeName},</p>
         <p>Your verification code is:</p>
         <p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p>

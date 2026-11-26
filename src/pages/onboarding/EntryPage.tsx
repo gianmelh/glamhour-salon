@@ -7,7 +7,7 @@ export function EntryPage() {
     <div className="flex min-h-dvh flex-col justify-end bg-auth-gradient p-4 pb-7">
       <div className="mb-auto pt-20 text-center">
         <img className="mx-auto size-20 object-contain" src="/brand/glamhour-logo.jpg" width="80" height="80" alt="" />
-        <h1 className="mt-5 text-3xl font-bold tracking-[-0.04em]">GLAMHOUR</h1>
+        <h1 className="mt-5 text-3xl font-bold tracking-[-0.04em]">GLAMHOUR™</h1>
         <p className="mt-2 text-sm text-muted">Your salon's best hour, every hour.</p>
       </div>
       <Card className="space-y-3" padding="lg">

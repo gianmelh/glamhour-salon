@@ -28,7 +28,7 @@ export function AppLayout() {
     <div className="min-h-screen bg-[#eceaf5] sm:py-6">
       <AppShell
         className={isFullScreen ? 'px-0 py-0' : undefined}
-        header={routeSegment === 'home' || isFullScreen ? undefined : <Header action={<Avatar name={salon.data?.name ?? 'GLAMHOUR'} size="sm" />} title={salon.data?.name ?? 'GLAMHOUR'} />}
+        header={routeSegment === 'home' || isFullScreen ? undefined : <Header action={<Avatar name={salon.data?.name ?? 'GLAMHOUR™'} size="sm" />} title={salon.data?.name ?? 'GLAMHOUR™'} />}
         navigation={isAppointmentFlow || isSubscriptionRoute ? undefined : <BottomNavigation activeItem={routeToNav[routeSegment] ?? 'home'} onChange={(item) => navigate(`/app/${item}`)} />}
       >
         <Outlet />
