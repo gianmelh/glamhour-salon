@@ -28,7 +28,7 @@ function Brand() {
   return (
     <Link className="landing-brand" to="/" aria-label="GLAMHOUR home">
       <img className="landing-brand-logo" src="/brand/glamhour-logo.jpg" width="40" height="40" alt="" />
-      GLAMHOUR<span className="landing-brand-dot">.</span>
+      <span>GLAMHOUR<sup className="landing-brand-trademark">™</sup></span>
     </Link>
   )
 }
